@@ -22,7 +22,7 @@
  *   G. Response shape — structural contract for all three scenarios
  */
 
-const handler = require('../../pages/api/scan');
+const handler = require('../../pages/api/scan').default;
 
 // ─── Realistic OFF response fixtures ────────────────────────────────────────
 

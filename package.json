@@ -16,15 +16,6 @@
     "react":     "^18.3.0",
     "react-dom": "^18.3.0"
   },
-  "jest": {
-    "testEnvironment": "node",
-    "testMatch": [
-      "**/lib/**/*.test.js",
-      "**/__tests__/**/*.test.js"
-    ],
-    "testPathIgnorePatterns": ["/node_modules/", "/.next/"],
-    "coveragePathIgnorePatterns": ["/node_modules/", "/.next/"]
-  },
   "devDependencies": {
     "jest": "^29.7.0"
   },

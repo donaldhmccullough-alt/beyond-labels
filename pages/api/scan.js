@@ -39,9 +39,8 @@
  * }
  */
 
-'use strict';
-
-const { analyzeIngredients } = require('../../lib/rulesEngine');
+import rulesEngine from '../../lib/rulesEngine';
+const { analyzeIngredients } = rulesEngine;
 
 const OFF_BASE = 'https://world.openfoodfacts.org/api/v0/product';
 
@@ -91,7 +90,7 @@ function normalizeLabelTags(labelsTags) {
  * @param {import('next').NextApiRequest}  req
  * @param {import('next').NextApiResponse} res
  */
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   // ── Method guard ──────────────────────────────────────────────────────────
   if (req.method !== 'POST') {
     return res.status(405).json({
