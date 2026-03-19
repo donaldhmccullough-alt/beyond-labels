@@ -1,13 +1,10 @@
 /**
- * pages/index.js — Beyond Labels · Session 3 stack-connection test
+ * pages/stack-test.js — Beyond Labels · API connection test
  *
- * Click the scan button → POST /api/scan { barcode: "021000025350" }
- *   → Open Food Facts fetch
- *   → rulesEngine.analyzeIngredients()
- *   → live JSON verdict rendered on screen
+ * Accessible at /stack-test (local and production).
+ * Type any barcode → POST /api/scan → live JSON verdict.
  *
- * Once you confirm this works end-to-end, the full prototype is at:
- *   http://localhost:3000/prototype.html
+ * The full camera prototype is at /  (served from public/prototype.html)
  */
 
 import Head from 'next/head';
@@ -85,7 +82,7 @@ export default function StackTest() {
   return (
     <>
       <Head>
-        <title>Beyond Labels — Stack Test</title>
+        <title>Beyond Labels — API Test</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link
           href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;500;600;700&display=swap"
@@ -106,7 +103,7 @@ export default function StackTest() {
             </h1>
           </div>
           <p style={{ color: '#9A8260', fontSize: 13, margin: '0 0 1.75rem 36px' }}>
-            Session 3 · Full-stack connection test
+            API test page · <a href="/" style={{ color: '#D4872A', fontWeight: 600, textDecoration: 'none' }}>← Back to app</a>
           </p>
 
           {/* ── Barcode input ── */}
@@ -151,16 +148,17 @@ export default function StackTest() {
             {phase === 'fetching' ? '⏳ Calling /api/scan…' : '📷 Scan Barcode'}
           </button>
 
-          {/* ── Network error ── */}
+          {/* ── Error card ── */}
           {phase === 'error' && (
             <Card style={{ background: '#FDEDEC',
               border: '1.5px solid rgba(192,57,43,0.25)', marginBottom: '1rem' }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#C0392B', marginBottom: 4 }}>
-                Network error — could not reach /api/scan
+                Could not reach /api/scan
               </div>
               <div style={{ fontSize: 12, color: '#C0392B', opacity: 0.85 }}>{errMsg}</div>
               <div style={{ fontSize: 11, color: '#9A8260', marginTop: 8 }}>
-                Is <code>npm run dev</code> still running on port 3000?
+                The API endpoint may be unavailable. Check the{' '}
+                <a href="/api/scan" style={{ color: '#9A8260' }}>/api/scan</a> route.
               </div>
             </Card>
           )}
@@ -172,7 +170,6 @@ export default function StackTest() {
               <div style={{ background: vc.bg, border: `1.5px solid ${vc.border}`,
                 borderRadius: 14, padding: '16px', marginBottom: '1rem',
                 display: 'flex', alignItems: 'center', gap: 16 }}>
-                {/* Traffic-light dot */}
                 <div style={{ width: 20, height: 20, borderRadius: '50%',
                   background: vc.dot, flexShrink: 0,
                   boxShadow: `0 0 12px ${vc.glow}` }} />
@@ -189,7 +186,6 @@ export default function StackTest() {
                     {response.body.productName}
                   </div>
                 </div>
-                {/* Flag counts */}
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                   {[
                     { count: rejects.length, color: '#C0392B', hint: 'rejects' },
@@ -240,13 +236,12 @@ export default function StackTest() {
               )}
 
               {/* Metadata row */}
-              <div style={{ display: 'flex', gap: 8, marginBottom: '1rem',
-                flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: '1rem', flexWrap: 'wrap' }}>
                 {[
-                  { k: 'barcode',         v: response.body.barcode },
-                  { k: 'found',           v: String(response.body.found) },
-                  { k: 'clearedBy',       v: response.body.clearedBy ?? 'null' },
-                  { k: 'labelsDetected',  v: response.body.labelsDetected?.join(', ') || '(none)' },
+                  { k: 'barcode',        v: response.body.barcode },
+                  { k: 'found',          v: String(response.body.found) },
+                  { k: 'clearedBy',      v: response.body.clearedBy ?? 'null' },
+                  { k: 'labelsDetected', v: response.body.labelsDetected?.join(', ') || '(none)' },
                 ].map(({ k, v }) => (
                   <div key={k} style={{ background: '#F2EBD9', borderRadius: 8,
                     padding: '6px 10px', fontSize: 11 }}>
@@ -273,8 +268,8 @@ export default function StackTest() {
           <div style={{ borderTop: '1px solid #F2EBD9', paddingTop: '1rem',
             display: 'flex', gap: 16, flexWrap: 'wrap' }}>
             {[
-              { href: '/prototype.html', label: '🌿 Open full prototype' },
-              { href: '/api/scan',       label: '⚡ /api/scan (POST endpoint)' },
+              { href: '/',         label: '🌿 Open app' },
+              { href: '/api/scan', label: '⚡ /api/scan (POST endpoint)' },
             ].map(({ href, label }) => (
               <a key={href} href={href} style={{ fontSize: 12, color: '#D4872A',
                 fontWeight: 600, textDecoration: 'none' }}>
