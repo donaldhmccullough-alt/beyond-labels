@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Beyond Labels</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cream: #FAF6EF;
+      --cream-dark: #F2EBD9;
+      --amber: #D4872A;
+      --amber-light: #F0A83C;
+      --amber-pale: #FDF3E3;
+      --forest: #3A5A40;
+      --forest-light: #4D7B55;
+      --forest-pale: #EAF2EB;
+      --red: #C0392B;
+      --red-light: #E74C3C;
+      --red-pale: #FDEDEC;
+      --yellow: #D4AC0D;
+      --yellow-light: #F1C40F;
+      --yellow-pale: #FEF9E7;
+      --green: #27AE60;
+      --green-light: #2ECC71;
+      --green-pale: #EAFAF1;
+      --gray: #8A8A8A;
+      --gray-light: #D0C9BC;
+      --text-dark: #2C2416;
+      --text-mid: #5C4A2A;
+      --text-light: #9A8260;
+    }
+
+    html, body {
+      background: #E8E0D2;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      font-family: 'Inter', sans-serif;
+    }
+
+    #root {
+      width: 375px;
+      min-height: 100vh;
+      background: var(--cream);
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 0 40px rgba(0,0,0,0.25);
+    }
+
+    .screen {
+      width: 375px;
+      min-height: calc(100vh - 68px);
+      padding-bottom: 80px;
+      overflow-y: auto;
+      background: var(--cream);
+    }
+
+    .serif { font-family: 'Playfair Display', serif; }
+    .sans  { font-family: 'Inter', sans-serif; }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px 12px;
+      background: var(--cream);
+      border-bottom: 1px solid var(--cream-dark);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .header-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-dark);
+      letter-spacing: -0.3px;
+    }
+    .back-btn {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--amber);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 4px 0;
+    }
+    .back-btn:hover { color: var(--amber-light); }
+
+    /* ── Bottom nav ── */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      width: 375px;
+      height: 68px;
+      background: var(--cream);
+      border-top: 1.5px solid var(--cream-dark);
+      display: flex;
+      align-items: stretch;
+      z-index: 100;
+    }
+    .nav-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      cursor: pointer;
+      border: none;
+      background: none;
+      padding: 8px 0 10px;
+      transition: all 0.15s;
+    }
+    .nav-icon  { font-size: 22px; line-height: 1; }
+    .nav-label { font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+    .nav-item.active     .nav-label, .nav-item.active     .nav-icon { color: var(--amber); }
+    .nav-item:not(.active) .nav-label, .nav-item:not(.active) .nav-icon { color: var(--gray); }
+    .nav-item:active { opacity: 0.7; }
+
+    /* ── Scanner ── */
+    .scanner-hero {
+      position: relative;
+      margin: 20px 16px 0;
+      border-radius: 20px;
+      overflow: hidden;
+      background: #1A1A1A;
+      height: 300px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .scanner-bg   { position: absolute; inset: 0; background: linear-gradient(135deg, #1A1A2E 0%, #16213E 50%, #0F3460 100%); }
+    .scanner-grid {
+      position: absolute; inset: 0;
+      background-image: linear-gradient(rgba(212,135,42,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(212,135,42,0.08) 1px, transparent 1px);
+      background-size: 30px 30px;
+    }
+    .viewfinder { position: relative; width: 200px; height: 140px; z-index: 2; }
+    .viewfinder-corner { position: absolute; width: 24px; height: 24px; border-color: var(--amber-light); border-style: solid; }
+    .viewfinder-corner.tl { top:0; left:0;    border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
+    .viewfinder-corner.tr { top:0; right:0;   border-width: 3px 3px 0 0; border-radius: 0 4px 0 0; }
+    .viewfinder-corner.bl { bottom:0; left:0; border-width: 0 0 3px 3px; border-radius: 0 0 0 4px; }
+    .viewfinder-corner.br { bottom:0; right:0;border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
+    .scan-line {
+      position: absolute; left: 8px; right: 8px; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--amber-light), transparent);
+      animation: scanAnim 2s ease-in-out infinite; top: 50%;
+    }
+    @keyframes scanAnim { 0%,100% { top:20%; opacity:.6; } 50% { top:80%; opacity:1; } }
+    .barcode-lines { position: absolute; inset: 20px 30px; display: flex; gap: 3px; opacity: 0.25; }
+    .barcode-line  { flex: 1; background: var(--amber-light); border-radius: 1px; }
+    .barcode-line:nth-child(2n) { height: 80%; align-self: center; }
+    .barcode-line:nth-child(3n) { height: 60%; align-self: flex-end; }
+    .scanner-label { position: relative; z-index:2; color: rgba(255,255,255,0.6); font-size: 12px; font-weight: 500; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 16px; }
+    .scan-btn {
+      margin: 20px 16px 0; width: calc(100% - 32px); height: 54px;
+      background: linear-gradient(135deg, var(--amber) 0%, var(--amber-light) 100%);
+      color: white; font-family: 'Inter', sans-serif; font-size: 17px; font-weight: 700;
+      border: none; border-radius: 16px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      box-shadow: 0 4px 16px rgba(212,135,42,0.35); transition: all 0.15s; letter-spacing: 0.2px;
+    }
+    .scan-btn:active { transform: scale(0.97); box-shadow: 0 2px 8px rgba(212,135,42,0.3); }
+    .scan-btn.scanning { background: linear-gradient(135deg, var(--forest) 0%, var(--forest-light) 100%); box-shadow: 0 4px 16px rgba(58,90,64,0.35); }
+    .scan-info { margin: 16px 16px 0; background: var(--cream-dark); border-radius: 14px; padding: 16px; }
+    .scan-info-title { font-family: 'Playfair Display', serif; font-size: 15px; font-weight: 600; color: var(--text-dark); margin-bottom: 10px; }
+    .recent-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--gray-light); }
+    .recent-item:last-child { border-bottom: none; padding-bottom: 0; }
+    .recent-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .recent-dot.red    { background: var(--red); }
+    .recent-dot.yellow { background: var(--yellow-light); }
+    .recent-dot.green  { background: var(--green); }
+    .recent-name { flex: 1; font-size: 13px; font-weight: 500; color: var(--text-dark); }
+    .recent-date { font-size: 11px; color: var(--text-light); }
+    .scanning-overlay {
+      position: absolute; inset: 0; background: rgba(26,26,26,0.85);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 12px; z-index: 10; border-radius: 20px;
+    }
+    .spinner { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.2); border-top-color: var(--amber-light); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .scanning-text { color: white; font-size: 14px; font-weight: 600; letter-spacing: 0.5px; }
+
+    /* ── Verdict / Profile shared ── */
+    .verdict-hero {
+      margin: 16px 16px 0;
+      border-radius: 20px;
+      padding: 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .verdict-hero.red-hero    { background: var(--red-pale);   border: 1.5px solid rgba(192,57,43,0.2); }
+    .verdict-hero.green-hero  { background: var(--green-pale); border: 1.5px solid rgba(39,174,96,0.2); }
+    .traffic-light-bg {
+      background: #2C2C2C; border-radius: 30px; padding: 8px 5px;
+      display: flex; flex-direction: column; gap: 5px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .tl-dot { width: 28px; height: 28px; border-radius: 50%; opacity: 0.2; }
+    .tl-dot.active { opacity: 1; box-shadow: 0 0 12px currentColor; }
+    .tl-dot.red-dot    { background: var(--red-light);   color: var(--red-light); }
+    .tl-dot.yellow-dot { background: var(--yellow-light);color: var(--yellow-light); }
+    .tl-dot.green-dot  { background: var(--green-light); color: var(--green-light); }
+    .verdict-info { flex: 1; }
+    .verdict-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
+      padding: 4px 10px; border-radius: 20px; margin-bottom: 8px; color: white;
+    }
+    .verdict-badge.red   { background: var(--red); }
+    .verdict-badge.green { background: var(--green); }
+    .verdict-product { font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 700; color: var(--text-dark); line-height: 1.25; margin-bottom: 4px; }
+    .verdict-brand   { font-size: 13px; color: var(--text-light); font-weight: 500; }
+    .verdict-score   { margin: 14px 16px 0; display: flex; gap: 8px; }
+    .score-pill { flex: 1; background: var(--cream-dark); border-radius: 12px; padding: 10px 8px; text-align: center; }
+    .score-pill-num   { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 700; line-height: 1; }
+    .score-pill-label { font-size: 10px; font-weight: 600; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.8px; margin-top: 3px; }
+
+    /* ── Concern / Category cards ── */
+    .concerns-title { margin: 20px 16px 10px; font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 700; color: var(--text-dark); }
+    .concern-card { margin: 0 16px 10px; background: white; border: 1.5px solid var(--cream-dark); border-radius: 16px; overflow: hidden; }
+    .concern-header { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; }
+    .concern-icon {
+      font-size: 20px; flex-shrink: 0; width: 40px; height: 40px;
+      display: flex; align-items: center; justify-content: center; border-radius: 10px;
+    }
+    .concern-icon.red    { background: var(--red-pale); }
+    .concern-icon.yellow { background: var(--yellow-pale); }
+    .concern-icon.green  { background: var(--green-pale); }
+    .concern-main { flex: 1; }
+    .concern-name    { font-size: 15px; font-weight: 700; color: var(--text-dark); margin-bottom: 2px; }
+    .concern-summary { font-size: 12px; color: var(--text-light); line-height: 1.4; }
+    .severity-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .severity-dot.red    { background: var(--red); }
+    .severity-dot.yellow { background: var(--yellow-light); }
+    .severity-dot.green  { background: var(--green); }
+    .chevron { font-size: 14px; color: var(--gray); transition: transform 0.25s; }
+    .chevron.open { transform: rotate(180deg); }
+    .concern-body { padding: 0 16px 16px; border-top: 1px solid var(--cream-dark); }
+    .concern-body p { font-size: 14px; line-height: 1.65; color: var(--text-mid); padding-top: 12px; }
+    .concern-body p + p { padding-top: 8px; }
+    .concern-source { margin-top: 10px; display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-light); font-weight: 500; }
+    .verdict-cta {
+      margin: 20px 16px 0; width: calc(100% - 32px);
+      background: linear-gradient(135deg, var(--forest) 0%, var(--forest-light) 100%);
+      color: white; font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 700;
+      border: none; border-radius: 16px; padding: 16px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      box-shadow: 0 4px 16px rgba(58,90,64,0.3); transition: all 0.15s;
+    }
+    .verdict-cta:active { transform: scale(0.97); }
+
+    /* ── Swap screen ── */
+    .swap-banner {
+      margin: 16px 16px 0;
+      background: linear-gradient(135deg, var(--forest) 0%, var(--forest-light) 100%);
+      border-radius: 16px; padding: 14px 16px; display: flex; align-items: center; gap: 10px;
+    }
+    .swap-banner-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; opacity: 0.8; margin-bottom: 2px; color: white; }
+    .swap-banner-title { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 700; color: white; }
+    .swap-card { margin: 12px 16px 0; background: white; border: 1.5px solid var(--cream-dark); border-radius: 20px; overflow: hidden; }
+    .swap-card.clickable { cursor: pointer; transition: box-shadow 0.15s, transform 0.15s; }
+    .swap-card.clickable:active { transform: scale(0.98); box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
+    .swap-card-img {
+      width: 100%; height: 160px;
+      background: linear-gradient(135deg, #F7F0E6 0%, #EDE3D4 100%);
+      display: flex; align-items: center; justify-content: center;
+      position: relative; overflow: hidden;
+    }
+    .product-art {
+      width: 100px; height: 130px; border-radius: 8px; position: relative;
+      display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+      padding-bottom: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    }
+    .annies-box { background: linear-gradient(180deg, #E8792D 0%, #C85E20 40%, #7B3B1E 100%); }
+    .product-art-text { color: white; font-size: 9px; font-weight: 700; letter-spacing: 0.5px; text-align: center; line-height: 1.3; }
+    .product-art-brand { font-family: 'Playfair Display', serif; font-size: 13px; margin-bottom: 2px; }
+    .product-art-icon  { font-size: 28px; position: absolute; top: 16px; }
+    .green-badge {
+      position: absolute; top: 12px; right: 12px;
+      background: var(--green); color: white;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
+      padding: 4px 10px; border-radius: 20px; text-transform: uppercase;
+    }
+    .score-ribbon {
+      position: absolute; bottom: 12px; left: 12px;
+      background: rgba(255,255,255,0.92);
+      border-radius: 10px; padding: 5px 10px;
+      display: flex; align-items: baseline; gap: 3px;
+    }
+    .score-ribbon-num   { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 700; color: var(--green); line-height: 1; }
+    .score-ribbon-label { font-size: 10px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px; }
+    .tap-hint {
+      position: absolute; bottom: 12px; right: 12px;
+      background: rgba(255,255,255,0.85); border-radius: 10px; padding: 5px 9px;
+      font-size: 11px; font-weight: 600; color: var(--forest);
+      display: flex; align-items: center; gap: 4px;
+    }
+    .swap-card-body { padding: 16px; }
+    .swap-product-name { font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 700; color: var(--text-dark); margin-bottom: 3px; line-height: 1.25; }
+    .swap-product-meta { font-size: 12px; color: var(--text-light); margin-bottom: 14px; }
+    .why-passes-title  { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--forest); margin-bottom: 8px; }
+    .why-item  { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+    .why-check { width: 18px; height: 18px; background: var(--green-pale); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0; margin-top: 1px; color: var(--green); }
+    .why-text  { font-size: 13px; color: var(--text-mid); line-height: 1.45; flex: 1; }
+    .store-btns { display: flex; gap: 8px; margin-top: 4px; }
+    .store-btn { flex: 1; padding: 11px 8px; border-radius: 12px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; transition: all 0.15s; }
+    .store-btn.primary   { background: var(--forest); color: white; box-shadow: 0 3px 10px rgba(58,90,64,0.25); }
+    .store-btn.secondary { background: var(--cream-dark); color: var(--text-dark); }
+    .store-btn:active { transform: scale(0.96); }
+    .view-profile-btn {
+      margin-top: 12px; width: 100%; padding: 12px;
+      border-radius: 12px; border: 1.5px solid var(--forest);
+      background: transparent; color: var(--forest);
+      font-size: 14px; font-weight: 700; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      transition: all 0.15s;
+    }
+    .view-profile-btn:active { background: var(--forest-pale); }
+
+    /* Farm section */
+    .farm-divider { margin: 20px 16px 0; display: flex; align-items: center; gap: 10px; }
+    .farm-divider-line { flex: 1; height: 1px; background: var(--cream-dark); }
+    .farm-divider-text { font-size: 11px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 1px; white-space: nowrap; }
+    .farm-card { margin: 12px 16px 0; background: white; border: 1.5px solid var(--cream-dark); border-radius: 20px; overflow: hidden; position: relative; }
+    .farm-upgrade-ribbon {
+      position: absolute; top: 14px; left: -28px;
+      background: var(--amber); color: white;
+      font-size: 10px; font-weight: 700; padding: 4px 40px;
+      transform: rotate(-45deg); letter-spacing: 0.5px; text-transform: uppercase; z-index: 2;
+    }
+    .farm-card-img {
+      width: 100%; height: 140px;
+      background: linear-gradient(135deg, #EAF2EB 0%, #D5E8D6 100%);
+      display: flex; align-items: center; justify-content: center;
+      position: relative; overflow: hidden;
+    }
+    .farm-landscape {
+      position: absolute; bottom: 0; left: 0; right: 0; height: 60px;
+      background: linear-gradient(180deg, transparent 0%, #B8D4BB 100%);
+      display: flex; align-items: flex-end; padding: 0 20px 8px; gap: 12px;
+    }
+    .farm-tree { font-size: 28px; line-height: 1; }
+    .farm-barn { font-size: 36px; line-height: 1; }
+    .farm-card-body { padding: 16px; }
+    .farm-name { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 700; color: var(--text-dark); margin-bottom: 2px; }
+    .farm-meta { font-size: 12px; color: var(--text-light); display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+    .farm-meta-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--gray-light); }
+    .farm-product { font-size: 14px; font-weight: 600; color: var(--text-dark); margin-bottom: 10px; padding: 10px 12px; background: var(--cream-dark); border-radius: 10px; display: flex; align-items: center; gap: 8px; }
+    .notify-btn {
+      width: 100%; padding: 13px; border-radius: 12px; font-size: 14px; font-weight: 700;
+      border: 2px solid var(--gray-light); background: transparent; color: var(--gray);
+      cursor: not-allowed; display: flex; align-items: center; justify-content: center; gap: 8px; opacity: 0.7;
+    }
+    .coming-soon-pill {
+      background: var(--amber-pale); border: 1px solid rgba(212,135,42,0.3); color: var(--amber);
+      font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 10px;
+      text-transform: uppercase; letter-spacing: 0.6px;
+    }
+
+    /* ── Animations ── */
+    .fade-in  { animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn  { from { opacity:0; transform:translateY(8px);  } to { opacity:1; transform:none; } }
+    .slide-in { animation: slideIn 0.25s ease-out; }
+    @keyframes slideIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:none; } }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState } = React;
+
+// ── Hard-coded data ──────────────────────────────────────────────────────────
+
+const KRAFT = {
+  name: "Kraft Macaroni & Cheese",
+  brand: "Kraft",
+  verdict: "red",
+  score: 24,
+  concerns: [
+    {
+      id: "genemodified",
+      icon: "🧬",
+      severity: "red",
+      name: "Gene Modified",
+      summary: "Contains corn & starch from GE + CRISPR-eligible crops",
+      detail: [
+        "Kraft Mac & Cheese is labeled as containing bioengineered food ingredients — specifically corn starch and modified food starch derived from genetically engineered crops. But the story doesn't stop at what the FDA requires on a label. CRISPR gene-editing technology is increasingly used in crop development and currently falls outside mandatory disclosure requirements, meaning some ingredients may be gene-modified in ways that never show up on any label at all.",
+        "What this means for your family: crops designed through gene modification — whether legacy GMO or newer CRISPR techniques — are often engineered to withstand heavy herbicide applications. That tolerance is precisely what leads to higher pesticide residues in the final food. The genetic modification and the chemical exposure are linked.",
+        "Our stance is simple: you deserve to know the full picture. 'Gene Modified' in our system flags both disclosed GMO and the growing category of unlabeled gene-edited ingredients — because transparency shouldn't depend on regulatory loopholes."
+      ]
+    },
+    {
+      id: "seedoils",
+      icon: "🫙",
+      severity: "red",
+      name: "Seed Oils",
+      summary: "Contains soybean oil — a refined inflammatory fat",
+      detail: [
+        "Soybean oil is one of the most consumed seed oils in the American diet, and it's in this product. It's a highly refined oil extracted using chemical solvents and high heat, stripping away any nutritional benefit while leaving behind a fat profile heavily weighted toward omega-6 linoleic acid.",
+        "The problem isn't omega-6 in isolation — it's ratio. Our bodies need a rough balance of omega-6 to omega-3 fatty acids. Processed foods loaded with soybean oil tip that balance dramatically, contributing to a pro-inflammatory baseline that researchers are increasingly linking to metabolic disease, obesity, and developmental issues in children.",
+        "For a product primarily marketed to kids, this is a real concern. Real butter — which appears in cleaner alternatives — delivers a far more balanced fat profile along with fat-soluble vitamins. The substitution is easy; the reason to make it is significant."
+      ]
+    },
+    {
+      id: "pesticides",
+      icon: "🧪",
+      severity: "yellow",
+      name: "Pesticide/Herbicide Risk",
+      summary: "Conventional wheat & corn carry known residue risk",
+      detail: [
+        "The wheat and corn in this product are grown conventionally, meaning they're treated with a suite of pesticides and herbicides throughout the growing season. Glyphosate — the active ingredient in Roundup — is routinely sprayed on conventional wheat right before harvest as a desiccant to speed drying, and is used heavily on GE corn crops throughout the season. Independent lab testing has detected residues of glyphosate and other agrochemicals in mac & cheese products from major brands.",
+        "Glyphosate has been classified as a probable human carcinogen by the International Agency for Research on Cancer (IARC), a branch of the World Health Organization. Beyond glyphosate, a rotating roster of fungicides, insecticides, and pre-emergent herbicides are applied to commodity crops — and the regulatory 'acceptable daily intake' limits were largely set decades ago without accounting for combined exposures.",
+        "Children consume more food relative to their body weight than adults, making their cumulative exposure proportionally higher. We flag pesticide/herbicide risk not to alarm, but to make sure this factor is visible in your decision — because it's often invisible on the label."
+      ]
+    },
+    {
+      id: "additives",
+      icon: "🎨",
+      severity: "red",
+      name: "Additives",
+      summary: "Artificial dyes, sodium phosphates & synthetic preservatives",
+      detail: [
+        "Kraft Mac & Cheese's signature orange color doesn't come from real cheddar — it comes from Yellow 5 (Tartrazine) and Yellow 6 (Sunset Yellow), synthetic dyes derived from petroleum. These dyes have been associated with hyperactivity and behavioral changes in children in studies sufficient for the European Union to require a warning label on any food containing them. The U.S. FDA has no such requirement.",
+        "The cheese powder also contains sodium phosphates — a family of additives used as emulsifiers and preservatives. Phosphate additives consumed regularly in processed foods have been linked in emerging research to impaired kidney function, accelerated vascular aging, and disruption of calcium/phosphorus balance, particularly in children and adolescents whose bodies are still developing.",
+        "None of these additives are 'illegal' — but their presence reveals a product optimized for shelf stability and visual appeal, not nutritional quality. When you see artificial dyes and phosphate salts in kids' food, you're looking at a cost-cutting formulation that puts appearance over health."
+      ]
+    },
+    {
+      id: "gluten",
+      icon: "🌾",
+      severity: "yellow",
+      name: "Gluten",
+      summary: "Contains wheat pasta — gluten protein present",
+      detail: [
+        "This product is made with wheat-based pasta and is not safe for anyone with celiac disease or a clinically diagnosed non-celiac gluten sensitivity. Importantly, we use our own definition of 'gluten present' — not the FDA's, which permits a product to be labeled 'gluten-free' if it contains fewer than 20 parts per million of gluten. At trace levels, that may still be clinically significant for highly sensitive individuals.",
+        "Gluten sensitivity exists on a spectrum. For the majority of people without celiac disease or wheat sensitivity, gluten in this product is not a concern. But for the roughly 1 in 100 Americans with celiac disease — and the much larger population with subclinical wheat reactivity — this flag matters. Symptoms can range from digestive discomfort to systemic inflammation that doesn't present obviously.",
+        "We flag gluten as a caution rather than a hard reject because this is a population-specific concern rather than a universal one. If you or your child has any history of digestive issues, fatigue, or unexplained inflammation, this ingredient deserves a second look."
+      ]
+    }
+  ]
+};
+
+const ANNIES = {
+  name: "Shells & White Cheddar",
+  brand: "Annie's Homegrown",
+  verdict: "green",
+  score: 82,
+  concerns: [
+    {
+      id: "genemodified",
+      icon: "🧬",
+      status: "pass",
+      name: "Gene Modified",
+      summary: "USDA Organic certified — no bioengineered ingredients",
+      detail: [
+        "Annie's uses USDA Certified Organic wheat and organic cheddar cheese. USDA Organic certification explicitly prohibits the use of genetically engineered crops and seeds, including both legacy GMO varieties and, under current interpretations, CRISPR-edited crops used in the conventional supply chain.",
+        "This certification is third-party audited, which means it's not just a marketing claim — an accredited certifier has verified the supply chain. That doesn't guarantee zero contamination from neighboring fields, but it represents the most rigorous non-GMO assurance currently available in the retail food system.",
+        "For families prioritizing reduced gene-modification exposure, USDA Organic certification is the most reliable signal available today. Annie's passes this category cleanly."
+      ]
+    },
+    {
+      id: "seedoils",
+      icon: "🫙",
+      status: "pass",
+      name: "Seed Oils",
+      summary: "Made with real butter — no refined seed oils",
+      detail: [
+        "Annie's Shells & White Cheddar uses real cheddar cheese and butter as its fat sources, with no soybean oil, canola oil, or other refined seed oils in the formulation. This is a meaningful distinction from conventional mac & cheese products, which routinely substitute seed oils for dairy fats as a cost-cutting measure.",
+        "Butter from well-sourced cows delivers a naturally balanced fatty acid profile, including conjugated linoleic acid (CLA), fat-soluble vitamins A, D, E, and K2, and a much more favorable omega-6 to omega-3 ratio than refined seed oils. It's not a superfood — but it is a real food, and that difference matters.",
+        "This product passes our Seed Oils check with no caveats."
+      ]
+    },
+    {
+      id: "pesticides",
+      icon: "🧪",
+      status: "pass",
+      name: "Pesticide/Herbicide Risk",
+      summary: "USDA Organic — synthetic pesticides prohibited by certification",
+      detail: [
+        "USDA Organic certification prohibits the use of synthetic pesticides and herbicides, including glyphosate, on any certified crop in the supply chain. This dramatically reduces — though doesn't eliminate — pesticide residue risk compared to conventionally grown wheat and corn.",
+        "Independent testing of USDA Organic products consistently shows substantially lower pesticide residue levels than their conventional counterparts. Trace cross-contamination from neighboring farms or shared equipment can occur, but at levels far below those found in conventional products.",
+        "For pesticide/herbicide exposure, Annie's represents a significantly cleaner option than conventionally grown alternatives. This category passes."
+      ]
+    },
+    {
+      id: "additives",
+      icon: "🎨",
+      status: "pass",
+      name: "Additives",
+      summary: "No artificial dyes, no synthetic preservatives",
+      detail: [
+        "Annie's does not use artificial food dyes. The color in their cheese powder comes from real cheddar and annatto — a natural colorant derived from the seeds of the achiote tree, with a long history of safe use in food. No Yellow 5. No Yellow 6. No petroleum-derived colorants.",
+        "The product also contains no sodium phosphates, synthetic preservatives, or other industrially derived additives of concern. The ingredient list is clean and readable — every item in it is either a whole food or a straightforward culinary ingredient.",
+        "This is exactly what a 'clean label' should look like. Annie's passes this category."
+      ]
+    },
+    {
+      id: "gluten",
+      icon: "🌾",
+      status: "caution",
+      severity: "yellow",
+      name: "Gluten",
+      summary: "Organic wheat pasta — gluten protein still present",
+      detail: [
+        "Annie's Shells & White Cheddar is made with organic durum wheat semolina pasta. It is not gluten-free. For individuals with celiac disease or diagnosed non-celiac gluten sensitivity, this product is not appropriate regardless of its organic certification.",
+        "The organic wheat used by Annie's is grown without synthetic pesticides, which removes the herbicide residue concern that compounds gluten exposure in conventional wheat products. But the gluten protein itself — the structural protein in wheat that triggers immune responses in sensitive individuals — is present in the same quantities as any wheat pasta.",
+        "We flag this as a caution, not a reject, because for most people gluten in organic wheat is a non-issue. But for the gluten-sensitive population, this disclosure stands. The good news: if you need a gluten-free mac & cheese option, we have recommendations — tap 'See All Swaps' below."
+      ]
+    }
+  ],
+  why: [
+    { text: "No bioengineered ingredients — USDA Organic certified wheat and cheddar" },
+    { text: "No seed oils — real butter and organic cheddar are the fat sources" },
+    { text: "No artificial dyes — color comes from real cheese and annatto" }
+  ],
+  stores: ["Whole Foods", "Kroger"]
+};
+
+const FARM_SWAP = {
+  farmName: "Ridgeview Creamery",
+  location: "Hendersonville, NC",
+  distance: "~12 miles away",
+  product: "Aged Raw Milk Cheese Sauce Kit",
+  tags: ["Raw Milk", "Grass-Fed", "Pasture-Raised", "No Spray"],
+  available: false
+};
+
+// ── Shared Components ────────────────────────────────────────────────────────
+
+function BottomNav({ activeTab, onNav }) {
+  const items = [
+    { id: 0, icon: "📷", label: "Scan"    },
+    { id: 1, icon: "🚦", label: "Verdict" },
+    { id: 2, icon: "🔄", label: "Swap"    },
+    { id: 3, icon: "🌾", label: "Farm"    },
+  ];
+  return (
+    <nav className="bottom-nav">
+      {items.map(item => (
+        <button key={item.id} className={`nav-item ${activeTab === item.id ? 'active' : ''}`} onClick={() => onNav(item.id)}>
+          <span className="nav-icon">{item.icon}</span>
+          <span className="nav-label">{item.label}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function Header({ title, onBack, showBack }) {
+  return (
+    <div className="header">
+      <div style={{ width: 70 }}>
+        {showBack && <button className="back-btn" onClick={onBack}>‹ Back</button>}
+      </div>
+      <span className="header-title serif">{title}</span>
+      <div style={{ width: 70, textAlign: 'right' }}>
+        <span style={{ fontSize: 22 }}>🌿</span>
+      </div>
+    </div>
+  );
+}
+
+// Reusable expandable concern/category card
+function ConcernCard({ c, defaultOpen }) {
+  const [open, setOpen] = useState(!!defaultOpen);
+  const isPass = c.status === 'pass';
+  const colorKey = isPass ? 'green' : (c.severity || 'red');
+  return (
+    <div className="concern-card">
+      <div className="concern-header" onClick={() => setOpen(o => !o)}>
+        <div className={`concern-icon ${colorKey}`}>{c.icon}</div>
+        <div className="concern-main">
+          <div className="concern-name">{c.name}</div>
+          <div className="concern-summary">{c.summary}</div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className={`severity-dot ${colorKey}`} />
+          <span className={`chevron ${open ? 'open' : ''}`}>▾</span>
+        </div>
+      </div>
+      {open && (
+        <div className="concern-body">
+          {c.detail.map((p, i) => <p key={i}>{p}</p>)}
+          <div className="concern-source">📚 Based on WHO, NIH, and peer-reviewed research</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Screen 1: Scanner ────────────────────────────────────────────────────────
+
+function ScannerScreen({ onScan }) {
+  const [scanning, setScanning] = useState(false);
+  const handleScan = () => {
+    setScanning(true);
+    setTimeout(() => { setScanning(false); onScan(); }, 2000);
+  };
+  return (
+    <div className="screen fade-in">
+      <Header title="Beyond Labels" showBack={false} />
+      <div className="scanner-hero">
+        <div className="scanner-bg" />
+        <div className="scanner-grid" />
+        {scanning && (
+          <div className="scanning-overlay">
+            <div className="spinner" />
+            <span className="scanning-text">Scanning barcode…</span>
+          </div>
+        )}
+        <div className="viewfinder">
+          <div className="viewfinder-corner tl" /><div className="viewfinder-corner tr" />
+          <div className="viewfinder-corner bl" /><div className="viewfinder-corner br" />
+          <div className="barcode-lines">
+            {Array.from({length:16}).map((_,i) => <div key={i} className="barcode-line" />)}
+          </div>
+          <div className="scan-line" />
+        </div>
+        <span className="scanner-label">Point at barcode</span>
+      </div>
+
+      <button className={`scan-btn ${scanning?'scanning':''}`} onClick={handleScan} disabled={scanning}>
+        {scanning ? <>⏳ Scanning Kraft Mac & Cheese…</> : <>📷 Tap to Scan</>}
+      </button>
+
+      <div className="scan-info">
+        <div className="scan-info-title serif">Recently Scanned</div>
+        {[
+          { name: "Chobani Greek Yogurt",    date: "Today",    color: "green"  },
+          { name: "Doritos Nacho Cheese",     date: "Yesterday",color: "red"    },
+          { name: "Nature Valley Granola Bar",date: "Mar 13",   color: "yellow" },
+        ].map((item,i) => (
+          <div className="recent-item" key={i}>
+            <div className={`recent-dot ${item.color}`} />
+            <span className="recent-name">{item.name}</span>
+            <span className="recent-date">{item.date}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ padding: '16px', marginTop: 4 }}>
+        <div style={{ background:'var(--amber-pale)', borderRadius:14, padding:14, display:'flex', gap:10, alignItems:'flex-start' }}>
+          <span style={{ fontSize:20 }}>💡</span>
+          <div>
+            <div style={{ fontSize:13, fontWeight:700, color:'var(--amber)', marginBottom:4 }}>How it works</div>
+            <div style={{ fontSize:12, color:'var(--text-mid)', lineHeight:1.5 }}>
+              Scan any barcode to get a plain-language breakdown of ingredients — and a cleaner swap recommendation.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Screen 2: Kraft Verdict ──────────────────────────────────────────────────
+
+function VerdictScreen({ onSwap, onBack }) {
+  const redCount = KRAFT.concerns.filter(c => c.severity === 'red').length;
+  return (
+    <div className="screen slide-in">
+      <Header title="Ingredient Verdict" onBack={onBack} showBack />
+
+      <div className="verdict-hero red-hero">
+        <div style={{ flexShrink:0 }}>
+          <div className="traffic-light-bg">
+            <div className="tl-dot red-dot active" />
+            <div className="tl-dot yellow-dot" />
+            <div className="tl-dot green-dot" />
+          </div>
+        </div>
+        <div className="verdict-info">
+          <div className="verdict-badge red">🚫 Reject</div>
+          <div className="verdict-product">{KRAFT.name}</div>
+          <div className="verdict-brand">{KRAFT.brand} · 7.25 oz box</div>
+        </div>
+      </div>
+
+      <div className="verdict-score">
+        <div className="score-pill">
+          <div className="score-pill-num" style={{ color:'var(--red)' }}>{KRAFT.score}</div>
+          <div className="score-pill-label">Purity Score</div>
+        </div>
+        <div className="score-pill">
+          <div className="score-pill-num" style={{ color:'var(--red)' }}>{redCount}</div>
+          <div className="score-pill-label">Red Flags</div>
+        </div>
+        <div className="score-pill">
+          <div className="score-pill-num" style={{ color:'var(--forest)', fontSize:16, paddingTop:4 }}>{KRAFT.concerns.length}</div>
+          <div className="score-pill-label">Categories</div>
+        </div>
+      </div>
+
+      <div className="concerns-title">What We Found</div>
+      {KRAFT.concerns.map(c => <ConcernCard key={c.id} c={c} />)}
+
+      <button className="verdict-cta" onClick={onSwap}>🔄 See Cleaner Swaps</button>
+      <div style={{ height:8 }} />
+    </div>
+  );
+}
+
+// ── Screen 3: Swap ───────────────────────────────────────────────────────────
+
+function SwapScreen({ onBack, onViewAnnies }) {
+  return (
+    <div className="screen slide-in">
+      <Header title="Cleaner Swaps" onBack={onBack} showBack />
+
+      <div className="swap-banner">
+        <span style={{ fontSize:28 }}>✅</span>
+        <div>
+          <div className="swap-banner-label">Replacing Kraft Mac & Cheese</div>
+          <div className="swap-banner-title serif">We found 2 better options</div>
+        </div>
+      </div>
+
+      {/* Section label */}
+      <div style={{ margin:'16px 16px 0', display:'flex', alignItems:'center', gap:8 }}>
+        <div style={{ background:'var(--forest-pale)', color:'var(--forest)', fontSize:11, fontWeight:700, letterSpacing:'0.8px', textTransform:'uppercase', padding:'4px 10px', borderRadius:20 }}>
+          Store-Bought Pick
+        </div>
+        <div style={{ flex:1, height:1, background:'var(--cream-dark)' }} />
+      </div>
+
+      {/* Annie's card */}
+      <div className="swap-card clickable" onClick={onViewAnnies}>
+        <div className="swap-card-img">
+          <div className="product-art annies-box">
+            <span className="product-art-icon">🐇</span>
+            <div className="product-art-text">
+              <div className="product-art-brand">Annie's</div>
+              <div>HOMEGROWN</div><div>ORGANIC</div><div>SHELLS &</div><div>WHITE CHEDDAR</div>
+            </div>
+          </div>
+          <div className="green-badge">✓ Passes</div>
+          <div className="score-ribbon">
+            <span className="score-ribbon-num">{ANNIES.score}</span>
+            <span className="score-ribbon-label">/ 100</span>
+          </div>
+          <div className="tap-hint">View Profile →</div>
+        </div>
+        <div className="swap-card-body">
+          <div className="swap-product-name">{ANNIES.name}</div>
+          <div className="swap-product-meta">{ANNIES.brand} · 6 oz · ~$3.49</div>
+          <div style={{ marginBottom:14 }}>
+            <div className="why-passes-title">Why It Passes</div>
+            {ANNIES.why.map((item,i) => (
+              <div className="why-item" key={i}>
+                <div className="why-check">✓</div>
+                <div className="why-text">{item.text}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginBottom:6, fontSize:12, fontWeight:700, color:'var(--text-light)', textTransform:'uppercase', letterSpacing:'0.7px' }}>Find Near You</div>
+          <div className="store-btns">
+            <button className="store-btn primary" onClick={e => e.stopPropagation()}>🌿 Whole Foods</button>
+            <button className="store-btn secondary" onClick={e => e.stopPropagation()}>🛒 Kroger</button>
+          </div>
+          <button className="view-profile-btn" onClick={onViewAnnies}>
+            🔍 See Full Ingredient Profile
+          </button>
+        </div>
+      </div>
+
+      {/* Farm upgrade */}
+      <div className="farm-divider">
+        <div className="farm-divider-line" />
+        <div className="farm-divider-text">⬆ Local Upgrade</div>
+        <div className="farm-divider-line" />
+      </div>
+
+      <div className="farm-card">
+        <div className="farm-upgrade-ribbon">UPGRADE</div>
+        <div className="farm-card-img">
+          <div style={{ position:'absolute', inset:0, background:'linear-gradient(180deg,#C8DEC9 0%,#A8C4AA 100%)' }} />
+          <div style={{ position:'absolute', top:12, fontSize:14, fontWeight:700, color:'var(--forest)', letterSpacing:'0.5px', fontFamily:'Playfair Display,serif' }}>
+            🐄 {FARM_SWAP.farmName}
+          </div>
+          <div className="farm-landscape">
+            <span className="farm-tree">🌲</span>
+            <span className="farm-barn">🏚</span>
+            <span className="farm-tree">🌳</span>
+            <span style={{ fontSize:20 }}>🐄</span>
+            <span className="farm-tree">🌲</span>
+          </div>
+        </div>
+        <div className="farm-card-body">
+          <div className="farm-name">{FARM_SWAP.farmName}</div>
+          <div className="farm-meta">
+            <span>📍 {FARM_SWAP.location}</span>
+            <div className="farm-meta-dot" />
+            <span>{FARM_SWAP.distance}</span>
+          </div>
+          <div className="farm-product">
+            <span>🧀</span>
+            <div>
+              <div style={{ fontSize:13, fontWeight:700, color:'var(--text-dark)' }}>{FARM_SWAP.product}</div>
+              <div style={{ fontSize:11, color:'var(--text-light)', marginTop:2 }}>Seasonal · Limited Qty</div>
+            </div>
+          </div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:14 }}>
+            {FARM_SWAP.tags.map(tag => (
+              <span key={tag} style={{ background:'var(--forest-pale)', color:'var(--forest)', fontSize:11, fontWeight:600, padding:'4px 10px', borderRadius:10 }}>{tag}</span>
+            ))}
+          </div>
+          <div style={{ fontSize:13, color:'var(--text-mid)', lineHeight:1.4, marginBottom:12 }}>
+            Raw milk cheese from pasture-raised cows — the highest standard we can find.
+          </div>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+            <span style={{ fontSize:13, fontWeight:600, color:'var(--text-dark)' }}>Availability</span>
+            <span className="coming-soon-pill">Coming Soon</span>
+          </div>
+          <button className="notify-btn" disabled>🔔 Notify Me When Available</button>
+        </div>
+      </div>
+
+      <div style={{ padding:'16px', marginTop:8 }}>
+        <div style={{ background:'var(--amber-pale)', borderRadius:14, padding:14, display:'flex', gap:10 }}>
+          <span style={{ fontSize:18 }}>🌱</span>
+          <div style={{ fontSize:12, color:'var(--text-mid)', lineHeight:1.55 }}>
+            <strong style={{ color:'var(--amber)' }}>Your vote matters.</strong> Every purchase of a cleaner product signals demand for better food. You're not just feeding your family — you're shaping what gets made next.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Screen 4: Annie's Profile ────────────────────────────────────────────────
+
+function AnniesProfileScreen({ onBack }) {
+  const passCount   = ANNIES.concerns.filter(c => c.status === 'pass').length;
+  const cautionCount= ANNIES.concerns.filter(c => c.status === 'caution').length;
+  return (
+    <div className="screen slide-in">
+      <Header title="Ingredient Profile" onBack={onBack} showBack />
+
+      {/* Green verdict hero */}
+      <div className="verdict-hero green-hero">
+        <div style={{ flexShrink:0 }}>
+          <div className="traffic-light-bg">
+            <div className="tl-dot red-dot" />
+            <div className="tl-dot yellow-dot" />
+            <div className="tl-dot green-dot active" />
+          </div>
+        </div>
+        <div className="verdict-info">
+          <div className="verdict-badge green">✓ Passes</div>
+          <div className="verdict-product">{ANNIES.name}</div>
+          <div className="verdict-brand">{ANNIES.brand} · 6 oz box</div>
+        </div>
+      </div>
+
+      {/* Score pills */}
+      <div className="verdict-score">
+        <div className="score-pill">
+          <div className="score-pill-num" style={{ color:'var(--green)' }}>{ANNIES.score}</div>
+          <div className="score-pill-label">Purity Score</div>
+        </div>
+        <div className="score-pill">
+          <div className="score-pill-num" style={{ color:'var(--green)' }}>{passCount}</div>
+          <div className="score-pill-label">Passing</div>
+        </div>
+        <div className="score-pill">
+          <div className="score-pill-num" style={{ color:'var(--yellow)', fontSize:20, paddingTop:2 }}>{cautionCount}</div>
+          <div className="score-pill-label">Caution</div>
+        </div>
+      </div>
+
+      {/* Context note */}
+      <div style={{ margin:'14px 16px 0', background:'var(--green-pale)', border:'1.5px solid rgba(39,174,96,0.2)', borderRadius:14, padding:'12px 14px', display:'flex', gap:10, alignItems:'flex-start' }}>
+        <span style={{ fontSize:18 }}>💚</span>
+        <div style={{ fontSize:12, color:'var(--text-mid)', lineHeight:1.55 }}>
+          Annie's clears every major concern we flag for Kraft — with one honest caution. Here's the full picture.
+        </div>
+      </div>
+
+      <div className="concerns-title">Category Breakdown</div>
+
+      {ANNIES.concerns.map(c => <ConcernCard key={c.id} c={c} />)}
+
+      {/* One caution callout */}
+      <div style={{ margin:'4px 16px 0', background:'var(--yellow-pale)', border:'1.5px solid rgba(212,172,13,0.25)', borderRadius:14, padding:'12px 14px', display:'flex', gap:10 }}>
+        <span style={{ fontSize:18 }}>⚠️</span>
+        <div style={{ fontSize:12, color:'var(--text-mid)', lineHeight:1.55 }}>
+          <strong style={{ color:'var(--yellow)' }}>One honest flag:</strong> Annie's contains organic wheat pasta. If gluten sensitivity is a concern in your household, we have gluten-free mac & cheese swaps on file.
+        </div>
+      </div>
+
+      {/* Find buttons */}
+      <div style={{ margin:'16px 16px 0' }}>
+        <div style={{ marginBottom:6, fontSize:12, fontWeight:700, color:'var(--text-light)', textTransform:'uppercase', letterSpacing:'0.7px' }}>Find Near You</div>
+        <div className="store-btns">
+          <button className="store-btn primary">🌿 Whole Foods</button>
+          <button className="store-btn secondary">🛒 Kroger</button>
+        </div>
+      </div>
+      <div style={{ height:8 }} />
+    </div>
+  );
+}
+
+// ── App ──────────────────────────────────────────────────────────────────────
+
+function App() {
+  // screen: 0=scanner, 1=verdict, 2=swap, 3=farm(=swap), 4=annies profile
+  const [screen, setScreen] = useState(0);
+
+  // Which bottom-nav tab to highlight
+  const activeTab = screen === 4 ? 2 : screen > 3 ? 3 : screen;
+
+  const handleNav = (tab) => {
+    if (tab === 3) { setScreen(2); } // Farm tab scrolls to swap (farm section is there)
+    else { setScreen(tab); }
+  };
+
+  const renderScreen = () => {
+    switch(screen) {
+      case 0: return <ScannerScreen onScan={() => setScreen(1)} />;
+      case 1: return <VerdictScreen onSwap={() => setScreen(2)} onBack={() => setScreen(0)} />;
+      case 2: return <SwapScreen onBack={() => setScreen(1)} onViewAnnies={() => setScreen(4)} />;
+      case 3: return <SwapScreen onBack={() => setScreen(1)} onViewAnnies={() => setScreen(4)} />;
+      case 4: return <AnniesProfileScreen onBack={() => setScreen(2)} />;
+      default: return null;
+    }
+  };
+
+  return (
+    <>
+      {renderScreen()}
+      <BottomNav activeTab={activeTab} onNav={handleNav} />
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

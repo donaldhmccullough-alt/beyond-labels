@@ -1,0 +1,31 @@
+{
+  "name": "beyond-labels",
+  "version": "1.0.0",
+  "description": "Beyond Labels — ingredient analysis app",
+  "private": true,
+  "scripts": {
+    "dev":           "next dev",
+    "build":         "next build",
+    "start":         "next start",
+    "test":          "jest",
+    "test:watch":    "jest --watch",
+    "test:coverage": "jest --coverage --coverageDirectory=coverage"
+  },
+  "dependencies": {
+    "next":      "^14.2.0",
+    "react":     "^18.3.0",
+    "react-dom": "^18.3.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/lib/**/*.test.js",
+      "**/__tests__/**/*.test.js"
+    ],
+    "testPathIgnorePatterns": ["/node_modules/", "/.next/"],
+    "coveragePathIgnorePatterns": ["/node_modules/", "/.next/"]
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}

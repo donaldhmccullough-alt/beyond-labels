@@ -1,0 +1,28 @@
+# ── Dependencies ─────────────────────────────────────────────────────────────
+node_modules/
+
+# ── Next.js build output ──────────────────────────────────────────────────────
+.next/
+out/
+
+# ── Environment files ─────────────────────────────────────────────────────────
+# NEVER commit real env files. Copy .env.example → .env.local and fill in values.
+.env.local
+.env.*.local
+.env
+
+# ── Test / coverage output ────────────────────────────────────────────────────
+coverage/
+
+# ── Editor / OS noise ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/settings.json
+
+# ── Claude Code project files ─────────────────────────────────────────────────
+.claude/
+
+# ── Vercel local config ───────────────────────────────────────────────────────
+.vercel/
