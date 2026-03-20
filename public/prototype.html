@@ -400,6 +400,28 @@
       padding: 24px; text-align: center;
     }
 
+    /* ── AI explanation ── */
+    .ai-summary {
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--text-mid);
+      line-height: 1.5;
+      font-style: italic;
+    }
+    .ai-shimmer {
+      border-radius: 4px;
+      background: linear-gradient(90deg, rgba(0,0,0,0.07) 25%, rgba(0,0,0,0.13) 50%, rgba(0,0,0,0.07) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s ease-in-out infinite;
+    }
+    .ai-summary-loading { height: 13px; margin-top: 10px; }
+    .ai-detail { font-size: 13.5px; line-height: 1.65; color: var(--text-mid); padding-top: 12px; }
+    .ai-detail-loading { padding: 12px 0 4px; display: flex; flex-direction: column; gap: 7px; }
+    .ai-detail-loading-line { height: 11px; }
+    .ai-detail-loading-line:last-child { width: 65%; }
+    .ai-source { margin-top: 10px; display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-light); font-weight: 500; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
     /* ── Animations ── */
     .fade-in  { animation: fadeIn 0.3s ease-out; }
     @keyframes fadeIn  { from { opacity:0; transform:translateY(8px);  } to { opacity:1; transform:none; } }
@@ -605,7 +627,9 @@ function Header({ title, onBack, showBack }) {
 }
 
 // Reusable expandable concern/category card
-function ConcernCard({ c, defaultOpen }) {
+// aiDetail     — string from /api/explain; replaces static detail when present
+// explainLoading — boolean; show shimmer skeleton while AI explanation is in flight
+function ConcernCard({ c, defaultOpen, aiDetail, explainLoading }) {
   const [open, setOpen] = useState(!!defaultOpen);
   const isPass = c.status === 'pass';
   const colorKey = isPass ? 'green' : (c.severity || 'red');
@@ -624,8 +648,23 @@ function ConcernCard({ c, defaultOpen }) {
       </div>
       {open && (
         <div className="concern-body">
-          {c.detail.map((p, i) => <p key={i}>{p}</p>)}
-          <div className="concern-source">📚 Based on WHO, NIH, and peer-reviewed research</div>
+          {aiDetail ? (
+            <>
+              <p className="ai-detail">{aiDetail}</p>
+              <div className="ai-source">✨ Explained by Sina &amp; Joel · Beyond Labels</div>
+            </>
+          ) : explainLoading ? (
+            <div className="ai-detail-loading">
+              <div className="ai-detail-loading-line ai-shimmer" />
+              <div className="ai-detail-loading-line ai-shimmer" />
+              <div className="ai-detail-loading-line ai-shimmer" />
+            </div>
+          ) : (
+            <>
+              {c.detail.map((p, i) => <p key={i}>{p}</p>)}
+              <div className="concern-source">📚 Based on WHO, NIH, and peer-reviewed research</div>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -1063,10 +1102,38 @@ const CAT_META = {
 function LiveVerdictScreen({ result, onBack, onSwap }) {
   const v = result.verdict; // 'red' | 'yellow' | 'green' | 'unverified'
 
+  // ── AI explanation state ─────────────────────────────────────────────────
+  // null = not started, 'loading' = in flight, object = { summary, details }
+  const [explain, setExplain] = useState(null);
+
+  React.useEffect(() => {
+    // Only call explain when the product was found (has ingredients/flags to explain)
+    if (!result.found) return;
+
+    setExplain('loading');
+    fetch('/api/explain', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        verdict:     result.verdict,
+        flags:       result.flags,
+        productName: result.productName,
+        ingredients: result.ingredients,
+      }),
+    })
+      .then(r => r.json())
+      .then(data => setExplain(data))
+      .catch(() => setExplain(null)); // fail silently — verdict screen still works
+  }, [result]);
+
+  const explainLoading = explain === 'loading';
+  const explainData    = explain && explain !== 'loading' ? explain : null;
+
+  // ── Derived display values ───────────────────────────────────────────────
   const heroClass  = { red:'red-hero', yellow:'yellow-hero', green:'green-hero', unverified:'gray-hero' }[v] || 'gray-hero';
   const badgeClass = { red:'red', yellow:'yellow', green:'green', unverified:'gray' }[v] || 'gray';
   const badgeLabel = { red:'🚫 Reject', yellow:'⚠️ Caution', green:'✓ Passes', unverified:'? Unverified' }[v] || '? Unverified';
-  const tlActive   = { red:0, yellow:1, green:2 }[v]; // which traffic-light dot to light
+  const tlActive   = { red:0, yellow:1, green:2 }[v];
   const scoreColor = { red:'var(--red)', yellow:'var(--yellow)', green:'var(--green)', unverified:'var(--gray)' }[v];
 
   const flags    = result.flags || [];
@@ -1101,6 +1168,13 @@ function LiveVerdictScreen({ result, onBack, onSwap }) {
               ? `Barcode ${result.barcode}`
               : 'Not in Open Food Facts database'}
           </div>
+          {/* AI summary — shimmer while loading, text when ready */}
+          {result.found && explainLoading && (
+            <div className="ai-summary-loading ai-shimmer" style={{ width:'90%' }} />
+          )}
+          {result.found && explainData?.summary && (
+            <div className="ai-summary">{explainData.summary}</div>
+          )}
         </div>
       </div>
 
@@ -1144,7 +1218,7 @@ function LiveVerdictScreen({ result, onBack, onSwap }) {
         </div>
       )}
 
-      {/* Flags as expandable concern cards */}
+      {/* Flags as expandable concern cards with AI details */}
       {flags.length > 0 && (
         <>
           <div className="concerns-title">What We Found</div>
@@ -1163,7 +1237,14 @@ function LiveVerdictScreen({ result, onBack, onSwap }) {
                 catFlags[0].summary,
               ],
             };
-            return <ConcernCard key={cat} c={c} />;
+            return (
+              <ConcernCard
+                key={cat}
+                c={c}
+                aiDetail={explainData?.details?.[cat]}
+                explainLoading={explainLoading}
+              />
+            );
           })}
         </>
       )}
@@ -1173,9 +1254,13 @@ function LiveVerdictScreen({ result, onBack, onSwap }) {
         <div style={{ margin:'20px 16px 0', background:'var(--green-pale)', border:'1.5px solid rgba(39,174,96,0.2)', borderRadius:16, padding:'24px', textAlign:'center' }}>
           <div style={{ fontSize:40, marginBottom:10 }}>✅</div>
           <div style={{ fontFamily:'Playfair Display,serif', fontSize:20, fontWeight:700, color:'var(--forest)', marginBottom:8 }}>Looks Clean!</div>
-          <div style={{ fontSize:13, color:'var(--text-mid)', lineHeight:1.6 }}>
-            No concerning ingredients flagged by our rules engine. Always worth reading the full label yourself too.
-          </div>
+          {explainData?.summary ? (
+            <div style={{ fontSize:13, color:'var(--text-mid)', lineHeight:1.6 }}>{explainData.summary}</div>
+          ) : (
+            <div style={{ fontSize:13, color:'var(--text-mid)', lineHeight:1.6 }}>
+              No concerning ingredients flagged by our rules engine. Always worth reading the full label yourself too.
+            </div>
+          )}
         </div>
       )}
 
