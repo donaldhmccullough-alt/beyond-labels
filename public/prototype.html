@@ -422,6 +422,69 @@
     .ai-source { margin-top: 10px; display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-light); font-weight: 500; }
     @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
+    /* ── Certification badges ── */
+    .cert-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .cert-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+      padding: 3px 9px; border-radius: 20px;
+    }
+    .cert-badge-organic  { background: var(--forest-pale); color: var(--forest);  border: 1px solid rgba(58,90,64,0.25); }
+    .cert-badge-nongmo   { background: var(--amber-pale);  color: var(--amber);   border: 1px solid rgba(212,135,42,0.3); }
+    .cert-badge-gf       { background: var(--yellow-pale); color: var(--yellow);  border: 1px solid rgba(212,172,13,0.3); }
+    .cert-badge-generic  { background: var(--cream-dark);  color: var(--gray);    border: 1px solid var(--gray-light); }
+
+    /* ── Flags-cleared section inside a swap card ── */
+    .flags-cleared {
+      margin-bottom: 14px;
+      background: var(--green-pale);
+      border: 1px solid rgba(39,174,96,0.2);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .flags-cleared-title {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.7px; color: var(--forest); margin-bottom: 6px;
+    }
+    .flags-cleared-item {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 3px;
+      font-size: 12px; color: var(--text-mid);
+    }
+    .flags-cleared-item:last-child { margin-bottom: 0; }
+    .flags-cleared-check { color: var(--green); font-weight: 700; flex-shrink: 0; }
+
+    /* ── AI suggestion card (dashed amber border) ── */
+    .ai-swap-card {
+      margin: 0 16px 12px;
+      background: white;
+      border: 1.5px dashed var(--amber);
+      border-radius: 20px;
+      overflow: hidden;
+    }
+    .ai-swap-badge {
+      background: var(--amber-pale);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .ai-swap-badge-label   { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--amber); margin-bottom: 1px; }
+    .ai-swap-badge-sub     { font-size: 11px; color: var(--text-mid); }
+    .ai-swap-disclaimer    { margin-top: 10px; font-size: 11px; color: var(--text-light); line-height: 1.5; }
+
+    /* ── Swap loading skeleton ── */
+    .swap-skeleton { margin: 12px 16px 0; background: white; border: 1.5px solid var(--cream-dark); border-radius: 20px; padding: 16px; }
+
+    /* ── Section label row ── */
+    .section-label-row { margin: 16px 16px 0; display: flex; align-items: center; gap: 8px; }
+    .section-label-pill {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;
+      padding: 4px 10px; border-radius: 20px; white-space: nowrap;
+    }
+    .section-label-pill.forest { background: var(--forest-pale); color: var(--forest); }
+    .section-label-pill.amber  { background: var(--amber-pale);  color: var(--amber);  }
+    .section-label-divider { flex: 1; height: 1px; background: var(--cream-dark); }
+
     /* ── Animations ── */
     .fade-in  { animation: fadeIn 0.3s ease-out; }
     @keyframes fadeIn  { from { opacity:0; transform:translateY(8px);  } to { opacity:1; transform:none; } }
@@ -887,76 +950,322 @@ function VerdictScreen({ onSwap, onBack }) {
   );
 }
 
-// ── Screen 3: Swap ───────────────────────────────────────────────────────────
+// ── Swap helpers ─────────────────────────────────────────────────────────────
 
-function SwapScreen({ onBack, onViewAnnies }) {
+/**
+ * Guess the swap category from a live scan result.
+ * Falls back to 'snacks' when the product name doesn't match a known pattern.
+ */
+function deriveCategory(result) {
+  if (!result || !result.productName) return 'snacks';
+  const name = result.productName.toLowerCase();
+  if (/cereal|oat|granola|muesli|flake|bran|puff/.test(name)) return 'cereal';
+  if (/ketchup|mustard|mayo|mayonnaise|sauce|dressing|vinegar|condiment|relish|salsa/.test(name)) return 'condiments';
+  return 'snacks';
+}
+
+/**
+ * Compute which flag categories from the scanned product the swap addresses,
+ * based on the swap's certifications field.
+ *
+ * @param {Array}  scanFlags  - flags[] from the scan result
+ * @param {string} certStr    - semicolon-separated certs (e.g. "usda-organic;non-gmo-project-verified")
+ * @returns {string[]} Human-readable cleared-flag messages
+ */
+function computeClearedFlags(scanFlags, certStr) {
+  const certs = (certStr || '').split(';').map(c => c.trim().toLowerCase()).filter(Boolean);
+  const hasOrganic = certs.includes('usda-organic');
+  const hasNonGMO  = certs.includes('non-gmo-project-verified');
+  const hasGF      = certs.includes('gluten-free');
+
+  const cats = new Set((scanFlags || []).map(f => f.category));
+  const cleared = [];
+
+  if ((hasOrganic || hasNonGMO) && cats.has('conventional_crops')) {
+    cleared.push(hasOrganic ? 'USDA Organic — no GMO or conventional crops' : 'Non-GMO Project Verified');
+  }
+  if (hasOrganic && cats.has('bioengineering')) {
+    cleared.push('No bioengineered ingredients (Organic certification)');
+  }
+  if (hasGF && cats.has('gluten')) {
+    cleared.push('Certified gluten-free');
+  }
+
+  return cleared;
+}
+
+/**
+ * Render the correct certification badge pill for a given cert string.
+ */
+function CertBadge({ cert }) {
+  const c = (cert || '').trim().toLowerCase();
+  if (c === 'usda-organic') {
+    return <span className="cert-badge cert-badge-organic">🌿 USDA Organic</span>;
+  }
+  if (c === 'non-gmo-project-verified') {
+    return <span className="cert-badge cert-badge-nongmo">✓ Non-GMO Verified</span>;
+  }
+  if (c === 'gluten-free') {
+    return <span className="cert-badge cert-badge-gf">🌾 Gluten-Free</span>;
+  }
+  return <span className="cert-badge cert-badge-generic">{cert}</span>;
+}
+
+// ── Curated SwapCard ─────────────────────────────────────────────────────────
+
+function SwapCard({ swap, scanFlags }) {
+  const certList  = (swap.certifications || '').split(';').map(c => c.trim()).filter(Boolean);
+  const whyItems  = (swap.why_it_passes  || '').split(';').map(s => s.trim()).filter(Boolean);
+  const storeList = (swap.where_to_buy   || '').split(',').map(s => s.trim()).filter(Boolean);
+  const cleared   = computeClearedFlags(scanFlags, swap.certifications);
+
+  return (
+    <div className="swap-card">
+      {swap.image_url ? (
+        <div className="swap-card-img">
+          <img src={swap.image_url} alt={swap.product_name}
+            style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+          <div className="green-badge">✓ Passes</div>
+        </div>
+      ) : null}
+
+      <div className="swap-card-body">
+        {/* Certification badges */}
+        {certList.length > 0 && (
+          <div className="cert-badges">
+            {certList.map(cert => <CertBadge key={cert} cert={cert} />)}
+          </div>
+        )}
+
+        <div className="swap-product-name">{swap.product_name}</div>
+        <div className="swap-product-meta">{swap.brand}</div>
+
+        {/* Why it passes */}
+        {whyItems.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <div className="why-passes-title">Why It Passes</div>
+            {whyItems.map((item, i) => (
+              <div className="why-item" key={i}>
+                <div className="why-check">✓</div>
+                <div className="why-text">{item}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Flags cleared from scanned product */}
+        {cleared.length > 0 && (
+          <div className="flags-cleared">
+            <div className="flags-cleared-title">Clears From Scanned Product</div>
+            {cleared.map((msg, i) => (
+              <div className="flags-cleared-item" key={i}>
+                <span className="flags-cleared-check">✓</span>
+                <span>{msg}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Where to buy */}
+        {storeList.length > 0 && (
+          <>
+            <div style={{ marginBottom:6, fontSize:12, fontWeight:700, color:'var(--text-light)', textTransform:'uppercase', letterSpacing:'0.7px' }}>Find Near You</div>
+            <div className="store-btns">
+              {storeList.slice(0, 2).map((store, i) => (
+                <button key={store} className={`store-btn ${i === 0 ? 'primary' : 'secondary'}`}>
+                  {i === 0 ? '🌿 ' : '🛒 '}{store}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── AI Suggestion Card ────────────────────────────────────────────────────────
+
+function AISuggestionCard({ swap }) {
+  const whyItems  = (swap.why_it_passes || '').split(';').map(s => s.trim()).filter(Boolean);
+  const storeList = (swap.where_to_buy  || '').split(',').map(s => s.trim()).filter(Boolean);
+
+  return (
+    <div className="ai-swap-card">
+      <div className="ai-swap-badge">
+        <span style={{ fontSize:18 }}>✨</span>
+        <div>
+          <div className="ai-swap-badge-label">AI Suggestion</div>
+          <div className="ai-swap-badge-sub">Not yet verified by Sina &amp; Joel</div>
+        </div>
+      </div>
+      <div className="swap-card-body">
+        <div className="swap-product-name">{swap.product_name}</div>
+        <div className="swap-product-meta">{swap.brand}</div>
+
+        {whyItems.length > 0 && (
+          <div style={{ marginBottom:14 }}>
+            <div className="why-passes-title">Why It May Pass</div>
+            {whyItems.map((item, i) => (
+              <div className="why-item" key={i}>
+                <div className="why-check" style={{ background:'var(--amber-pale)', color:'var(--amber)' }}>✓</div>
+                <div className="why-text">{item}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {storeList.length > 0 && (
+          <>
+            <div style={{ marginBottom:6, fontSize:12, fontWeight:700, color:'var(--text-light)', textTransform:'uppercase', letterSpacing:'0.7px' }}>Suggested Store</div>
+            <div className="store-btns">
+              {storeList.slice(0, 2).map((store, i) => (
+                <button key={store} className={`store-btn ${i === 0 ? 'primary' : 'secondary'}`}>
+                  {i === 0 ? '🌿 ' : '🛒 '}{store}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        <div className="ai-swap-disclaimer">
+          ⚠️ Always verify the full ingredient label before purchasing.
+          AI suggestions are a starting point, not a certification.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Swap loading skeleton ─────────────────────────────────────────────────────
+
+function SwapSkeleton() {
+  return (
+    <div className="swap-skeleton">
+      <div style={{ display:'flex', gap:6, marginBottom:12 }}>
+        <div className="ai-shimmer" style={{ height:22, width:110, borderRadius:20 }} />
+        <div className="ai-shimmer" style={{ height:22, width:85,  borderRadius:20 }} />
+      </div>
+      <div className="ai-shimmer" style={{ height:20, width:'65%', borderRadius:6, marginBottom:8 }} />
+      <div className="ai-shimmer" style={{ height:13, width:'40%', borderRadius:6, marginBottom:18 }} />
+      <div className="ai-shimmer" style={{ height:13, width:'90%', borderRadius:6, marginBottom:7 }} />
+      <div className="ai-shimmer" style={{ height:13, width:'80%', borderRadius:6, marginBottom:7 }} />
+      <div className="ai-shimmer" style={{ height:13, width:'72%', borderRadius:6, marginBottom:18 }} />
+      <div style={{ display:'flex', gap:8 }}>
+        <div className="ai-shimmer" style={{ height:44, flex:1, borderRadius:12 }} />
+        <div className="ai-shimmer" style={{ height:44, flex:1, borderRadius:12 }} />
+      </div>
+    </div>
+  );
+}
+
+// ── Screen 3: Swap (live data from /api/swaps) ────────────────────────────────
+
+function SwapScreen({ onBack, scanResult }) {
+  // swapData: null = loading, object = { swaps, source } once resolved
+  const [swapData, setSwapData] = React.useState(null);
+  const [fetchErr, setFetchErr] = React.useState(null);
+
+  const category    = deriveCategory(scanResult);
+  const scannedName = scanResult?.productName;
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setSwapData(null);
+    setFetchErr(null);
+
+    fetch(`/api/swaps?category=${encodeURIComponent(category)}`)
+      .then(r => r.json())
+      .then(data => { if (!cancelled) setSwapData(data); })
+      .catch(() => { if (!cancelled) setFetchErr('Could not load swaps. Check your connection.'); });
+
+    return () => { cancelled = true; };
+  }, [category]);
+
+  const isLoading    = swapData === null && !fetchErr;
+  const isAI         = swapData?.source === 'ai';
+  const swaps        = swapData?.swaps || [];
+  const curatedSwaps = isAI ? [] : swaps;
+  const aiSwaps      = isAI ? swaps : [];
+
+  const bannerSub =
+    isLoading        ? 'Finding better options…'                              :
+    curatedSwaps.length > 0 ? `${curatedSwaps.length} vetted swap${curatedSwaps.length > 1 ? 's' : ''} — verified by Sina & Joel` :
+    aiSwaps.length   > 0 ? 'AI suggestions — verify the label before buying' :
+    'Browsing clean picks';
+
   return (
     <div className="screen slide-in">
       <Header title="Cleaner Swaps" onBack={onBack} showBack />
 
+      {/* Banner */}
       <div className="swap-banner">
         <span style={{ fontSize:28 }}>✅</span>
         <div>
-          <div className="swap-banner-label">Replacing Kraft Mac & Cheese</div>
-          <div className="swap-banner-title serif">We found 2 better options</div>
+          <div className="swap-banner-label">
+            {scannedName ? `Replacing: ${scannedName}` : 'Curated Clean Picks'}
+          </div>
+          <div className="swap-banner-title serif">{bannerSub}</div>
         </div>
       </div>
 
-      {/* Section label */}
-      <div style={{ margin:'16px 16px 0', display:'flex', alignItems:'center', gap:8 }}>
-        <div style={{ background:'var(--forest-pale)', color:'var(--forest)', fontSize:11, fontWeight:700, letterSpacing:'0.8px', textTransform:'uppercase', padding:'4px 10px', borderRadius:20 }}>
-          Store-Bought Pick
-        </div>
-        <div style={{ flex:1, height:1, background:'var(--cream-dark)' }} />
-      </div>
+      {/* Loading skeletons */}
+      {isLoading && (
+        <>
+          <div className="section-label-row">
+            <div className="ai-shimmer" style={{ height:26, width:160, borderRadius:20 }} />
+            <div className="section-label-divider" />
+          </div>
+          <SwapSkeleton />
+          <SwapSkeleton />
+        </>
+      )}
 
-      {/* Annie's card */}
-      <div className="swap-card clickable" onClick={onViewAnnies}>
-        <div className="swap-card-img">
-          <div className="product-art annies-box">
-            <span className="product-art-icon">🐇</span>
-            <div className="product-art-text">
-              <div className="product-art-brand">Annie's</div>
-              <div>HOMEGROWN</div><div>ORGANIC</div><div>SHELLS &</div><div>WHITE CHEDDAR</div>
-            </div>
-          </div>
-          <div className="green-badge">✓ Passes</div>
-          <div className="score-ribbon">
-            <span className="score-ribbon-num">{ANNIES.score}</span>
-            <span className="score-ribbon-label">/ 100</span>
-          </div>
-          <div className="tap-hint">View Profile →</div>
+      {/* Error state */}
+      {fetchErr && (
+        <div style={{ margin:'20px 16px 0', background:'var(--red-pale)', border:'1.5px solid rgba(192,57,43,0.2)', borderRadius:14, padding:16, textAlign:'center' }}>
+          <div style={{ fontSize:28, marginBottom:8 }}>⚠️</div>
+          <div style={{ fontSize:13, color:'var(--red)', fontWeight:600 }}>{fetchErr}</div>
         </div>
-        <div className="swap-card-body">
-          <div className="swap-product-name">{ANNIES.name}</div>
-          <div className="swap-product-meta">{ANNIES.brand} · 6 oz · ~$3.49</div>
-          <div style={{ marginBottom:14 }}>
-            <div className="why-passes-title">Why It Passes</div>
-            {ANNIES.why.map((item,i) => (
-              <div className="why-item" key={i}>
-                <div className="why-check">✓</div>
-                <div className="why-text">{item.text}</div>
-              </div>
-            ))}
-          </div>
-          <div style={{ marginBottom:6, fontSize:12, fontWeight:700, color:'var(--text-light)', textTransform:'uppercase', letterSpacing:'0.7px' }}>Find Near You</div>
-          <div className="store-btns">
-            <button className="store-btn primary" onClick={e => e.stopPropagation()}>🌿 Whole Foods</button>
-            <button className="store-btn secondary" onClick={e => e.stopPropagation()}>🛒 Kroger</button>
-          </div>
-          <button className="view-profile-btn" onClick={onViewAnnies}>
-            🔍 See Full Ingredient Profile
-          </button>
-        </div>
-      </div>
+      )}
 
-      {/* Farm upgrade */}
+      {/* Curated swaps */}
+      {curatedSwaps.length > 0 && (
+        <>
+          <div className="section-label-row">
+            <div className="section-label-pill forest">🌿 Verified by Sina &amp; Joel</div>
+            <div className="section-label-divider" />
+          </div>
+          {curatedSwaps.map((swap, i) => (
+            <SwapCard key={swap.product_name + i} swap={swap} scanFlags={scanResult?.flags} />
+          ))}
+        </>
+      )}
+
+      {/* AI fallback section */}
+      {aiSwaps.length > 0 && (
+        <>
+          <div className="section-label-row">
+            <div className="section-label-pill amber">✨ AI Suggestions</div>
+            <div className="section-label-divider" />
+          </div>
+          <div style={{ margin:'0 16px 12px', background:'var(--amber-pale)', borderRadius:14, padding:'10px 14px', fontSize:12, color:'var(--text-mid)', lineHeight:1.5 }}>
+            No curated swap on file yet for this category. These suggestions were generated by AI — always verify the full ingredient label before buying.
+          </div>
+          {aiSwaps.map((swap, i) => (
+            <AISuggestionCard key={swap.product_name + i} swap={swap} />
+          ))}
+        </>
+      )}
+
+      {/* Farm upgrade divider */}
       <div className="farm-divider">
         <div className="farm-divider-line" />
         <div className="farm-divider-text">⬆ Local Upgrade</div>
         <div className="farm-divider-line" />
       </div>
 
+      {/* Farm card (unchanged) */}
       <div className="farm-card">
         <div className="farm-upgrade-ribbon">UPGRADE</div>
         <div className="farm-card-img">
@@ -1296,8 +1605,8 @@ function App() {
     switch(screen) {
       case 0:      return <ScannerScreen onScanComplete={handleScanComplete} />;
       case 1:      return <VerdictScreen onSwap={() => setScreen(2)} onBack={() => setScreen(0)} />;
-      case 2:      return <SwapScreen onBack={() => setScreen(liveResult ? 'live' : 1)} onViewAnnies={() => setScreen(4)} />;
-      case 3:      return <SwapScreen onBack={() => setScreen(liveResult ? 'live' : 1)} onViewAnnies={() => setScreen(4)} />;
+      case 2:      return <SwapScreen onBack={() => setScreen(liveResult ? 'live' : 1)} scanResult={liveResult} />;
+      case 3:      return <SwapScreen onBack={() => setScreen(liveResult ? 'live' : 1)} scanResult={liveResult} />;
       case 4:      return <AnniesProfileScreen onBack={() => setScreen(2)} />;
       case 'live': return <LiveVerdictScreen result={liveResult} onBack={() => setScreen(0)} onSwap={() => setScreen(2)} />;
       default:     return null;
