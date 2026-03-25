@@ -1,0 +1,119 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --cream: #FAF6EF;
+  --cream-dark: #F2EBD9;
+  --amber: #D4872A;
+  --amber-light: #F0A83C;
+  --forest: #3A5A40;
+  --forest-light: #4D7B55;
+  --text-dark: #2C2416;
+  --text-mid: #5C4A2A;
+  --text-light: #9A8260;
+  --blue-flag-bg: #E6F1FB;
+  --blue-flag-text: #0C447C;
+  --red-flag: #C0392B;
+  --yellow-flag: #D4872A;
+  --green-flag: #3A5A40;
+}
+
+html, body {
+  height: 100%;
+  background: #E8E0D2;
+  color: var(--text-dark);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app-container {
+  max-width: 430px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  background: var(--cream);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 40px rgba(0,0,0,0.15);
+}
+
+h1, h2, h3, .serif {
+  font-family: var(--font-playfair), Georgia, serif;
+}
+
+.btn-primary {
+  background: var(--amber);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 16px 24px;
+  font-size: 16px;
+  font-weight: 600;
+  width: 100%;
+  cursor: pointer;
+  min-height: 52px;
+  transition: background 0.2s;
+}
+.btn-primary:hover { background: var(--amber-light); }
+
+.btn-text {
+  background: none;
+  border: none;
+  color: var(--text-mid);
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 12px;
+  min-height: 44px;
+}
+
+.screen {
+  min-height: 100dvh;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.shimmer {
+  background: linear-gradient(90deg, var(--cream-dark) 25%, var(--cream) 50%, var(--cream-dark) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes pulse-amber {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.15); opacity: 1; }
+}
+
+.pulse-circle {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--amber);
+  animation: pulse-amber 2s ease-in-out infinite;
+}
+
+/* Screen transitions */
+.screen-enter { opacity: 0; transform: translateX(20px); }
+.screen-enter-active { opacity: 1; transform: translateX(0); transition: opacity 0.3s, transform 0.3s; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: none; }
+}
+
+.fade-in { animation: fadeIn 0.3s ease-out; }
+.slide-in { animation: slideIn 0.25s ease-out; }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
