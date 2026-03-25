@@ -377,15 +377,723 @@
     @keyframes fadeIn  { from { opacity:0; transform:translateY(8px);  } to { opacity:1; transform:none; } }
     .slide-in { animation: slideIn 0.25s ease-out; }
     @keyframes slideIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:none; } }
+
+    /* ─────────────────────────────────────────────────
+       ONBOARDING
+    ───────────────────────────────────────────────── */
+    .ob-screen {
+      width: 375px;
+      min-height: 100vh;
+      background: var(--cream);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+    .ob-logo-bar {
+      padding: 18px 24px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .ob-wordmark {
+      font-family: 'Playfair Display', serif;
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text-dark);
+    }
+    .ob-inner {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 0 24px 32px;
+    }
+    /* Welcome art block */
+    .ob-welcome-art {
+      margin: 20px 0 0;
+      height: 180px;
+      background: linear-gradient(135deg, var(--forest) 0%, #2D4A33 60%, #1E3226 100%);
+      border-radius: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      position: relative;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .ob-welcome-art::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(circle at 80% 20%, rgba(212,135,42,0.15) 0%, transparent 50%);
+    }
+    .ob-welcome-emoji { font-size: 52px; z-index: 1; }
+    .ob-welcome-tagline {
+      font-size: 11px;
+      color: rgba(255,255,255,0.6);
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      z-index: 1;
+    }
+    .ob-hosts {
+      display: flex;
+      gap: 8px;
+      margin-top: 18px;
+      flex-wrap: wrap;
+    }
+    .ob-host-pill {
+      background: var(--forest-pale);
+      border: 1px solid rgba(58,90,64,0.2);
+      border-radius: 20px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--forest);
+    }
+    .ob-headline {
+      font-family: 'Playfair Display', serif;
+      font-size: 27px;
+      font-weight: 700;
+      color: var(--text-dark);
+      line-height: 1.2;
+      margin-top: 18px;
+    }
+    .ob-subtext {
+      font-size: 15px;
+      color: var(--text-mid);
+      line-height: 1.55;
+      margin-top: 10px;
+    }
+    .ob-spacer { flex: 1; min-height: 20px; }
+    .ob-btn-primary {
+      width: 100%;
+      height: 56px;
+      background: linear-gradient(135deg, var(--amber) 0%, var(--amber-light) 100%);
+      color: white;
+      font-family: 'Inter', sans-serif;
+      font-size: 17px;
+      font-weight: 700;
+      border: none;
+      border-radius: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 16px rgba(212,135,42,0.35);
+      transition: all 0.15s;
+      letter-spacing: 0.2px;
+      flex-shrink: 0;
+    }
+    .ob-btn-primary:active { transform: scale(0.97); }
+    .ob-btn-link {
+      background: none;
+      border: none;
+      color: var(--text-light);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 14px 0 0;
+      text-align: center;
+      width: 100%;
+      transition: color 0.15s;
+      flex-shrink: 0;
+    }
+    .ob-btn-link:hover { color: var(--amber); }
+
+    /* Progress bar */
+    .ob-progress-wrap {
+      padding: 18px 24px 0;
+      flex-shrink: 0;
+    }
+    .ob-progress-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .ob-progress-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--amber);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .ob-progress-bar {
+      height: 4px;
+      background: var(--cream-dark);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .ob-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--amber), var(--amber-light));
+      border-radius: 2px;
+      transition: width 0.4s ease;
+    }
+    .ob-question-text {
+      font-family: 'Playfair Display', serif;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-dark);
+      line-height: 1.3;
+      margin-top: 16px;
+      padding: 0 24px;
+      flex-shrink: 0;
+    }
+    .ob-answers {
+      padding: 16px 24px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      flex: 1;
+    }
+    .ob-answer-card {
+      padding: 14px 16px;
+      background: white;
+      border: 1.5px solid var(--cream-dark);
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-dark);
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: left;
+      line-height: 1.35;
+      width: 100%;
+    }
+    .ob-answer-card:active { transform: scale(0.98); }
+    .ob-answer-card.selected {
+      border-color: var(--amber);
+      background: var(--amber-pale);
+      color: var(--amber);
+      font-weight: 700;
+    }
+
+    /* Calculating */
+    .ob-calculating {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      padding: 60px 32px;
+    }
+    .ob-pulse-ring {
+      width: 110px;
+      height: 110px;
+      border-radius: 50%;
+      background: var(--amber-pale);
+      border: 3px solid var(--amber);
+      animation: obPulse 1.8s ease-in-out infinite;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+    }
+    @keyframes obPulse {
+      0%, 100% { transform: scale(0.9); opacity: 0.55; box-shadow: 0 0 0 0 rgba(212,135,42,0.25); }
+      50% { transform: scale(1.05); opacity: 1; box-shadow: 0 0 0 22px rgba(212,135,42,0); }
+    }
+    .ob-calculating-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 21px;
+      font-weight: 700;
+      color: var(--text-dark);
+      text-align: center;
+      line-height: 1.35;
+    }
+    .ob-calculating-sub {
+      font-size: 14px;
+      color: var(--text-light);
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    /* Reveal */
+    .ob-reveal-header {
+      background: linear-gradient(135deg, var(--forest) 0%, var(--forest-light) 100%);
+      padding: 32px 24px 28px;
+      flex-shrink: 0;
+    }
+    .ob-reveal-eyebrow {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.6);
+      margin-bottom: 6px;
+    }
+    .ob-reveal-stage {
+      font-family: 'Playfair Display', serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: white;
+      line-height: 1.15;
+      margin-bottom: 8px;
+    }
+    .ob-reveal-score {
+      font-size: 14px;
+      color: rgba(255,255,255,0.7);
+    }
+    /* Continuum */
+    .ob-continuum-wrap {
+      padding: 24px 24px 0;
+      flex-shrink: 0;
+    }
+    .ob-continuum {
+      display: flex;
+      align-items: center;
+    }
+    .ob-cont-segment {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+    .ob-cont-dot-row {
+      display: flex;
+      align-items: center;
+    }
+    .ob-cont-dot {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--cream-dark);
+      border: 2px solid var(--gray-light);
+      flex-shrink: 0;
+    }
+    .ob-cont-dot.passed {
+      background: var(--forest-pale);
+      border-color: var(--forest-light);
+    }
+    .ob-cont-dot.active {
+      width: 22px;
+      height: 22px;
+      background: var(--amber);
+      border-color: var(--amber);
+      box-shadow: 0 0 0 4px rgba(212,135,42,0.2);
+    }
+    .ob-cont-line {
+      flex: 1;
+      height: 3px;
+      background: var(--cream-dark);
+    }
+    .ob-cont-line.passed { background: var(--forest-pale); }
+    .ob-cont-label {
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--text-light);
+      text-align: center;
+      line-height: 1.2;
+      max-width: 48px;
+    }
+    .ob-cont-label.active { color: var(--amber); font-weight: 700; font-size: 10px; }
+    .ob-reveal-msg {
+      margin: 20px 24px 0;
+      background: var(--amber-pale);
+      border: 1.5px solid rgba(212,135,42,0.2);
+      border-radius: 16px;
+      padding: 16px;
+      font-size: 14px;
+      color: var(--text-mid);
+      line-height: 1.65;
+      flex-shrink: 0;
+    }
+
+    /* Flags */
+    .ob-flags-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      padding: 16px 24px 0;
+    }
+    .ob-flag-pill {
+      padding: 10px 8px;
+      border: 1.5px solid var(--cream-dark);
+      border-radius: 12px;
+      background: white;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-mid);
+      cursor: pointer;
+      text-align: center;
+      line-height: 1.3;
+      transition: all 0.15s;
+    }
+    .ob-flag-pill:active { transform: scale(0.95); }
+    .ob-flag-pill.selected {
+      background: var(--forest);
+      border-color: var(--forest);
+      color: white;
+    }
+    .ob-none-btn {
+      margin: 10px 24px 0;
+      width: calc(100% - 48px);
+      padding: 13px;
+      border: 1.5px solid var(--cream-dark);
+      border-radius: 12px;
+      background: white;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-light);
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+    .ob-none-btn.selected {
+      border-color: var(--forest);
+      background: var(--forest-pale);
+      color: var(--forest);
+    }
+
+    /* Launch */
+    .ob-launch-header {
+      background: linear-gradient(135deg, var(--amber) 0%, #E89A34 100%);
+      padding: 36px 24px 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .ob-launch-check { font-size: 52px; margin-bottom: 4px; }
+    .ob-launch-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 24px;
+      font-weight: 700;
+      color: white;
+      line-height: 1.2;
+    }
+    .ob-launch-sub {
+      font-size: 14px;
+      color: rgba(255,255,255,0.85);
+      line-height: 1.4;
+    }
+    .ob-watchlist-card {
+      margin: 20px 24px 0;
+      background: white;
+      border: 1.5px solid var(--cream-dark);
+      border-radius: 16px;
+      padding: 16px;
+      flex-shrink: 0;
+    }
+    .ob-watchlist-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--forest);
+      margin-bottom: 12px;
+    }
+    .ob-watch-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .ob-watch-item:last-child { margin-bottom: 0; }
+    .ob-watch-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--amber);
+      margin-top: 5px;
+      flex-shrink: 0;
+    }
+    .ob-watch-text { font-size: 13px; color: var(--text-mid); line-height: 1.4; }
+    .ob-personal-flags-card {
+      margin: 12px 24px 0;
+      background: #E6F1FB;
+      border: 1.5px solid rgba(12,68,124,0.15);
+      border-radius: 16px;
+      padding: 14px 16px;
+      flex-shrink: 0;
+    }
+    .ob-personal-flags-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #0C447C;
+      margin-bottom: 10px;
+    }
+    .ob-personal-flags-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .ob-personal-flag-chip {
+      background: white;
+      border: 1.5px solid rgba(12,68,124,0.2);
+      color: #0C447C;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 20px;
+    }
+
+    /* ── Personal flag badges on Verdict screen ── */
+    .pf-section {
+      margin: 0 16px 10px;
+      background: #E6F1FB;
+      border: 1.5px solid rgba(12,68,124,0.15);
+      border-radius: 14px;
+      padding: 12px 14px;
+    }
+    .pf-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: #0C447C;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .pf-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .pf-badge {
+      background: #E6F1FB;
+      border: 1.5px solid rgba(12,68,124,0.25);
+      color: #0C447C;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 20px;
+    }
+
+    /* ── Settings screen ── */
+    .settings-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      background: white;
+      border: 1.5px solid var(--cream-dark);
+      border-radius: 14px;
+      margin: 0 16px 10px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .settings-row:active { background: var(--cream-dark); }
+    .settings-row-label { font-size: 15px; font-weight: 600; color: var(--text-dark); }
+    .settings-row-value { font-size: 13px; color: var(--text-light); }
   </style>
 </head>
 <body>
 <div id="root"></div>
 
 <script type="text/babel">
-const { useState } = React;
+const { useState, useEffect } = React;
 
-// ── Hard-coded data ──────────────────────────────────────────────────────────
+// ── Onboarding data ──────────────────────────────────────────────────────────
+
+const QUESTIONS = [
+  {
+    q: "How often do you read ingredient labels when you shop?",
+    answers: [
+      { text: "I don't read labels yet", score: 1 },
+      { text: "Occasionally, when something catches my eye", score: 2 },
+      { text: "Most of the time for packaged foods", score: 3 },
+      { text: "Always — and I understand what I'm reading", score: 4 },
+      { text: "Always, and I research any ingredient I don't recognize", score: 5 },
+    ]
+  },
+  {
+    q: "Where do you do most of your grocery shopping?",
+    answers: [
+      { text: "Convenience stores or mostly fast food", score: 1 },
+      { text: "Mainstream grocery stores (Walmart, Kroger, Publix)", score: 2 },
+      { text: "Natural food stores or co-ops (Whole Foods, Sprouts)", score: 4 },
+      { text: "Farmers markets, CSA, or directly from farms", score: 5 },
+    ]
+  },
+  {
+    q: "How often do you cook meals from whole, unprocessed ingredients?",
+    answers: [
+      { text: "Rarely — most meals come from packages or fast food", score: 1 },
+      { text: "A few times a week", score: 2 },
+      { text: "Most meals", score: 3 },
+      { text: "Nearly every meal — I cook from scratch", score: 4 },
+    ]
+  },
+  {
+    q: "How familiar are you with GMOs, bioengineered crops, and organic certification?",
+    answers: [
+      { text: "Not familiar at all", score: 1 },
+      { text: "I know the basics and try to buy organic when I can", score: 3 },
+      { text: "I understand it deeply and make consistent, conscious choices", score: 4 },
+    ]
+  },
+  {
+    q: "How would you describe your relationship with processed food right now?",
+    answers: [
+      { text: "I eat mostly processed food but I'm starting to question it", score: 1 },
+      { text: "I choose 'better-for-you' processed options (organic, non-GMO labels)", score: 2 },
+      { text: "I'm aware of the issues, but convenience still wins most days", score: 1 },
+      { text: "I've significantly reduced processed food in my home", score: 2 },
+      { text: "I eat whatever sounds good — I don't think about it much", score: 0 },
+    ]
+  },
+  {
+    q: "What cooking fats and oils do you use most at home?",
+    answers: [
+      { text: "Vegetable oil, canola oil, or whatever's in the pantry", score: 0 },
+      { text: "Mostly olive oil", score: 1 },
+      { text: "Olive oil and some butter", score: 1 },
+      { text: "Traditional fats only — butter, tallow, coconut oil, cold-pressed olive oil", score: 2 },
+    ]
+  },
+  {
+    q: "How connected are you to the source of your food?",
+    answers: [
+      { text: "I don't think about it", score: 0 },
+      { text: "I'm curious but haven't made changes yet", score: 0 },
+      { text: "I buy organic or non-GMO at the grocery store", score: 1 },
+      { text: "I shop at farmers markets regularly", score: 2 },
+      { text: "I have a CSA or ongoing relationship with a specific farm", score: 3 },
+      { text: "I grow some of my own food", score: 4 },
+    ]
+  },
+  {
+    q: "Do you include raw or lacto-fermented foods in your diet? (raw cheese, kefir, homemade kimchi, sauerkraut, etc.)",
+    answers: [
+      { text: "No — I'm not familiar with these", score: 0 },
+      { text: "I've heard of them but haven't really tried", score: 0 },
+      { text: "I buy store-bought versions occasionally", score: 0 },
+      { text: "Yes — I make my own or source them from farms or markets", score: 3 },
+      { text: "I'm interested but haven't started yet", score: 0 },
+    ]
+  },
+  {
+    q: "How do you source your meat, eggs, and dairy?",
+    answers: [
+      { text: "I buy whatever's on sale", score: 0 },
+      { text: "I stick to name brands at the grocery store", score: 0 },
+      { text: "I look for organic labels when I can afford it", score: 1 },
+      { text: "I prioritize pasture-raised, grass-fed, and direct-from-farm", score: 3 },
+      { text: "I source directly from farms I trust — or raise my own", score: 3 },
+    ]
+  },
+  {
+    q: "Do you know who grew the food currently in your kitchen?",
+    answers: [
+      { text: "No — and I've never really thought about it", score: 0 },
+      { text: "I wish I did, but I don't yet", score: 0 },
+      { text: "Yes — I know my farmers by name", score: 3 },
+    ]
+  },
+  {
+    q: "What's your gardening or food-growing situation?",
+    answers: [
+      { text: "I don't garden and haven't thought about it", score: 0 },
+      { text: "I grow herbs or have a small container garden", score: 2 },
+      { text: "I maintain a real vegetable garden through the season", score: 3 },
+      { text: "I've been thinking about starting — just haven't yet", score: 0 },
+      { text: "I grow a significant portion of my own food — large garden, orchard, or homestead", score: 5 },
+    ]
+  },
+  {
+    q: "Do you filter your drinking water or have a whole-house filtration system?",
+    answers: [
+      { text: "Yes — high-quality filtration (reverse osmosis, Berkey, or whole-house)", score: 5 },
+      { text: "No — I drink tap water or buy bottled water", score: 0 },
+    ]
+  },
+  {
+    q: "Do you actively seek out education about food quality, attend farm events, or share what you learn with others?",
+    answers: [
+      { text: "Yes — I learn actively and love sharing it with others", score: 4 },
+      { text: "Not yet — but I'm here to start", score: 0 },
+    ]
+  },
+];
+
+const STAGES = [
+  {
+    num: 1, name: "Processed Food", range: [4, 13],
+    msg: "You're exactly where most people start — and the fact that you're here means you're already ahead of the curve. We're not going to overwhelm you. We're going to show you the three biggest changes that will make the biggest difference. One bite at a time.",
+    watchlist: [
+      "GMO and bioengineered ingredients hiding in everyday products",
+      "Artificial dyes and synthetic additives in packaged food",
+      "Seed oils (soybean, canola, sunflower) used in almost everything processed",
+    ]
+  },
+  {
+    num: 2, name: "Higher Quality Processed Food", range: [14, 24],
+    msg: "You're paying attention — and that matters more than you know. You've started reading labels, looking for organic options, making conscious choices. Now we're going to show you what the labels aren't telling you. The next layer goes deeper.",
+    watchlist: [
+      "Hidden GMO ingredients that slip past the 'organic' label",
+      "Refined seed oils and industrial fats in 'healthy' packaged foods",
+      "Natural and artificial flavors — and what's hiding inside them",
+    ]
+  },
+  {
+    num: 3, name: "Whole Food Shopper", range: [25, 33],
+    msg: "You've done the work most people never do. Whole foods, real ingredients, conscious sourcing — you're living it. Where we go from here is about the soil those foods grew in and the farmer who grew them. The bridge between your grocery store and your local farm is closer than you think.",
+    watchlist: [
+      "Pesticide residues on conventional crops, even at farmers markets",
+      "Soil quality and regenerative sourcing practices",
+      "The gap between 'certified organic' and truly clean",
+    ]
+  },
+  {
+    num: 4, name: "Locally Grown", range: [34, 42],
+    msg: "You already understand something most people are just beginning to discover — that the relationship between you and your food matters. You know your farmer, or you're working toward it. We're going to help you deepen those connections and fill the gaps.",
+    watchlist: [
+      "Traceability gaps even in trusted brands and farms",
+      "Processing methods that destroy nutrients in quality ingredients",
+      "Building your local food network deeper and more resilient",
+    ]
+  },
+  {
+    num: 5, name: "Home Grown", range: [43, 49],
+    msg: "You've already arrived at what most people are searching for. A garden, a farm, real food sovereignty — you're living the mission. Beyond Labels for you is about community, teaching others, and going even deeper into the homestead life. Joel's got a lot to show you.",
+    watchlist: [
+      "Inputs on your own farm — amendments, seeds, and soil health",
+      "Food sovereignty strategies and community connections",
+      "Teaching others and building resilience in your food network",
+    ]
+  },
+];
+
+const PERSONAL_FLAGS = [
+  "Gluten / celiac", "Dairy / lactose", "Eggs",
+  "Tree nuts / peanuts", "Shellfish / fish", "Soy",
+  "Nightshades", "Corn (all sources)", "Added sugars",
+  "Alcohol-derived", "Kosher", "Halal", "Vegan",
+];
+
+// Flags triggered by KRAFT Mac & Cheese ingredients
+const KRAFT_TRIGGERED_FLAGS = {
+  "Gluten / celiac": "Enriched wheat (durum) pasta",
+  "Dairy / lactose": "Whey, milkfat, milk protein concentrate",
+  "Corn (all sources)": "Modified food starch (corn-derived)",
+  "Vegan": "Contains multiple dairy ingredients",
+  "Kosher": "Not kosher certified",
+  "Halal": "Not halal certified",
+};
+
+function getStage(score) {
+  return STAGES.find(s => score >= s.range[0] && score <= s.range[1]) || STAGES[1];
+}
+
+function loadOnboarding() {
+  try { return JSON.parse(localStorage.getItem('bl_onboarding') || '{}'); }
+  catch { return {}; }
+}
+
+// ── Hard-coded product data ──────────────────────────────────────────────────
 
 const KRAFT = {
   name: "Kraft Macaroni & Cheese",
@@ -394,9 +1102,7 @@ const KRAFT = {
   score: 24,
   concerns: [
     {
-      id: "genemodified",
-      icon: "🧬",
-      severity: "red",
+      id: "genemodified", icon: "🧬", severity: "red",
       name: "Gene Modified",
       summary: "Contains corn & starch from GE + CRISPR-eligible crops",
       detail: [
@@ -406,9 +1112,7 @@ const KRAFT = {
       ]
     },
     {
-      id: "seedoils",
-      icon: "🫙",
-      severity: "red",
+      id: "seedoils", icon: "🫙", severity: "red",
       name: "Seed Oils",
       summary: "Contains soybean oil — a refined inflammatory fat",
       detail: [
@@ -418,9 +1122,7 @@ const KRAFT = {
       ]
     },
     {
-      id: "pesticides",
-      icon: "🧪",
-      severity: "yellow",
+      id: "pesticides", icon: "🧪", severity: "yellow",
       name: "Pesticide/Herbicide Risk",
       summary: "Conventional wheat & corn carry known residue risk",
       detail: [
@@ -430,9 +1132,7 @@ const KRAFT = {
       ]
     },
     {
-      id: "additives",
-      icon: "🎨",
-      severity: "red",
+      id: "additives", icon: "🎨", severity: "red",
       name: "Additives",
       summary: "Artificial dyes, sodium phosphates & synthetic preservatives",
       detail: [
@@ -442,9 +1142,7 @@ const KRAFT = {
       ]
     },
     {
-      id: "gluten",
-      icon: "🌾",
-      severity: "yellow",
+      id: "gluten", icon: "🌾", severity: "yellow",
       name: "Gluten",
       summary: "Contains wheat pasta — gluten protein present",
       detail: [
@@ -463,9 +1161,7 @@ const ANNIES = {
   score: 82,
   concerns: [
     {
-      id: "genemodified",
-      icon: "🧬",
-      status: "pass",
+      id: "genemodified", icon: "🧬", status: "pass",
       name: "Gene Modified",
       summary: "USDA Organic certified — no bioengineered ingredients",
       detail: [
@@ -475,9 +1171,7 @@ const ANNIES = {
       ]
     },
     {
-      id: "seedoils",
-      icon: "🫙",
-      status: "pass",
+      id: "seedoils", icon: "🫙", status: "pass",
       name: "Seed Oils",
       summary: "Made with real butter — no refined seed oils",
       detail: [
@@ -487,9 +1181,7 @@ const ANNIES = {
       ]
     },
     {
-      id: "pesticides",
-      icon: "🧪",
-      status: "pass",
+      id: "pesticides", icon: "🧪", status: "pass",
       name: "Pesticide/Herbicide Risk",
       summary: "USDA Organic — synthetic pesticides prohibited by certification",
       detail: [
@@ -499,9 +1191,7 @@ const ANNIES = {
       ]
     },
     {
-      id: "additives",
-      icon: "🎨",
-      status: "pass",
+      id: "additives", icon: "🎨", status: "pass",
       name: "Additives",
       summary: "No artificial dyes, no synthetic preservatives",
       detail: [
@@ -511,10 +1201,7 @@ const ANNIES = {
       ]
     },
     {
-      id: "gluten",
-      icon: "🌾",
-      status: "caution",
-      severity: "yellow",
+      id: "gluten", icon: "🌾", status: "caution", severity: "yellow",
       name: "Gluten",
       summary: "Organic wheat pasta — gluten protein still present",
       detail: [
@@ -562,7 +1249,7 @@ function BottomNav({ activeTab, onNav }) {
   );
 }
 
-function Header({ title, onBack, showBack }) {
+function Header({ title, onBack, showBack, rightSlot }) {
   return (
     <div className="header">
       <div style={{ width: 70 }}>
@@ -570,13 +1257,12 @@ function Header({ title, onBack, showBack }) {
       </div>
       <span className="header-title serif">{title}</span>
       <div style={{ width: 70, textAlign: 'right' }}>
-        <span style={{ fontSize: 22 }}>🌿</span>
+        {rightSlot || <span style={{ fontSize: 22 }}>🌿</span>}
       </div>
     </div>
   );
 }
 
-// Reusable expandable concern/category card
 function ConcernCard({ c, defaultOpen }) {
   const [open, setOpen] = useState(!!defaultOpen);
   const isPass = c.status === 'pass';
@@ -604,9 +1290,267 @@ function ConcernCard({ c, defaultOpen }) {
   );
 }
 
-// ── Screen 1: Scanner ────────────────────────────────────────────────────────
+// ── Onboarding Screens ───────────────────────────────────────────────────────
 
-function ScannerScreen({ onScan }) {
+function OBWelcomeScreen({ onBegin, onSkip }) {
+  return (
+    <div className="ob-screen fade-in">
+      <div className="ob-logo-bar">
+        <span style={{ fontSize: 20 }}>🌿</span>
+        <span className="ob-wordmark">Beyond Labels</span>
+      </div>
+      <div className="ob-inner">
+        <div className="ob-welcome-art">
+          <span className="ob-welcome-emoji">🌱</span>
+          <span className="ob-welcome-tagline">with Sina &amp; Joel</span>
+        </div>
+        <div className="ob-hosts">
+          <span className="ob-host-pill">👩 Sina McCullough</span>
+          <span className="ob-host-pill">👨‍🌾 Joel Salatin</span>
+        </div>
+        <div className="ob-headline">Where are you on your food journey?</div>
+        <div className="ob-subtext">Take 2 minutes to personalize your experience. We'll tailor every scan and swap to exactly where you are — and where you want to go.</div>
+        <div className="ob-spacer" />
+        <button className="ob-btn-primary" onClick={onBegin}>Let's Begin →</button>
+        <button className="ob-btn-link" onClick={onSkip}>Skip for now</button>
+      </div>
+    </div>
+  );
+}
+
+function OBAssessmentScreen({ qIndex, selectedIdx, onAnswer }) {
+  const q = QUESTIONS[qIndex];
+  const pct = Math.round(((qIndex) / QUESTIONS.length) * 100);
+  return (
+    <div className="ob-screen slide-in">
+      <div className="ob-logo-bar">
+        <span style={{ fontSize: 20 }}>🌿</span>
+        <span className="ob-wordmark">Beyond Labels</span>
+      </div>
+      <div className="ob-progress-wrap">
+        <div className="ob-progress-row">
+          <span className="ob-progress-label">Question {qIndex + 1} of {QUESTIONS.length}</span>
+          <span style={{ fontSize: 11, color: 'var(--text-light)', fontWeight: 600 }}>{pct}%</span>
+        </div>
+        <div className="ob-progress-bar">
+          <div className="ob-progress-fill" style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+      <div className="ob-question-text">{q.q}</div>
+      <div className="ob-answers">
+        {q.answers.map((a, i) => (
+          <button
+            key={i}
+            className={`ob-answer-card${selectedIdx === i ? ' selected' : ''}`}
+            onClick={() => onAnswer(i, a.score)}
+          >
+            {a.text}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function OBCalculatingScreen() {
+  return (
+    <div className="ob-screen fade-in">
+      <div className="ob-calculating">
+        <div className="ob-pulse-ring">🌿</div>
+        <div className="ob-calculating-title">Sina and Joel are reading your results...</div>
+        <div className="ob-calculating-sub">Matching your answers to the right stage on the food journey</div>
+      </div>
+    </div>
+  );
+}
+
+function OBRevealScreen({ score, onNext }) {
+  const stage = getStage(score);
+  return (
+    <div className="ob-screen fade-in">
+      <div className="ob-reveal-header">
+        <div className="ob-reveal-eyebrow">Your Food Journey Stage</div>
+        <div className="ob-reveal-stage">Stage {stage.num}: {stage.name}</div>
+        <div className="ob-reveal-score">Score: {score} out of 49</div>
+      </div>
+
+      {/* Continuum */}
+      <div className="ob-continuum-wrap">
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          {STAGES.map((s, i) => (
+            <React.Fragment key={s.num}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                <div className={`ob-cont-dot${s.num < stage.num ? ' passed' : s.num === stage.num ? ' active' : ''}`} />
+                <span className={`ob-cont-label${s.num === stage.num ? ' active' : ''}`} style={{ width: 52, textAlign: 'center' }}>
+                  {s.num === 1 ? 'Processed' : s.num === 2 ? 'Better Processed' : s.num === 3 ? 'Whole Food' : s.num === 4 ? 'Locally Grown' : 'Home Grown'}
+                </span>
+              </div>
+              {i < STAGES.length - 1 && (
+                <div style={{ flex: 1, height: 3, background: s.num < stage.num ? 'var(--forest-pale)' : 'var(--cream-dark)', marginBottom: 20 }} />
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+
+      <div className="ob-reveal-msg">{stage.msg}</div>
+
+      <div style={{ padding: '0 24px', marginTop: 20, paddingBottom: 32 }}>
+        <button className="ob-btn-primary" onClick={onNext}>Personalize a little more →</button>
+      </div>
+    </div>
+  );
+}
+
+function OBFlagsScreen({ selectedFlags, onToggle, onNone, noneSelected, onDone }) {
+  return (
+    <div className="ob-screen slide-in">
+      <div className="ob-logo-bar">
+        <span style={{ fontSize: 20 }}>🌿</span>
+        <span className="ob-wordmark">Beyond Labels</span>
+      </div>
+      <div style={{ padding: '16px 24px 0' }}>
+        <div style={{ fontFamily: 'Playfair Display, serif', fontSize: 24, fontWeight: 700, color: 'var(--text-dark)', lineHeight: 1.2 }}>
+          Anything we should always watch for?
+        </div>
+        <div style={{ fontSize: 14, color: 'var(--text-mid)', lineHeight: 1.55, marginTop: 10 }}>
+          Select anything that applies to your body or beliefs — we'll flag these on every scan regardless of where you are on your journey.
+        </div>
+      </div>
+
+      <div className="ob-flags-grid">
+        {PERSONAL_FLAGS.map(flag => (
+          <button
+            key={flag}
+            className={`ob-flag-pill${selectedFlags.includes(flag) ? ' selected' : ''}`}
+            onClick={() => onToggle(flag)}
+          >
+            {flag}
+          </button>
+        ))}
+      </div>
+
+      <button
+        className={`ob-none-btn${noneSelected ? ' selected' : ''}`}
+        onClick={onNone}
+        style={{ display: 'block', width: 'calc(100% - 48px)', margin: '10px auto 0' }}
+      >
+        None of these apply to me
+      </button>
+
+      <div style={{ padding: '20px 24px 32px' }}>
+        <button className="ob-btn-primary" onClick={onDone}>I'm ready to scan →</button>
+      </div>
+    </div>
+  );
+}
+
+function OBLaunchScreen({ score, personalFlags, onStart }) {
+  const stage = getStage(score);
+  return (
+    <div className="ob-screen fade-in">
+      <div className="ob-launch-header">
+        <div className="ob-launch-check">✅</div>
+        <div className="ob-launch-title">You're all set as a<br />{stage.name}.</div>
+        <div className="ob-launch-sub">Stage {stage.num} · Score {score}/49</div>
+      </div>
+
+      <div className="ob-watchlist-card">
+        <div className="ob-watchlist-title">🔍 What we'll watch for at your stage</div>
+        {stage.watchlist.map((item, i) => (
+          <div key={i} className="ob-watch-item">
+            <div className="ob-watch-dot" />
+            <div className="ob-watch-text">{item}</div>
+          </div>
+        ))}
+      </div>
+
+      {personalFlags.length > 0 && (
+        <div className="ob-personal-flags-card">
+          <div className="ob-personal-flags-title">👤 We'll also always flag</div>
+          <div className="ob-personal-flags-list">
+            {personalFlags.map(f => (
+              <span key={f} className="ob-personal-flag-chip">{f}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ padding: '20px 24px 32px' }}>
+        <button className="ob-btn-primary" onClick={onStart}>Scan My First Product →</button>
+      </div>
+    </div>
+  );
+}
+
+function OnboardingFlow({ onComplete }) {
+  const [step, setStep] = useState('welcome');
+  const [qIndex, setQIndex] = useState(0);
+  const [score, setScore] = useState(0);
+  const [selectedIdx, setSelectedIdx] = useState(null);
+  const [personalFlags, setPersonalFlags] = useState([]);
+  const [noneSelected, setNoneSelected] = useState(false);
+
+  useEffect(() => {
+    if (step === 'calculating') {
+      const t = setTimeout(() => setStep('reveal'), 1500);
+      return () => clearTimeout(t);
+    }
+  }, [step]);
+
+  const handleAnswer = (idx, answerScore) => {
+    setSelectedIdx(idx);
+    setTimeout(() => {
+      const newScore = score + answerScore;
+      setScore(newScore);
+      setSelectedIdx(null);
+      if (qIndex < QUESTIONS.length - 1) {
+        setQIndex(qIndex + 1);
+      } else {
+        setStep('calculating');
+      }
+    }, 300);
+  };
+
+  const handleToggleFlag = (flag) => {
+    setNoneSelected(false);
+    setPersonalFlags(prev =>
+      prev.includes(flag) ? prev.filter(f => f !== flag) : [...prev, flag]
+    );
+  };
+
+  const handleNone = () => {
+    setNoneSelected(true);
+    setPersonalFlags([]);
+  };
+
+  const handleSkip = () => {
+    const defaultData = { stage: 2, score: 14, personalFlags: [], onboardingComplete: true };
+    localStorage.setItem('bl_onboarding', JSON.stringify(defaultData));
+    onComplete(defaultData);
+  };
+
+  const handleFlagsDone = () => setStep('launch');
+
+  const handleStart = () => {
+    const stage = getStage(score);
+    const data = { stage: stage.num, score, personalFlags, onboardingComplete: true };
+    localStorage.setItem('bl_onboarding', JSON.stringify(data));
+    onComplete(data);
+  };
+
+  if (step === 'welcome')     return <OBWelcomeScreen onBegin={() => setStep('assessment')} onSkip={handleSkip} />;
+  if (step === 'assessment')  return <OBAssessmentScreen qIndex={qIndex} selectedIdx={selectedIdx} onAnswer={handleAnswer} />;
+  if (step === 'calculating') return <OBCalculatingScreen />;
+  if (step === 'reveal')      return <OBRevealScreen score={score} onNext={() => setStep('flags')} />;
+  if (step === 'flags')       return <OBFlagsScreen selectedFlags={personalFlags} onToggle={handleToggleFlag} onNone={handleNone} noneSelected={noneSelected} onDone={handleFlagsDone} />;
+  if (step === 'launch')      return <OBLaunchScreen score={score} personalFlags={personalFlags} onStart={handleStart} />;
+  return null;
+}
+
+// ── App Screens ──────────────────────────────────────────────────────────────
+
+function ScannerScreen({ onScan, onSettings }) {
   const [scanning, setScanning] = useState(false);
   const handleScan = () => {
     setScanning(true);
@@ -614,7 +1558,13 @@ function ScannerScreen({ onScan }) {
   };
   return (
     <div className="screen fade-in">
-      <Header title="Beyond Labels" showBack={false} />
+      <Header
+        title="Beyond Labels"
+        showBack={false}
+        rightSlot={
+          <button onClick={onSettings} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: 'var(--text-light)', padding: 0 }}>⚙️</button>
+        }
+      />
       <div className="scanner-hero">
         <div className="scanner-bg" />
         <div className="scanner-grid" />
@@ -636,7 +1586,7 @@ function ScannerScreen({ onScan }) {
       </div>
 
       <button className={`scan-btn ${scanning?'scanning':''}`} onClick={handleScan} disabled={scanning}>
-        {scanning ? <>⏳ Scanning Kraft Mac & Cheese…</> : <>📷 Tap to Scan</>}
+        {scanning ? <>⏳ Scanning Kraft Mac &amp; Cheese…</> : <>📷 Tap to Scan</>}
       </button>
 
       <div className="scan-info">
@@ -669,10 +1619,12 @@ function ScannerScreen({ onScan }) {
   );
 }
 
-// ── Screen 2: Kraft Verdict ──────────────────────────────────────────────────
-
 function VerdictScreen({ onSwap, onBack }) {
   const redCount = KRAFT.concerns.filter(c => c.severity === 'red').length;
+  const saved = loadOnboarding();
+  const userFlags = saved.personalFlags || [];
+  const triggeredFlags = userFlags.filter(f => KRAFT_TRIGGERED_FLAGS[f]);
+
   return (
     <div className="screen slide-in">
       <Header title="Ingredient Verdict" onBack={onBack} showBack />
@@ -707,6 +1659,19 @@ function VerdictScreen({ onSwap, onBack }) {
         </div>
       </div>
 
+      {triggeredFlags.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <div className="pf-section">
+            <div className="pf-section-title">👤 Your personal flags:</div>
+            <div className="pf-badges">
+              {triggeredFlags.map(f => (
+                <span key={f} className="pf-badge">{f} · {KRAFT_TRIGGERED_FLAGS[f]}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="concerns-title">What We Found</div>
       {KRAFT.concerns.map(c => <ConcernCard key={c.id} c={c} />)}
 
@@ -716,8 +1681,6 @@ function VerdictScreen({ onSwap, onBack }) {
   );
 }
 
-// ── Screen 3: Swap ───────────────────────────────────────────────────────────
-
 function SwapScreen({ onBack, onViewAnnies }) {
   return (
     <div className="screen slide-in">
@@ -726,12 +1689,11 @@ function SwapScreen({ onBack, onViewAnnies }) {
       <div className="swap-banner">
         <span style={{ fontSize:28 }}>✅</span>
         <div>
-          <div className="swap-banner-label">Replacing Kraft Mac & Cheese</div>
+          <div className="swap-banner-label">Replacing Kraft Mac &amp; Cheese</div>
           <div className="swap-banner-title serif">We found 2 better options</div>
         </div>
       </div>
 
-      {/* Section label */}
       <div style={{ margin:'16px 16px 0', display:'flex', alignItems:'center', gap:8 }}>
         <div style={{ background:'var(--forest-pale)', color:'var(--forest)', fontSize:11, fontWeight:700, letterSpacing:'0.8px', textTransform:'uppercase', padding:'4px 10px', borderRadius:20 }}>
           Store-Bought Pick
@@ -739,14 +1701,13 @@ function SwapScreen({ onBack, onViewAnnies }) {
         <div style={{ flex:1, height:1, background:'var(--cream-dark)' }} />
       </div>
 
-      {/* Annie's card */}
       <div className="swap-card clickable" onClick={onViewAnnies}>
         <div className="swap-card-img">
           <div className="product-art annies-box">
             <span className="product-art-icon">🐇</span>
             <div className="product-art-text">
               <div className="product-art-brand">Annie's</div>
-              <div>HOMEGROWN</div><div>ORGANIC</div><div>SHELLS &</div><div>WHITE CHEDDAR</div>
+              <div>HOMEGROWN</div><div>ORGANIC</div><div>SHELLS &amp;</div><div>WHITE CHEDDAR</div>
             </div>
           </div>
           <div className="green-badge">✓ Passes</div>
@@ -779,7 +1740,6 @@ function SwapScreen({ onBack, onViewAnnies }) {
         </div>
       </div>
 
-      {/* Farm upgrade */}
       <div className="farm-divider">
         <div className="farm-divider-line" />
         <div className="farm-divider-text">⬆ Local Upgrade</div>
@@ -843,8 +1803,6 @@ function SwapScreen({ onBack, onViewAnnies }) {
   );
 }
 
-// ── Screen 4: Annie's Profile ────────────────────────────────────────────────
-
 function AnniesProfileScreen({ onBack }) {
   const passCount   = ANNIES.concerns.filter(c => c.status === 'pass').length;
   const cautionCount= ANNIES.concerns.filter(c => c.status === 'caution').length;
@@ -852,7 +1810,6 @@ function AnniesProfileScreen({ onBack }) {
     <div className="screen slide-in">
       <Header title="Ingredient Profile" onBack={onBack} showBack />
 
-      {/* Green verdict hero */}
       <div className="verdict-hero green-hero">
         <div style={{ flexShrink:0 }}>
           <div className="traffic-light-bg">
@@ -868,7 +1825,6 @@ function AnniesProfileScreen({ onBack }) {
         </div>
       </div>
 
-      {/* Score pills */}
       <div className="verdict-score">
         <div className="score-pill">
           <div className="score-pill-num" style={{ color:'var(--green)' }}>{ANNIES.score}</div>
@@ -884,7 +1840,6 @@ function AnniesProfileScreen({ onBack }) {
         </div>
       </div>
 
-      {/* Context note */}
       <div style={{ margin:'14px 16px 0', background:'var(--green-pale)', border:'1.5px solid rgba(39,174,96,0.2)', borderRadius:14, padding:'12px 14px', display:'flex', gap:10, alignItems:'flex-start' }}>
         <span style={{ fontSize:18 }}>💚</span>
         <div style={{ fontSize:12, color:'var(--text-mid)', lineHeight:1.55 }}>
@@ -893,18 +1848,15 @@ function AnniesProfileScreen({ onBack }) {
       </div>
 
       <div className="concerns-title">Category Breakdown</div>
-
       {ANNIES.concerns.map(c => <ConcernCard key={c.id} c={c} />)}
 
-      {/* One caution callout */}
       <div style={{ margin:'4px 16px 0', background:'var(--yellow-pale)', border:'1.5px solid rgba(212,172,13,0.25)', borderRadius:14, padding:'12px 14px', display:'flex', gap:10 }}>
         <span style={{ fontSize:18 }}>⚠️</span>
         <div style={{ fontSize:12, color:'var(--text-mid)', lineHeight:1.55 }}>
-          <strong style={{ color:'var(--yellow)' }}>One honest flag:</strong> Annie's contains organic wheat pasta. If gluten sensitivity is a concern in your household, we have gluten-free mac & cheese swaps on file.
+          <strong style={{ color:'var(--yellow)' }}>One honest flag:</strong> Annie's contains organic wheat pasta. If gluten sensitivity is a concern in your household, we have gluten-free mac &amp; cheese swaps on file.
         </div>
       </div>
 
-      {/* Find buttons */}
       <div style={{ margin:'16px 16px 0' }}>
         <div style={{ marginBottom:6, fontSize:12, fontWeight:700, color:'var(--text-light)', textTransform:'uppercase', letterSpacing:'0.7px' }}>Find Near You</div>
         <div className="store-btns">
@@ -917,27 +1869,98 @@ function AnniesProfileScreen({ onBack }) {
   );
 }
 
+function SettingsScreen({ onBack, onRetake }) {
+  const saved = loadOnboarding();
+  const stage = saved.stage ? STAGES[saved.stage - 1] : null;
+  const flags = saved.personalFlags || [];
+
+  return (
+    <div className="screen fade-in">
+      <Header title="Profile & Settings" onBack={onBack} showBack />
+
+      <div style={{ padding: '20px 0 0' }}>
+        <div style={{ padding: '0 16px 10px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--text-light)' }}>
+          Your Journey
+        </div>
+
+        {stage ? (
+          <div style={{ margin: '0 16px 16px', background: 'linear-gradient(135deg, var(--forest) 0%, var(--forest-light) 100%)', borderRadius: 16, padding: '18px 20px', color: 'white' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase', opacity: 0.65, marginBottom: 5 }}>Current Stage</div>
+            <div style={{ fontFamily: 'Playfair Display, serif', fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Stage {stage.num}: {stage.name}</div>
+            <div style={{ fontSize: 13, opacity: 0.75 }}>Score: {saved.score} out of 49</div>
+          </div>
+        ) : (
+          <div style={{ margin: '0 16px 16px', background: 'var(--cream-dark)', borderRadius: 16, padding: '16px', color: 'var(--text-light)', fontSize: 14 }}>
+            No assessment taken yet.
+          </div>
+        )}
+
+        {flags.length > 0 && (
+          <>
+            <div style={{ padding: '0 16px 10px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--text-light)' }}>
+              Personal Flags
+            </div>
+            <div style={{ margin: '0 16px 16px', background: '#E6F1FB', border: '1.5px solid rgba(12,68,124,0.15)', borderRadius: 14, padding: '14px 16px' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {flags.map(f => (
+                  <span key={f} style={{ background: 'white', border: '1.5px solid rgba(12,68,124,0.2)', color: '#0C447C', fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 20 }}>{f}</span>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        <div style={{ padding: '0 16px 10px', fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--text-light)' }}>
+          Actions
+        </div>
+        <div className="settings-row" onClick={onRetake}>
+          <span className="settings-row-label">🔄 Retake Assessment</span>
+          <span className="settings-row-value">›</span>
+        </div>
+        <div style={{ padding: '4px 16px', fontSize: 12, color: 'var(--text-light)', lineHeight: 1.5 }}>
+          Takes about 2 minutes. Your stage and personal flags will be updated.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── App ──────────────────────────────────────────────────────────────────────
 
 function App() {
-  // screen: 0=scanner, 1=verdict, 2=swap, 3=farm(=swap), 4=annies profile
+  const [onboardingDone, setOnboardingDone] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('bl_onboarding') || '{}');
+      return !!saved.onboardingComplete;
+    } catch { return false; }
+  });
+
   const [screen, setScreen] = useState(0);
 
-  // Which bottom-nav tab to highlight
   const activeTab = screen === 4 ? 2 : screen > 3 ? 3 : screen;
 
   const handleNav = (tab) => {
-    if (tab === 3) { setScreen(2); } // Farm tab scrolls to swap (farm section is there)
+    if (tab === 3) { setScreen(2); }
     else { setScreen(tab); }
   };
 
+  const handleRetake = () => {
+    localStorage.removeItem('bl_onboarding');
+    setOnboardingDone(false);
+  };
+
+  if (!onboardingDone) {
+    return <OnboardingFlow onComplete={() => setOnboardingDone(true)} />;
+  }
+
   const renderScreen = () => {
     switch(screen) {
-      case 0: return <ScannerScreen onScan={() => setScreen(1)} />;
+      case 0: return <ScannerScreen onScan={() => setScreen(1)} onSettings={() => setScreen(5)} />;
       case 1: return <VerdictScreen onSwap={() => setScreen(2)} onBack={() => setScreen(0)} />;
       case 2: return <SwapScreen onBack={() => setScreen(1)} onViewAnnies={() => setScreen(4)} />;
       case 3: return <SwapScreen onBack={() => setScreen(1)} onViewAnnies={() => setScreen(4)} />;
       case 4: return <AnniesProfileScreen onBack={() => setScreen(2)} />;
+      case 5: return <SettingsScreen onBack={() => setScreen(0)} onRetake={handleRetake} />;
       default: return null;
     }
   };
