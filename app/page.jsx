@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { getProfile, saveProfile, clearProfile } from '@/lib/userProfile';
+import { getProfile, saveProfile, clearProfile, getTotalScans } from '@/lib/userProfile';
 import { STAGES, getStageFromScore } from '@/lib/onboardingData';
 // Onboarding
 import WelcomeScreen from '@/components/onboarding/WelcomeScreen';
@@ -23,13 +23,9 @@ export default function Home() {
   const [mainTab, setMainTab] = useState('scan');
   const [lastScanResult, setLastScanResult] = useState(null);
 
+  // CHANGE 1: Always open to scanner — no onboarding gate on startup
   useEffect(() => {
-    const profile = getProfile();
-    if (profile?.onboardingComplete) {
-      setAppScreen('main');
-    } else {
-      setAppScreen('onboarding');
-    }
+    setAppScreen('main');
   }, []);
 
   function handleSkipOnboarding() {
@@ -90,6 +86,12 @@ export default function Home() {
     setMainTab('scan');
   }
 
+  // CHANGE 2: Called from VerdictScreen nudge banner or Profile "retake" link
+  function handleStartOnboarding() {
+    setOnboardingStep('welcome');
+    setAppScreen('onboarding');
+  }
+
   if (appScreen === 'loading') {
     return (
       <div className="app-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh' }}>
@@ -147,6 +149,7 @@ export default function Home() {
             scanResult={lastScanResult}
             onSeeSwaps={handleSeeSwaps}
             onBack={() => setMainTab('scan')}
+            onStartOnboarding={handleStartOnboarding}
           />
         )}
         {mainTab === 'swaps' && (
@@ -156,7 +159,10 @@ export default function Home() {
           />
         )}
         {mainTab === 'profile' && (
-          <ProfileScreen onRetakeAssessment={handleRetakeAssessment} />
+          <ProfileScreen
+            onRetakeAssessment={handleRetakeAssessment}
+            onStartOnboarding={handleStartOnboarding}
+          />
         )}
       </div>
       <BottomNav activeTab={mainTab} onTabChange={setMainTab} />

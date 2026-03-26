@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { getProfile } from '@/lib/userProfile';
+import { getProfile, getTotalScans, shouldShowNudge, markNudgeDismissed } from '@/lib/userProfile';
 import ConcernCard from './ConcernCard';
 
 const FLAG_KEYWORDS = {
@@ -17,11 +17,19 @@ const FLAG_KEYWORDS = {
   'Vegan': ['milk', 'egg', 'meat', 'beef', 'pork', 'chicken', 'fish', 'gelatin', 'honey', 'whey', 'casein', 'lard'],
 };
 
-export default function VerdictScreen({ scanResult, onSeeSwaps, onBack }) {
+export default function VerdictScreen({ scanResult, onSeeSwaps, onBack, onStartOnboarding }) {
   const [explanation, setExplanation] = useState(null);
   const [loadingExplanation, setLoadingExplanation] = useState(false);
+  const [nudgeMilestone, setNudgeMilestone] = useState(null);
   const profile = typeof window !== 'undefined' ? getProfile() : null;
   const userFlags = profile?.flags || [];
+
+  // CHANGE 2: Check whether to show a deferred onboarding nudge
+  useEffect(() => {
+    const total = getTotalScans();
+    const milestone = shouldShowNudge(total);
+    setNudgeMilestone(milestone);
+  }, [scanResult]);
 
   useEffect(() => {
     if (!scanResult) return;
@@ -141,9 +149,31 @@ export default function VerdictScreen({ scanResult, onSeeSwaps, onBack }) {
         </div>
       )}
 
-      <button onClick={onSeeSwaps} style={{ margin: '20px 16px 16px', width: 'calc(100% - 32px)', padding: 16, background: 'linear-gradient(135deg, #3A5A40, #4D7B55)', color: 'white', fontFamily: 'var(--font-inter), system-ui, sans-serif', fontSize: 15, fontWeight: 700, border: 'none', borderRadius: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: '0 4px 16px rgba(58,90,64,0.3)' }}>
+      <button onClick={onSeeSwaps} style={{ margin: '20px 16px 0', width: 'calc(100% - 32px)', padding: 16, background: 'linear-gradient(135deg, #3A5A40, #4D7B55)', color: 'white', fontFamily: 'var(--font-inter), system-ui, sans-serif', fontSize: 15, fontWeight: 700, border: 'none', borderRadius: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: '0 4px 16px rgba(58,90,64,0.3)' }}>
         See Cleaner Swaps →
       </button>
+
+      {/* CHANGE 2: Deferred onboarding nudge banner */}
+      {nudgeMilestone && (
+        <div style={{ margin: '12px 16px 16px', background: 'var(--cream-dark)', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10, border: '1.5px solid rgba(212,135,42,0.3)' }}>
+          <button
+            onClick={() => { if (onStartOnboarding) onStartOnboarding(); }}
+            style={{ flex: 1, background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', padding: 0, minHeight: 44, display: 'flex', alignItems: 'center' }}
+          >
+            <span style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.4 }}>
+              <span style={{ fontWeight: 700, color: 'var(--amber)' }}>Want results tailored to your journey?</span>
+              {' '}Take our 2-min assessment →
+            </span>
+          </button>
+          <button
+            onClick={() => { markNudgeDismissed(nudgeMilestone); setNudgeMilestone(null); }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)', fontSize: 18, lineHeight: 1, padding: '4px 4px', minHeight: 44, minWidth: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }

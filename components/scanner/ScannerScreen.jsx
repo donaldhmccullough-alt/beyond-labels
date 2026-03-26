@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { getScanUsage, incrementScan, getScanHistory, addScanToHistory } from '@/lib/userProfile';
+import { getScanUsage, incrementScan, getScanHistory, addScanToHistory, incrementTotalScan } from '@/lib/userProfile';
 import PaywallModal from './PaywallModal';
 
 export default function ScannerScreen({ onScanResult }) {
@@ -14,7 +14,7 @@ export default function ScannerScreen({ onScanResult }) {
   const videoRef = useRef(null);
   const readerRef = useRef(null);
   const streamRef = useRef(null);
-  const FREE_SCAN_LIMIT = 5;
+  const FREE_SCAN_LIMIT = 15;
 
   useEffect(() => { setScanUsage(getScanUsage()); setHistory(getScanHistory()); }, []);
 
@@ -50,6 +50,7 @@ export default function ScannerScreen({ onScanResult }) {
       });
       const data = await res.json();
       incrementScan();
+      incrementTotalScan();
       setScanUsage(getScanUsage());
       addScanToHistory({ productName: data.productName || barcode, verdict: data.verdict, timestamp: new Date().toISOString(), barcode });
       setHistory(getScanHistory());
@@ -126,9 +127,12 @@ export default function ScannerScreen({ onScanResult }) {
       <button onClick={scanning ? stopCamera : startCamera} style={{ margin: '16px 16px 0', width: 'calc(100% - 32px)', height: 54, background: scanning ? 'linear-gradient(135deg, #3A5A40, #4D7B55)' : 'linear-gradient(135deg, #D4872A, #F0A83C)', color: 'white', fontFamily: 'var(--font-inter), system-ui, sans-serif', fontSize: 17, fontWeight: 700, border: 'none', borderRadius: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, transition: 'all 0.15s' }}>
         {scanning ? 'Stop Scanning' : 'Tap to Scan'}
       </button>
-      <p style={{ textAlign: 'center', marginTop: 8, fontSize: 12, color: 'var(--text-light)', fontWeight: 500 }}>
-        {scanUsage.scanCount} of {FREE_SCAN_LIMIT} free scans used this month
-      </p>
+      {/* CHANGE 4: Only show counter after scan 3, display remaining not used */}
+      {scanUsage.scanCount > 3 && (
+        <p style={{ textAlign: 'center', marginTop: 8, fontSize: 12, color: 'var(--text-light)', fontWeight: 500 }}>
+          {Math.max(FREE_SCAN_LIMIT - scanUsage.scanCount, 0)} free scans remaining this month
+        </p>
+      )}
       {history.length > 0 && (
         <div style={{ margin: '16px 16px 0', background: 'var(--cream-dark)', borderRadius: 14, padding: 16 }}>
           <p style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: 15, fontWeight: 600, color: 'var(--text-dark)', marginBottom: 10 }}>Recently Scanned</p>
