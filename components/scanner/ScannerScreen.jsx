@@ -1,9 +1,10 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { getScanUsage, incrementScan, getScanHistory, addScanToHistory, incrementTotalScan } from '@/lib/userProfile';
+import { logScanToSupabase, getSupabaseScanCountThisMonth, getSupabaseScanHistory } from '@/lib/auth';
 import PaywallModal from './PaywallModal';
 
-export default function ScannerScreen({ onScanResult }) {
+export default function ScannerScreen({ user, onScanResult }) {
   const [scanning, setScanning] = useState(false);
   const [scanUsage, setScanUsage] = useState({ scanCount: 0, resetDate: '' });
   const [history, setHistory] = useState([]);
@@ -16,7 +17,27 @@ export default function ScannerScreen({ onScanResult }) {
   const streamRef = useRef(null);
   const FREE_SCAN_LIMIT = 15;
 
-  useEffect(() => { setScanUsage(getScanUsage()); setHistory(getScanHistory()); }, []);
+  useEffect(() => {
+    async function loadUsage() {
+      if (user?.id) {
+        // Signed-in: fetch scan count + history from Supabase
+        const count = await getSupabaseScanCountThisMonth(user.id);
+        setScanUsage({ scanCount: count, resetDate: new Date().toISOString().slice(0, 7) });
+        const sbHistory = await getSupabaseScanHistory(user.id, 20);
+        setHistory(sbHistory.map(r => ({
+          productName: r.product_name,
+          verdict: r.verdict,
+          timestamp: r.scanned_at,
+          barcode: r.barcode,
+        })));
+      } else {
+        // Anonymous: use localStorage
+        setScanUsage(getScanUsage());
+        setHistory(getScanHistory());
+      }
+    }
+    loadUsage();
+  }, [user]);
 
   async function startCamera() {
     if (scanUsage.scanCount >= FREE_SCAN_LIMIT) { setShowPaywall(true); return; }
@@ -49,11 +70,25 @@ export default function ScannerScreen({ onScanResult }) {
         body: JSON.stringify({ barcode }),
       });
       const data = await res.json();
-      incrementScan();
-      incrementTotalScan();
-      setScanUsage(getScanUsage());
-      addScanToHistory({ productName: data.productName || barcode, verdict: data.verdict, timestamp: new Date().toISOString(), barcode });
-      setHistory(getScanHistory());
+      incrementTotalScan(); // always increment lifetime total for nudge logic
+
+      if (user?.id) {
+        // Signed-in: log to Supabase and refresh count from there
+        await logScanToSupabase(user.id, { ...data, barcode });
+        const count = await getSupabaseScanCountThisMonth(user.id);
+        setScanUsage({ scanCount: count, resetDate: new Date().toISOString().slice(0, 7) });
+        const sbHistory = await getSupabaseScanHistory(user.id, 20);
+        setHistory(sbHistory.map(r => ({
+          productName: r.product_name, verdict: r.verdict,
+          timestamp: r.scanned_at, barcode: r.barcode,
+        })));
+      } else {
+        // Anonymous: localStorage only
+        incrementScan();
+        setScanUsage(getScanUsage());
+        addScanToHistory({ productName: data.productName || barcode, verdict: data.verdict, timestamp: new Date().toISOString(), barcode });
+        setHistory(getScanHistory());
+      }
       onScanResult(data);
     } catch (err) { console.error('Scan error:', err); } finally { setScanning(false); }
   }

@@ -1,20 +1,57 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { getProfile, getScanUsage, clearProfile } from '@/lib/userProfile';
+import { signOut, getSupabaseScanCountThisMonth, getSupabaseScanHistory } from '@/lib/auth';
 import { STAGES } from '@/lib/onboardingData';
 
-const FREE_SCAN_LIMIT = 15; // CHANGE 3 & 6
+const FREE_SCAN_LIMIT = 15;
 
-export default function ProfileScreen({ onRetakeAssessment, onStartOnboarding }) {
-  const [profile, setProfile] = useState(undefined); // undefined = loading, null = no profile
+export default function ProfileScreen({ user, onRetakeAssessment, onStartOnboarding, onSignIn }) {
+  const [profile, setProfile] = useState(undefined);
   const [scanUsage, setScanUsage] = useState({ scanCount: 0 });
+  const [scanHistory, setScanHistory] = useState([]);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
-    setProfile(getProfile()); // may be null if never onboarded
-    setScanUsage(getScanUsage());
-  }, []);
+    async function load() {
+      setProfile(getProfile()); // local profile (stage/flags)
+      if (user?.id) {
+        const count = await getSupabaseScanCountThisMonth(user.id);
+        setScanUsage({ scanCount: count });
+        const history = await getSupabaseScanHistory(user.id, 20);
+        setScanHistory(history.map(r => ({
+          productName: r.product_name,
+          verdict: r.verdict,
+          timestamp: r.scanned_at,
+          barcode: r.barcode,
+        })));
+      } else {
+        setScanUsage(getScanUsage());
+        const { getScanHistory } = await import('@/lib/userProfile');
+        setScanHistory(getScanHistory().slice(0, 10));
+      }
+    }
+    load();
+  }, [user]);
 
-  // Still loading
+  async function handleSignOut() {
+    setSigningOut(true);
+    await signOut();
+    clearProfile();
+    setSigningOut(false);
+  }
+
+  function formatTime(iso) {
+    const d = new Date(iso), now = new Date();
+    const diffMin = Math.floor((now - d) / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return diffMin + 'm ago';
+    const diffHr = Math.floor(diffMin / 60);
+    return diffHr < 24 ? diffHr + 'h ago' : d.toLocaleDateString();
+  }
+
+  const vc = { red: '#C0392B', yellow: '#D4AC0D', green: '#27AE60', unverified: '#9A8260' };
+
   if (profile === undefined) {
     return (
       <div style={{ minHeight: '100dvh', background: 'var(--cream)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -29,11 +66,8 @@ export default function ProfileScreen({ onRetakeAssessment, onStartOnboarding })
   const scanPercent = Math.min((scanUsage.scanCount / FREE_SCAN_LIMIT) * 100, 100);
   const scansRemaining = Math.max(FREE_SCAN_LIMIT - scanUsage.scanCount, 0);
   const hasAssessment = !!profile?.onboardingComplete;
-
-  // Stage X → Stage X+1 coaching note
-  const nextStage = stage && stageIndex >= 0 && stageIndex < STAGES.length - 1
-    ? STAGES[stageIndex + 1]
-    : null;
+  const nextStage = stage && stageIndex >= 0 && stageIndex < STAGES.length - 1 ? STAGES[stageIndex + 1] : null;
+  const avatarLetter = user?.email ? user.email[0].toUpperCase() : null;
 
   return (
     <div style={{ background: 'var(--cream)', minHeight: '100dvh', paddingBottom: 40 }}>
@@ -46,7 +80,46 @@ export default function ProfileScreen({ onRetakeAssessment, onStartOnboarding })
 
       <div style={{ padding: '20px 20px 0' }}>
 
-        {/* ── CHANGE 6: Your Journey section ───────────────────────────── */}
+        {/* ── Auth section ─────────────────────────────────────────────── */}
+        {user ? (
+          /* Signed-in user card */
+          <div style={{ background: 'var(--cream-dark)', borderRadius: 16, padding: 16, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'var(--amber)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <span style={{ color: 'white', fontSize: 20, fontWeight: 700 }}>{avatarLetter}</span>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-dark)', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {user.email}
+              </p>
+              <p style={{ fontSize: 12, color: 'var(--forest)', fontWeight: 600 }}>✓ Synced across devices</p>
+            </div>
+            <button
+              onClick={handleSignOut}
+              disabled={signingOut}
+              style={{ background: 'none', border: '1px solid var(--cream-dark)', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--text-light)', minHeight: 36, whiteSpace: 'nowrap' }}
+            >
+              {signingOut ? '...' : 'Sign Out'}
+            </button>
+          </div>
+        ) : (
+          /* Anonymous sign-in nudge */
+          <div style={{ background: 'linear-gradient(135deg, #FFF8F0, #FAF0E0)', borderRadius: 16, padding: 16, marginBottom: 16, border: '1.5px solid rgba(212,135,42,0.2)' }}>
+            <p style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: 15, fontWeight: 700, color: 'var(--text-dark)', marginBottom: 4 }}>
+              Save your history
+            </p>
+            <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.5, marginBottom: 14 }}>
+              Create a free account to sync your stage, scan history, and personal flags across all your devices.
+            </p>
+            <button
+              onClick={onSignIn}
+              style={{ width: '100%', height: 46, background: 'var(--amber)', color: 'white', border: 'none', borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: 'pointer' }}
+            >
+              Sign In / Create Account
+            </button>
+          </div>
+        )}
+
+        {/* ── Your Journey ─────────────────────────────────────────────── */}
         <div style={{ background: 'var(--cream-dark)', borderRadius: 16, padding: 16, marginBottom: 16 }}>
           <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 10 }}>
             Your Journey
@@ -54,12 +127,9 @@ export default function ProfileScreen({ onRetakeAssessment, onStartOnboarding })
 
           {hasAssessment && stage ? (
             <>
-              {/* Stage name */}
               <p style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: 20, fontWeight: 700, color: 'var(--amber)', marginBottom: 14 }}>
                 {stage.name}
               </p>
-
-              {/* Continuum graphic */}
               <div style={{ position: 'relative', padding: '0 6px', marginBottom: 14 }}>
                 <div style={{ position: 'absolute', top: 10, left: 6, right: 6, height: 2, background: 'white' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', position: 'relative', zIndex: 1 }}>
@@ -76,8 +146,6 @@ export default function ProfileScreen({ onRetakeAssessment, onStartOnboarding })
                   })}
                 </div>
               </div>
-
-              {/* Pro coaching note */}
               {nextStage && (
                 <p style={{ fontSize: 12, color: 'var(--text-light)', lineHeight: 1.5, fontStyle: 'italic', borderTop: '1px solid rgba(0,0,0,0.07)', paddingTop: 10 }}>
                   Pro members get weekly coaching to move from <strong style={{ color: 'var(--text-mid)' }}>{stage.name}</strong> to <strong style={{ color: 'var(--text-mid)' }}>{nextStage.name}</strong>.
@@ -85,7 +153,6 @@ export default function ProfileScreen({ onRetakeAssessment, onStartOnboarding })
               )}
             </>
           ) : (
-            /* No assessment taken */
             <>
               <p style={{ fontSize: 14, color: 'var(--text-mid)', lineHeight: 1.55, marginBottom: 14 }}>
                 Take our 2-minute assessment to discover your food journey stage and get results tailored to where you are.
@@ -104,31 +171,20 @@ export default function ProfileScreen({ onRetakeAssessment, onStartOnboarding })
         {flags.length > 0 && (
           <div style={{ background: 'var(--cream-dark)', borderRadius: 16, padding: 16, marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                Personal Flags
-              </p>
-              <button
-                onClick={onRetakeAssessment}
-                style={{ background: 'none', border: 'none', color: 'var(--amber)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
-              >
-                Edit
-              </button>
+              <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '1px' }}>Personal Flags</p>
+              <button onClick={onRetakeAssessment} style={{ background: 'none', border: 'none', color: 'var(--amber)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Edit</button>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {flags.map(flag => (
-                <span key={flag} style={{ background: 'var(--forest)', color: 'white', borderRadius: 20, padding: '5px 12px', fontSize: 12, fontWeight: 600 }}>
-                  {flag}
-                </span>
+                <span key={flag} style={{ background: 'var(--forest)', color: 'white', borderRadius: 20, padding: '5px 12px', fontSize: 12, fontWeight: 600 }}>{flag}</span>
               ))}
             </div>
           </div>
         )}
 
-        {/* ── Scan Usage — CHANGE 6: 15/month ──────────────────────────── */}
+        {/* ── Scan Usage ───────────────────────────────────────────────── */}
         <div style={{ background: 'var(--cream-dark)', borderRadius: 16, padding: 16, marginBottom: 16 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 6 }}>
-            Scan Usage
-          </p>
+          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 6 }}>Scan Usage</p>
           <p style={{ fontSize: 15, color: 'var(--text-dark)', fontWeight: 600, marginBottom: 10 }}>
             {scanUsage.scanCount} of {FREE_SCAN_LIMIT} free scans used this month
           </p>
@@ -140,7 +196,32 @@ export default function ProfileScreen({ onRetakeAssessment, onStartOnboarding })
               Only {scansRemaining} free scan{scansRemaining === 1 ? '' : 's'} left this month.
             </p>
           )}
+          {!user && (
+            <p style={{ marginTop: 8, fontSize: 12, color: 'var(--text-light)', lineHeight: 1.4 }}>
+              💡 <button onClick={onSignIn} style={{ background: 'none', border: 'none', color: 'var(--amber)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>Sign in</button> to save your scan history across devices.
+            </p>
+          )}
         </div>
+
+        {/* ── Scan History ─────────────────────────────────────────────── */}
+        {scanHistory.length > 0 && (
+          <div style={{ background: 'var(--cream-dark)', borderRadius: 16, padding: 16, marginBottom: 16 }}>
+            <p style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: 15, fontWeight: 600, color: 'var(--text-dark)', marginBottom: 10 }}>
+              Scan History {user ? '(last 20)' : '(last 10)'}
+            </p>
+            {scanHistory.map((item, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 10, paddingBottom: 10, borderBottom: i < scanHistory.length - 1 ? '1px solid rgba(0,0,0,0.07)' : 'none' }}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: vc[item.verdict] || '#9A8260' }} />
+                <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text-dark)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {item.productName}
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--text-light)', flexShrink: 0 }}>
+                  {formatTime(item.timestamp)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* ── Upgrade CTA ───────────────────────────────────────────────── */}
         <button
@@ -150,7 +231,6 @@ export default function ProfileScreen({ onRetakeAssessment, onStartOnboarding })
           Upgrade to Pro — $9.99/mo
         </button>
 
-        {/* ── Retake ────────────────────────────────────────────────────── */}
         <button
           onClick={onRetakeAssessment}
           style={{ width: '100%', background: 'none', border: 'none', color: 'var(--text-mid)', fontSize: 14, cursor: 'pointer', padding: '12px 0', minHeight: 44, textDecoration: 'underline' }}
