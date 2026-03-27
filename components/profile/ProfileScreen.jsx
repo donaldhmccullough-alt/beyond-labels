@@ -36,8 +36,12 @@ export default function ProfileScreen({ user, onRetakeAssessment, onStartOnboard
 
   async function handleSignOut() {
     setSigningOut(true);
-    await signOut();
-    clearProfile();
+    // Wipe displayed data immediately — don't wait for the effect re-run.
+    // This eliminates any flash of previous user's history during the transition.
+    setScanHistory([]);
+    setScanUsage({ scanCount: 0 });
+    await signOut();    // clears Supabase session + all scan localStorage keys
+    clearProfile();     // clears bl_profile (stage/flags)
     setSigningOut(false);
   }
 

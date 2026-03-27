@@ -19,8 +19,13 @@ export default function ScannerScreen({ user, onScanResult }) {
 
   useEffect(() => {
     async function loadUsage() {
+      // Reset immediately on every user change — prevents stale data flash
+      // during the async Supabase fetch or when switching between users.
+      setScanUsage({ scanCount: 0, resetDate: '' });
+      setHistory([]);
+
       if (user?.id) {
-        // Signed-in: fetch scan count + history from Supabase
+        // Signed-in: source of truth is Supabase, never localStorage
         const count = await getSupabaseScanCountThisMonth(user.id);
         setScanUsage({ scanCount: count, resetDate: new Date().toISOString().slice(0, 7) });
         const sbHistory = await getSupabaseScanHistory(user.id, 20);
@@ -31,7 +36,7 @@ export default function ScannerScreen({ user, onScanResult }) {
           barcode: r.barcode,
         })));
       } else {
-        // Anonymous: use localStorage
+        // Anonymous: source of truth is localStorage (scan history cleared on sign-out)
         setScanUsage(getScanUsage());
         setHistory(getScanHistory());
       }
