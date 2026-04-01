@@ -1,8 +1,14 @@
 'use client';
+// ─────────────────────────────────────────────────────────────────────────────
+// MVP_MODE: set to false to restore personal flag badges and quiz nudge banners
+// ─────────────────────────────────────────────────────────────────────────────
+const MVP_MODE = true;
+
 import { useState, useEffect } from 'react';
 import { getProfile, getTotalScans, shouldShowNudge, markNudgeDismissed } from '@/lib/userProfile';
 import ConcernCard from './ConcernCard';
 
+// MVP_MODE: FLAG_KEYWORDS kept in place for when personal flags are re-enabled
 const FLAG_KEYWORDS = {
   'Gluten / celiac': ['wheat', 'gluten', 'barley', 'rye', 'malt', 'spelt', 'kamut'],
   'Dairy / lactose': ['milk', 'lactose', 'whey', 'casein', 'cheese', 'butter', 'cream', 'dairy', 'lactalbumin'],
@@ -20,12 +26,16 @@ const FLAG_KEYWORDS = {
 export default function VerdictScreen({ scanResult, onSeeSwaps, onBack, onStartOnboarding }) {
   const [explanation, setExplanation] = useState(null);
   const [loadingExplanation, setLoadingExplanation] = useState(false);
+
+  // MVP_MODE: nudge milestone tracking kept but not rendered
   const [nudgeMilestone, setNudgeMilestone] = useState(null);
+
   const profile = typeof window !== 'undefined' ? getProfile() : null;
   const userFlags = profile?.flags || [];
 
-  // CHANGE 2: Check whether to show a deferred onboarding nudge
+  // MVP_MODE: nudge logic kept intact, just not shown in UI
   useEffect(() => {
+    if (MVP_MODE) return; // skip in MVP
     const total = getTotalScans();
     const milestone = shouldShowNudge(total);
     setNudgeMilestone(milestone);
@@ -71,6 +81,7 @@ export default function VerdictScreen({ scanResult, onSeeSwaps, onBack, onStartO
     byCategory[f.category].push(f);
   });
 
+  // MVP_MODE: personal flag detection kept but not rendered
   const ingredientsLower = (ingredients || '').toLowerCase();
   const triggeredPersonalFlags = userFlags.filter(flag => {
     const keywords = FLAG_KEYWORDS[flag] || [];
@@ -85,12 +96,14 @@ export default function VerdictScreen({ scanResult, onSeeSwaps, onBack, onStartO
 
   return (
     <div style={{ background: 'var(--cream)', minHeight: '100dvh' }}>
+      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px 12px', background: 'var(--cream)', borderBottom: '1px solid var(--cream-dark)' }}>
         <button onClick={onBack} style={{ color: 'var(--amber)', fontSize: 14, fontWeight: 600, cursor: 'pointer', background: 'none', border: 'none', padding: '4px 0', minHeight: 44 }}>← Scanner</button>
         <span style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: 18, fontWeight: 700 }}>Verdict</span>
         <div style={{ width: 60 }} />
       </div>
 
+      {/* Traffic light + product name */}
       <div style={{ margin: '16px 16px 0', borderRadius: 20, padding: 20, display: 'flex', alignItems: 'center', gap: 16, background: verdictBg[verdict] || verdictBg.unverified, border: '1.5px solid ' + (verdictColors[verdict] || '#ccc') + '33' }}>
         <div style={{ background: '#2C2C2C', borderRadius: 30, padding: '8px 5px', display: 'flex', flexDirection: 'column', gap: 5, boxShadow: '0 4px 12px rgba(0,0,0,0.3)', flexShrink: 0 }}>
           {tl.map((dot, i) => (
@@ -108,9 +121,11 @@ export default function VerdictScreen({ scanResult, onSeeSwaps, onBack, onStartO
         </div>
       </div>
 
-      {triggeredPersonalFlags.length > 0 && (
+      {/* MVP_MODE: personal flag badges hidden.
+          To restore: remove the MVP_MODE check and uncomment this block.
+      {!MVP_MODE && triggeredPersonalFlags.length > 0 && (
         <div style={{ margin: '12px 16px 0', background: 'var(--blue-flag-bg)', borderRadius: 12, padding: '12px 14px' }}>
-          <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--blue-flag-text)', marginBottom: 8 }}>Personal Flags Detected</p>
+          <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--blue-flag-text)', marginBottom: 8 }}>👤 Your personal flags:</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {triggeredPersonalFlags.map(flag => (
               <span key={flag} style={{ background: 'white', borderRadius: 20, padding: '4px 10px', fontSize: 12, fontWeight: 600, color: 'var(--blue-flag-text)', border: '1px solid rgba(12,68,124,0.2)' }}>
@@ -120,7 +135,9 @@ export default function VerdictScreen({ scanResult, onSeeSwaps, onBack, onStartO
           </div>
         </div>
       )}
+      */}
 
+      {/* AI summary */}
       <div style={{ margin: '12px 16px 0', background: 'var(--cream-dark)', borderRadius: 16, padding: 16, minHeight: 72 }}>
         {loadingExplanation ? (
           <div>
@@ -134,6 +151,7 @@ export default function VerdictScreen({ scanResult, onSeeSwaps, onBack, onStartO
         )}
       </div>
 
+      {/* Concern cards */}
       {Object.keys(byCategory).length > 0 && (
         <div style={{ marginTop: 16 }}>
           <p style={{ margin: '0 16px 10px', fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: 18, fontWeight: 700, color: 'var(--text-dark)' }}>Concerns</p>
@@ -149,31 +167,29 @@ export default function VerdictScreen({ scanResult, onSeeSwaps, onBack, onStartO
         </div>
       )}
 
+      {/* Swaps CTA */}
       <button onClick={onSeeSwaps} style={{ margin: '20px 16px 0', width: 'calc(100% - 32px)', padding: 16, background: 'linear-gradient(135deg, #3A5A40, #4D7B55)', color: 'white', fontFamily: 'var(--font-inter), system-ui, sans-serif', fontSize: 15, fontWeight: 700, border: 'none', borderRadius: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: '0 4px 16px rgba(58,90,64,0.3)' }}>
         See Cleaner Swaps →
       </button>
 
-      {/* CHANGE 2: Deferred onboarding nudge banner */}
-      {nudgeMilestone && (
+      {/* MVP_MODE: onboarding nudge banner hidden.
+          To restore: remove the MVP_MODE check in the useEffect above and
+          uncomment this block.
+      {!MVP_MODE && nudgeMilestone && (
         <div style={{ margin: '12px 16px 16px', background: 'var(--cream-dark)', borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10, border: '1.5px solid rgba(212,135,42,0.3)' }}>
-          <button
-            onClick={() => { if (onStartOnboarding) onStartOnboarding(); }}
-            style={{ flex: 1, background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', padding: 0, minHeight: 44, display: 'flex', alignItems: 'center' }}
-          >
+          <button onClick={() => { if (onStartOnboarding) onStartOnboarding(); }} style={{ flex: 1, background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', padding: 0, minHeight: 44, display: 'flex', alignItems: 'center' }}>
             <span style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.4 }}>
               <span style={{ fontWeight: 700, color: 'var(--amber)' }}>Want results tailored to your journey?</span>
               {' '}Take our 2-min assessment →
             </span>
           </button>
-          <button
-            onClick={() => { markNudgeDismissed(nudgeMilestone); setNudgeMilestone(null); }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)', fontSize: 18, lineHeight: 1, padding: '4px 4px', minHeight: 44, minWidth: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-            aria-label="Dismiss"
-          >
-            ✕
-          </button>
+          <button onClick={() => { markNudgeDismissed(nudgeMilestone); setNudgeMilestone(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)', fontSize: 18, lineHeight: 1, padding: '4px 4px', minHeight: 44, minWidth: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }} aria-label="Dismiss">✕</button>
         </div>
       )}
+      */}
+
+      {/* Bottom padding */}
+      <div style={{ height: 24 }} />
     </div>
   );
 }

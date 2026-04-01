@@ -1,4 +1,9 @@
 'use client';
+// ─────────────────────────────────────────────────────────────────────────────
+// MVP_MODE: set to false to restore Pro upgrade CTA and Pro coaching mentions
+// ─────────────────────────────────────────────────────────────────────────────
+const MVP_MODE = true;
+
 import { useState, useEffect } from 'react';
 import { getProfile, getScanUsage, clearProfile } from '@/lib/userProfile';
 import { signOut, getSupabaseScanCountThisMonth, getSupabaseScanHistory } from '@/lib/auth';
@@ -150,13 +155,17 @@ export default function ProfileScreen({ user, onRetakeAssessment, onStartOnboard
                   })}
                 </div>
               </div>
-              {nextStage && (
+              {/* MVP_MODE: Pro coaching note hidden.
+                  To restore: remove MVP_MODE check below.
+              {!MVP_MODE && nextStage && (
                 <p style={{ fontSize: 12, color: 'var(--text-light)', lineHeight: 1.5, fontStyle: 'italic', borderTop: '1px solid rgba(0,0,0,0.07)', paddingTop: 10 }}>
                   Pro members get weekly coaching to move from <strong style={{ color: 'var(--text-mid)' }}>{stage.name}</strong> to <strong style={{ color: 'var(--text-mid)' }}>{nextStage.name}</strong>.
                 </p>
               )}
+              */}
             </>
           ) : (
+            /* MVP_MODE: simplified — just show the CTA, no Pro mention */
             <>
               <p style={{ fontSize: 14, color: 'var(--text-mid)', lineHeight: 1.55, marginBottom: 14 }}>
                 Take our 2-minute assessment to discover your food journey stage and get results tailored to where you are.
@@ -228,11 +237,22 @@ export default function ProfileScreen({ user, onRetakeAssessment, onStartOnboard
         )}
 
         {/* ── Upgrade CTA ───────────────────────────────────────────────── */}
+        {/* MVP_MODE: active upgrade button hidden; showing disabled Coming Soon.
+            To restore: remove MVP_MODE check, restore the amber button below.
+        {!MVP_MODE && (
+          <button
+            onClick={() => window.location.href = '/subscribe'}
+            style={{ width: '100%', height: 52, background: 'var(--amber)', color: 'white', fontFamily: 'var(--font-inter), system-ui, sans-serif', fontSize: 15, fontWeight: 700, border: 'none', borderRadius: 14, cursor: 'pointer', marginBottom: 12 }}
+          >
+            Upgrade to Pro — $9.99/mo
+          </button>
+        )}
+        */}
         <button
-          onClick={() => window.location.href = '/subscribe'}
-          style={{ width: '100%', height: 52, background: 'var(--amber)', color: 'white', fontFamily: 'var(--font-inter), system-ui, sans-serif', fontSize: 15, fontWeight: 700, border: 'none', borderRadius: 14, cursor: 'pointer', marginBottom: 12 }}
+          disabled
+          style={{ width: '100%', height: 52, background: '#D5CFC8', color: '#A09A93', fontFamily: 'var(--font-inter), system-ui, sans-serif', fontSize: 15, fontWeight: 700, border: 'none', borderRadius: 14, cursor: 'not-allowed', marginBottom: 12, opacity: 0.7 }}
         >
-          Upgrade to Pro — $9.99/mo
+          Pro — Coming Soon
         </button>
 
         <button

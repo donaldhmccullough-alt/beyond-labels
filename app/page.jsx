@@ -1,4 +1,9 @@
 'use client';
+// ─────────────────────────────────────────────────────────────────────────────
+// MVP_MODE: set to false to restore FlagsScreen in onboarding flow
+// ─────────────────────────────────────────────────────────────────────────────
+const MVP_MODE = true;
+
 import { useState, useEffect } from 'react';
 import { getProfile, saveProfile, clearProfile } from '@/lib/userProfile';
 import { STAGES, getStageFromScore } from '@/lib/onboardingData';
@@ -72,7 +77,27 @@ export default function Home() {
   }
 
   function handleCalculatingDone() { setOnboardingStep('reveal'); }
-  function handleRevealNext() { setOnboardingStep('flags'); }
+  function handleRevealNext() {
+    // MVP_MODE: skip FlagsScreen, go straight to launch
+    if (MVP_MODE) {
+      const stage = getStageFromScore(assessmentScore);
+      const profile = { stage, score: assessmentScore, flags: [], onboardingComplete: true };
+      saveProfile(profile);
+      if (user && supabase) {
+        supabase.from('profiles').upsert({
+          id: user.id,
+          stage: stage.stage,
+          score: assessmentScore,
+          personal_flags: [],
+          onboarding_complete: true,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+      }
+      setOnboardingStep('launch');
+      return;
+    }
+    setOnboardingStep('flags');
+  }
 
   function handleFlagsComplete(selectedFlags) {
     const stage = getStageFromScore(assessmentScore);

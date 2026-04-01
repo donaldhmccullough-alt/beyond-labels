@@ -1,7 +1,13 @@
 'use client';
+// ─────────────────────────────────────────────────────────────────────────────
+// MVP_MODE: set to false to restore scan limits and paywall
+// ─────────────────────────────────────────────────────────────────────────────
+const MVP_MODE = true;
+
 import { useState, useEffect, useRef } from 'react';
 import { getScanUsage, incrementScan, getScanHistory, addScanToHistory, incrementTotalScan } from '@/lib/userProfile';
 import { logScanToSupabase, getSupabaseScanCountThisMonth, getSupabaseScanHistory } from '@/lib/auth';
+// MVP_MODE: PaywallModal imported but not shown
 import PaywallModal from './PaywallModal';
 
 export default function ScannerScreen({ user, onScanResult }) {
@@ -19,13 +25,10 @@ export default function ScannerScreen({ user, onScanResult }) {
 
   useEffect(() => {
     async function loadUsage() {
-      // Reset immediately on every user change — prevents stale data flash
-      // during the async Supabase fetch or when switching between users.
       setScanUsage({ scanCount: 0, resetDate: '' });
       setHistory([]);
 
       if (user?.id) {
-        // Signed-in: source of truth is Supabase, never localStorage
         const count = await getSupabaseScanCountThisMonth(user.id);
         setScanUsage({ scanCount: count, resetDate: new Date().toISOString().slice(0, 7) });
         const sbHistory = await getSupabaseScanHistory(user.id, 20);
@@ -36,7 +39,6 @@ export default function ScannerScreen({ user, onScanResult }) {
           barcode: r.barcode,
         })));
       } else {
-        // Anonymous: source of truth is localStorage (scan history cleared on sign-out)
         setScanUsage(getScanUsage());
         setHistory(getScanHistory());
       }
@@ -45,7 +47,8 @@ export default function ScannerScreen({ user, onScanResult }) {
   }, [user]);
 
   async function startCamera() {
-    if (scanUsage.scanCount >= FREE_SCAN_LIMIT) { setShowPaywall(true); return; }
+    // MVP_MODE: paywall check disabled — unlimited scans
+    if (!MVP_MODE && scanUsage.scanCount >= FREE_SCAN_LIMIT) { setShowPaywall(true); return; }
     setScanning(true); setCameraError(false);
     try {
       const { BrowserMultiFormatReader } = await import('@zxing/library');
@@ -75,10 +78,9 @@ export default function ScannerScreen({ user, onScanResult }) {
         body: JSON.stringify({ barcode }),
       });
       const data = await res.json();
-      incrementTotalScan(); // always increment lifetime total for nudge logic
+      incrementTotalScan();
 
       if (user?.id) {
-        // Signed-in: log to Supabase and refresh count from there
         await logScanToSupabase(user.id, { ...data, barcode });
         const count = await getSupabaseScanCountThisMonth(user.id);
         setScanUsage({ scanCount: count, resetDate: new Date().toISOString().slice(0, 7) });
@@ -88,7 +90,6 @@ export default function ScannerScreen({ user, onScanResult }) {
           timestamp: r.scanned_at, barcode: r.barcode,
         })));
       } else {
-        // Anonymous: localStorage only
         incrementScan();
         setScanUsage(getScanUsage());
         addScanToHistory({ productName: data.productName || barcode, verdict: data.verdict, timestamp: new Date().toISOString(), barcode });
@@ -101,7 +102,8 @@ export default function ScannerScreen({ user, onScanResult }) {
   async function handleManualSubmit(e) {
     e.preventDefault();
     if (!manualBarcode.trim()) return;
-    if (scanUsage.scanCount >= FREE_SCAN_LIMIT) { setShowPaywall(true); return; }
+    // MVP_MODE: paywall check disabled
+    if (!MVP_MODE && scanUsage.scanCount >= FREE_SCAN_LIMIT) { setShowPaywall(true); return; }
     setShowManual(false);
     await processBarcode(manualBarcode.trim());
     setManualBarcode('');
@@ -124,6 +126,7 @@ export default function ScannerScreen({ user, onScanResult }) {
         <span style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: 20, fontWeight: 700, color: 'var(--text-dark)' }}>Beyond Labels</span>
         <button onClick={() => setShowManual(!showManual)} style={{ background: 'var(--cream-dark)', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--text-mid)', minHeight: 36 }}>Manual</button>
       </div>
+
       {showManual && (
         <form onSubmit={handleManualSubmit} style={{ padding: '12px 16px', background: 'var(--cream-dark)', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -132,6 +135,8 @@ export default function ScannerScreen({ user, onScanResult }) {
           </div>
         </form>
       )}
+
+      {/* Viewfinder */}
       <div style={{ margin: '20px 16px 0', borderRadius: 20, overflow: 'hidden', background: '#1A1A2E', height: 280, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, #1A1A2E 0%, #16213E 50%, #0F3460 100%)' }} />
         <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(212,135,42,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(212,135,42,0.08) 1px, transparent 1px)', backgroundSize: '30px 30px' }} />
@@ -164,15 +169,22 @@ export default function ScannerScreen({ user, onScanResult }) {
           </div>
         )}
       </div>
+
+      {/* Scan button */}
       <button onClick={scanning ? stopCamera : startCamera} style={{ margin: '16px 16px 0', width: 'calc(100% - 32px)', height: 54, background: scanning ? 'linear-gradient(135deg, #3A5A40, #4D7B55)' : 'linear-gradient(135deg, #D4872A, #F0A83C)', color: 'white', fontFamily: 'var(--font-inter), system-ui, sans-serif', fontSize: 17, fontWeight: 700, border: 'none', borderRadius: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, transition: 'all 0.15s' }}>
         {scanning ? 'Stop Scanning' : 'Tap to Scan'}
       </button>
-      {/* CHANGE 4: Only show counter after scan 3, display remaining not used */}
-      {scanUsage.scanCount > 3 && (
+
+      {/* MVP_MODE: scan counter hidden entirely.
+          To restore: remove the MVP_MODE check below and show the counter.
+      {!MVP_MODE && scanUsage.scanCount > 3 && (
         <p style={{ textAlign: 'center', marginTop: 8, fontSize: 12, color: 'var(--text-light)', fontWeight: 500 }}>
           {Math.max(FREE_SCAN_LIMIT - scanUsage.scanCount, 0)} free scans remaining this month
         </p>
       )}
+      */}
+
+      {/* Recently scanned */}
       {history.length > 0 && (
         <div style={{ margin: '16px 16px 0', background: 'var(--cream-dark)', borderRadius: 14, padding: 16 }}>
           <p style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: 15, fontWeight: 600, color: 'var(--text-dark)', marginBottom: 10 }}>Recently Scanned</p>
@@ -185,7 +197,10 @@ export default function ScannerScreen({ user, onScanResult }) {
           ))}
         </div>
       )}
-      {showPaywall && <PaywallModal onClose={() => setShowPaywall(false)} />}
+
+      {/* MVP_MODE: paywall modal kept in code but never triggered */}
+      {!MVP_MODE && showPaywall && <PaywallModal onClose={() => setShowPaywall(false)} />}
+
       <style dangerouslySetInnerHTML={{ __html: '@keyframes scanAnim{0%,100%{top:20%;opacity:.6;}50%{top:80%;opacity:1;}}@keyframes spin{to{transform:rotate(360deg);}}' }} />
     </div>
   );
