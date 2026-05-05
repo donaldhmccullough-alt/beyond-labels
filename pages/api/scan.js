@@ -99,7 +99,8 @@ export default async function handler(req, res) {
   }
 
   // ── Input validation ──────────────────────────────────────────────────────
-  const { barcode } = req.body ?? {};
+  const { barcode, userLevel: rawUserLevel } = req.body ?? {};
+  const userLevel = rawUserLevel === 1 || rawUserLevel === 2 ? rawUserLevel : 2;
 
   if (barcode === undefined || barcode === null || barcode === '') {
     return res.status(400).json({
@@ -178,7 +179,7 @@ export default async function handler(req, res) {
   const labelsDetected = normalizeLabelTags(product.labels_tags);
 
   // ── Run the rules engine ──────────────────────────────────────────────────
-  const { verdict, flags, clearedBy } = analyzeIngredients(ingredientsText, labelsDetected);
+  const { verdict, flags, clearedBy } = analyzeIngredients(ingredientsText, labelsDetected, userLevel);
 
   return res.status(200).json({
     verdict,

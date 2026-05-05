@@ -38,8 +38,9 @@ Your voice:
  * @param {object[]} flags       — array of flag objects from rulesEngine
  * @param {string}   productName — product name from Open Food Facts
  * @param {string|null} ingredients — raw ingredients text
+ * @param {1|2}      userLevel   — 1 = beginner lenient, 2 = strict (default)
  */
-function buildUserMessage(verdict, flags, productName, ingredients) {
+function buildUserMessage(verdict, flags, productName, ingredients, userLevel = 2) {
   // Group flags by category so Claude sees one entry per category
   const byCategory = {};
   (flags || []).forEach(flag => {
@@ -47,10 +48,14 @@ function buildUserMessage(verdict, flags, productName, ingredients) {
     byCategory[flag.category].push(flag);
   });
 
+  const LEVEL_1_CATEGORIES = new Set(['seed_oils', 'conventional_crops', 'bioengineering', 'natural_flavors']);
+
   const categoryLines = Object.entries(byCategory).map(([cat, catFlags]) => {
     const matched  = catFlags.map(f => f.matchedIngredient).join(', ');
     const severity = catFlags.some(f => f.severity === 'reject') ? 'reject' : 'caution';
-    return `  - ${cat} (${severity}): found "${matched}"`;
+    const isLevel1Soft = userLevel === 1 && severity === 'caution' && LEVEL_1_CATEGORIES.has(cat);
+    const levelNote = isLevel1Soft ? ' [Level 1 awareness item — use encouraging, non-alarming tone]' : '';
+    return `  - ${cat} (${severity}${levelNote}): found "${matched}"`;
   }).join('\n');
 
   const ingredientSnippet = ingredients
@@ -61,9 +66,13 @@ function buildUserMessage(verdict, flags, productName, ingredients) {
     ? `Flagged categories:\n${categoryLines}`
     : 'No concerning ingredients found — product passed all checks.';
 
+  const levelContext = userLevel === 1
+    ? '\nUser context: This is a Level 1 (building awareness) user. For any "awareness item" flags, use encouraging language that builds confidence rather than alarm — frame them as "something to be aware of as you build better habits" rather than urgent warnings.'
+    : '';
+
   return `Product: ${productName || 'Unknown Product'}
 Overall verdict: ${verdict}
-${flagsSection}${ingredientSnippet}
+${flagsSection}${ingredientSnippet}${levelContext}
 
 Respond with a JSON object with exactly this structure — no markdown, no text outside the JSON:
 {
@@ -89,7 +98,8 @@ export default async function handler(req, res) {
   }
 
   // ── Input validation ──────────────────────────────────────────────────────
-  const { verdict, flags, productName, ingredients } = req.body ?? {};
+  const { verdict, flags, productName, ingredients, userLevel: rawLevel } = req.body ?? {};
+  const userLevel = rawLevel === 1 || rawLevel === 2 ? rawLevel : 2;
 
   if (!verdict) {
     return res.status(400).json({ error: '`verdict` is required.' });
@@ -111,7 +121,7 @@ export default async function handler(req, res) {
       system:     SYSTEM_PROMPT,
       messages: [{
         role:    'user',
-        content: buildUserMessage(verdict, flags, productName, ingredients),
+        content: buildUserMessage(verdict, flags, productName, ingredients, userLevel),
       }],
     });
 

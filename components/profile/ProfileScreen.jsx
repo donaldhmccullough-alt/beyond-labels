@@ -11,7 +11,7 @@ import { STAGES } from '@/lib/onboardingData';
 
 const FREE_SCAN_LIMIT = 15;
 
-export default function ProfileScreen({ user, onRetakeAssessment, onStartOnboarding, onSignIn }) {
+export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRetakeAssessment, onStartOnboarding, onSignIn }) {
   const [profile, setProfile] = useState(undefined);
   const [scanUsage, setScanUsage] = useState({ scanCount: 0 });
   const [scanHistory, setScanHistory] = useState([]);
@@ -235,6 +235,41 @@ export default function ProfileScreen({ user, onRetakeAssessment, onStartOnboard
             ))}
           </div>
         )}
+
+        {/* ── Strictness Level ─────────────────────────────────────────── */}
+        <div style={{ background: 'var(--cream-dark)', borderRadius: 16, padding: 16, marginBottom: 16 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 4 }}>Strictness Level</p>
+          <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.5, marginBottom: 12 }}>
+            Level 1 flags seed oils, GMO crops, and natural flavors as caution (yellow) rather than avoid (red), making results less overwhelming while you build habits.
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {[
+              { level: 1, label: 'Level 1', sub: 'Building awareness' },
+              { level: 2, label: 'Level 2', sub: 'Label-conscious' },
+            ].map(({ level, label, sub }) => {
+              const active = userLevel === level;
+              return (
+                <button
+                  key={level}
+                  onClick={() => onLevelChange && onLevelChange(level)}
+                  style={{
+                    flex: 1,
+                    padding: '10px 8px',
+                    borderRadius: 12,
+                    border: active ? '2px solid var(--amber)' : '2px solid rgba(0,0,0,0.08)',
+                    background: active ? 'rgba(212,135,42,0.08)' : 'white',
+                    cursor: 'pointer',
+                    textAlign: 'center',
+                    minHeight: 44,
+                  }}
+                >
+                  <p style={{ fontSize: 13, fontWeight: 700, color: active ? 'var(--amber)' : 'var(--text-dark)', marginBottom: 2 }}>{label}</p>
+                  <p style={{ fontSize: 11, color: active ? 'var(--amber)' : 'var(--text-light)', lineHeight: 1.3 }}>{sub}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* ── Upgrade CTA ───────────────────────────────────────────────── */}
         {/* MVP_MODE: active upgrade button hidden; showing disabled Coming Soon.

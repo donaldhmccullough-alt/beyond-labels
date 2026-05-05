@@ -23,7 +23,7 @@ const FLAG_KEYWORDS = {
   'Vegan': ['milk', 'egg', 'meat', 'beef', 'pork', 'chicken', 'fish', 'gelatin', 'honey', 'whey', 'casein', 'lard'],
 };
 
-export default function VerdictScreen({ scanResult, onSeeSwaps, onBack, onStartOnboarding }) {
+export default function VerdictScreen({ scanResult, userLevel = 2, onSeeSwaps, onBack, onStartOnboarding }) {
   const [explanation, setExplanation] = useState(null);
   const [loadingExplanation, setLoadingExplanation] = useState(false);
 
@@ -53,6 +53,7 @@ export default function VerdictScreen({ scanResult, onSeeSwaps, onBack, onStartO
         flags: scanResult.flags,
         productName: scanResult.productName,
         ingredients: scanResult.ingredients,
+        userLevel,
       }),
     })
       .then(r => r.json())
@@ -71,6 +72,9 @@ export default function VerdictScreen({ scanResult, onSeeSwaps, onBack, onStartO
   }
 
   const { verdict, flags = [], productName, ingredients } = scanResult;
+
+  const LEVEL_1_CATEGORIES = new Set(['seed_oils', 'conventional_crops', 'bioengineering', 'natural_flavors']);
+  const hasLevel1SoftFlags = userLevel === 1 && flags.some(f => f.severity === 'caution' && LEVEL_1_CATEGORIES.has(f.category));
   const verdictColors = { red: '#C0392B', yellow: '#D4AC0D', green: '#27AE60', unverified: '#9A8260' };
   const verdictBg = { red: '#FDEDEC', yellow: '#FEF9E7', green: '#EAFAF1', unverified: '#F5F5F5' };
   const verdictLabel = { red: 'AVOID', yellow: 'CAUTION', green: 'CLEAN', unverified: 'UNVERIFIED' };
@@ -136,6 +140,16 @@ export default function VerdictScreen({ scanResult, onSeeSwaps, onBack, onStartO
         </div>
       )}
       */}
+
+      {/* Level 1 context note */}
+      {hasLevel1SoftFlags && (
+        <div style={{ margin: '10px 16px 0', background: '#FFF8F0', borderRadius: 12, padding: '10px 14px', border: '1.5px solid rgba(212,135,42,0.2)', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <span style={{ fontSize: 16, lineHeight: 1.4, flexShrink: 0 }}>🌱</span>
+          <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.5 }}>
+            <span style={{ fontWeight: 700, color: 'var(--amber)' }}>Level 1 view:</span> Some caution items here would flag red at Level 2. That's fine — keep building awareness at your own pace.
+          </p>
+        </div>
+      )}
 
       {/* AI summary */}
       <div style={{ margin: '12px 16px 0', background: 'var(--cream-dark)', borderRadius: 16, padding: 16, minHeight: 72 }}>

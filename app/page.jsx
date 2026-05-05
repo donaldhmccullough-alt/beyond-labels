@@ -6,9 +6,10 @@ const MVP_MODE = true;
 
 import { useState, useEffect } from 'react';
 import { getProfile, saveProfile, clearProfile } from '@/lib/userProfile';
+import { hasUserLevel, getUserLevel, setUserLevel } from '@/lib/userLevel';
 import { STAGES, getStageFromScore } from '@/lib/onboardingData';
 import { supabase } from '@/lib/supabase';
-import { migrateLocalToSupabase } from '@/lib/auth';
+import { migrateLocalToSupabase, syncUserLevelFromSupabase, saveUserLevelToSupabase } from '@/lib/auth';
 // Onboarding
 import WelcomeScreen from '@/components/onboarding/WelcomeScreen';
 import AssessmentScreen from '@/components/onboarding/AssessmentScreen';
@@ -16,6 +17,7 @@ import CalculatingScreen from '@/components/onboarding/CalculatingScreen';
 import RevealScreen from '@/components/onboarding/RevealScreen';
 import FlagsScreen from '@/components/onboarding/FlagsScreen';
 import LaunchScreen from '@/components/onboarding/LaunchScreen';
+import LevelSelectScreen from '@/components/onboarding/LevelSelectScreen';
 // Main app
 import ScannerScreen from '@/components/scanner/ScannerScreen';
 import VerdictScreen from '@/components/verdict/VerdictScreen';
@@ -30,14 +32,21 @@ export default function Home() {
   const [assessmentScore, setAssessmentScore] = useState(0);
   const [mainTab, setMainTab] = useState('scan');
   const [lastScanResult, setLastScanResult] = useState(null);
+  const [userLevel, setUserLevelState] = useState(1);
 
   // ── Auth state ────────────────────────────────────────────────────────────
   const [user, setUser] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
   useEffect(() => {
-    // Always open to scanner
-    setAppScreen('main');
+    // Show level-select on first visit; skip straight to scanner on return visits.
+    if (hasUserLevel()) {
+      setUserLevelState(getUserLevel());
+      setAppScreen('main');
+    } else {
+      setOnboardingStep('welcome');
+      setAppScreen('onboarding');
+    }
 
     if (!supabase) return;
 
@@ -57,15 +66,36 @@ export default function Home() {
         if (alreadyMigrated !== newUser.id) {
           await migrateLocalToSupabase(newUser.id);
         }
+        // Sync user_level from Supabase — Supabase wins for signed-in users
+        const syncedLevel = await syncUserLevelFromSupabase(newUser.id);
+        if (syncedLevel) setUserLevelState(syncedLevel);
       }
     });
 
     return () => subscription?.unsubscribe();
   }, []);
 
+  // ── Level handlers ────────────────────────────────────────────────────────
+
+  function handleLevelSelect(level) {
+    setUserLevel(level);
+    setUserLevelState(level);
+    setAppScreen('main');
+  }
+
+  function handleLevelChange(level) {
+    setUserLevel(level);
+    setUserLevelState(level);
+    if (user?.id) saveUserLevelToSupabase(user.id, level);
+  }
+
   // ── Onboarding handlers ───────────────────────────────────────────────────
 
   function handleSkipOnboarding() {
+    if (!hasUserLevel()) {
+      setUserLevel(1);
+      setUserLevelState(1);
+    }
     const defaultProfile = { stage: STAGES[1], score: 14, flags: [], onboardingComplete: true };
     saveProfile(defaultProfile);
     setAppScreen('main');
@@ -159,7 +189,13 @@ export default function Home() {
     return (
       <div className="app-container">
         {onboardingStep === 'welcome' && (
-          <WelcomeScreen onBegin={() => setOnboardingStep('assessment')} onSkip={handleSkipOnboarding} />
+          <WelcomeScreen
+            onBegin={() => setOnboardingStep(MVP_MODE ? 'level-select' : 'assessment')}
+            onSkip={handleSkipOnboarding}
+          />
+        )}
+        {onboardingStep === 'level-select' && (
+          <LevelSelectScreen onComplete={handleLevelSelect} />
         )}
         {onboardingStep === 'assessment' && (
           <AssessmentScreen onComplete={handleAssessmentComplete} onBack={() => setOnboardingStep('welcome')} />
@@ -185,11 +221,12 @@ export default function Home() {
     <div className="app-container">
       <div style={{ paddingBottom: 68 }}>
         {mainTab === 'scan' && (
-          <ScannerScreen user={user} onScanResult={handleScanResult} />
+          <ScannerScreen user={user} userLevel={userLevel} onScanResult={handleScanResult} />
         )}
         {mainTab === 'verdict' && (
           <VerdictScreen
             scanResult={lastScanResult}
+            userLevel={userLevel}
             onSeeSwaps={handleSeeSwaps}
             onBack={() => setMainTab('scan')}
             onStartOnboarding={handleStartOnboarding}
@@ -201,6 +238,8 @@ export default function Home() {
         {mainTab === 'profile' && (
           <ProfileScreen
             user={user}
+            userLevel={userLevel}
+            onLevelChange={handleLevelChange}
             onRetakeAssessment={handleRetakeAssessment}
             onStartOnboarding={handleStartOnboarding}
             onSignIn={() => setShowAuthModal(true)}

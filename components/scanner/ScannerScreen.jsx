@@ -10,7 +10,7 @@ import { logScanToSupabase, getSupabaseScanCountThisMonth, getSupabaseScanHistor
 // MVP_MODE: PaywallModal imported but not shown
 import PaywallModal from './PaywallModal';
 
-export default function ScannerScreen({ user, onScanResult }) {
+export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
   const [scanning, setScanning] = useState(false);
   const [scanUsage, setScanUsage] = useState({ scanCount: 0, resetDate: '' });
   const [history, setHistory] = useState([]);
@@ -75,7 +75,7 @@ export default function ScannerScreen({ user, onScanResult }) {
       const res = await fetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ barcode }),
+        body: JSON.stringify({ barcode, userLevel }),
       });
       const data = await res.json();
       incrementTotalScan();
