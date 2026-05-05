@@ -79,8 +79,12 @@ export default function VerdictScreen({ scanResult, userLevel = 2, onSeeSwaps, o
   const verdictBg = { red: '#FDEDEC', yellow: '#FEF9E7', green: '#EAFAF1', unverified: '#F5F5F5' };
   const verdictLabel = { red: 'AVOID', yellow: 'CAUTION', green: 'CLEAN', unverified: 'UNVERIFIED' };
 
+  const sortedFlags = [...flags].sort((a, b) =>
+    a.severity === b.severity ? 0 : a.severity === 'reject' ? -1 : 1
+  );
+
   const byCategory = {};
-  flags.forEach(f => {
+  sortedFlags.forEach(f => {
     if (!byCategory[f.category]) byCategory[f.category] = [];
     byCategory[f.category].push(f);
   });
