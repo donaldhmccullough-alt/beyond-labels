@@ -44,7 +44,7 @@ export default function Home() {
       setUserLevelState(getUserLevel());
       setAppScreen('main');
     } else {
-      setOnboardingStep('welcome');
+      setOnboardingStep('level-select');
       setAppScreen('onboarding');
     }
 

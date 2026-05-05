@@ -141,16 +141,6 @@ export default function VerdictScreen({ scanResult, userLevel = 2, onSeeSwaps, o
       )}
       */}
 
-      {/* Level 1 context note */}
-      {hasLevel1SoftFlags && (
-        <div style={{ margin: '10px 16px 0', background: '#FFF8F0', borderRadius: 12, padding: '10px 14px', border: '1.5px solid rgba(212,135,42,0.2)', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-          <span style={{ fontSize: 16, lineHeight: 1.4, flexShrink: 0 }}>🌱</span>
-          <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.5 }}>
-            <span style={{ fontWeight: 700, color: 'var(--amber)' }}>Level 1 view:</span> Some caution items here would flag red at Level 2. That's fine — keep building awareness at your own pace.
-          </p>
-        </div>
-      )}
-
       {/* AI summary */}
       <div style={{ margin: '12px 16px 0', background: 'var(--cream-dark)', borderRadius: 16, padding: 16, minHeight: 72 }}>
         {loadingExplanation ? (
@@ -178,6 +168,16 @@ export default function VerdictScreen({ scanResult, userLevel = 2, onSeeSwaps, o
       {verdict === 'green' && (
         <div style={{ margin: '16px 16px 0', background: '#EAFAF1', borderRadius: 16, padding: 16, border: '1.5px solid rgba(39,174,96,0.2)' }}>
           <p style={{ fontSize: 15, color: '#27AE60', fontWeight: 600 }}>This product passed all checks!</p>
+        </div>
+      )}
+
+      {/* Level 1 context note — shown below concern cards */}
+      {hasLevel1SoftFlags && (
+        <div style={{ margin: '16px 16px 0', background: '#FFF8F0', borderRadius: 12, padding: '10px 14px', border: '1.5px solid rgba(212,135,42,0.2)', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <span style={{ fontSize: 16, lineHeight: 1.4, flexShrink: 0 }}>🌱</span>
+          <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.5 }}>
+            <span style={{ fontWeight: 700, color: 'var(--amber)' }}>Level 1 view:</span> Some caution items here would flag red at Level 2. That's fine — keep building awareness at your own pace.
+          </p>
         </div>
       )}
 
