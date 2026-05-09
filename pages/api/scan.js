@@ -49,21 +49,10 @@
 import rulesEngine from '../../lib/rulesEngine';
 const { analyzeIngredients } = rulesEngine;
 
-import { createClient } from '@supabase/supabase-js';
+import { supabaseServer as sb } from '../../lib/supabaseServer';
 import Anthropic from '@anthropic-ai/sdk';
 import { PROMPT_VERSION } from '../../lib/cacheVersion';
 import { SYSTEM_PROMPT, buildUserMessage } from './explain';
-
-/**
- * Null-safe Supabase client for the API route.
- * Returns null when env vars are absent so cache/capture errors never affect scans.
- */
-function getScanSupabase() {
-  const url  = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key  = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  try { return createClient(url, key); } catch { return null; }
-}
 
 const OFF_BASE = 'https://world.openfoodfacts.org/api/v0/product';
 
@@ -119,7 +108,6 @@ function normalizeLabelTags(labelsTags) {
  * @param {string}   barcode      - Cleaned barcode for context.
  */
 async function captureUnverifiedIngredients(ingredients, productName, barcode) {
-  const sb = getScanSupabase();
   if (!sb) return;
 
   const now = new Date().toISOString();
@@ -234,8 +222,6 @@ export default async function handler(req, res) {
   }
 
   // ── Cache lookup ──────────────────────────────────────────────────────────
-  const sb = getScanSupabase();
-
   if (sb) {
     try {
       const { data: cached } = await sb
