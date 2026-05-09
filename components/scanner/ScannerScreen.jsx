@@ -9,6 +9,9 @@ import { getScanUsage, incrementScan, getScanHistory, addScanToHistory, incremen
 import { logScanToSupabase, getSupabaseScanCountThisMonth, getSupabaseScanHistory } from '@/lib/auth';
 // MVP_MODE: PaywallModal imported but not shown
 import PaywallModal from './PaywallModal';
+import { supabase } from '@/lib/supabase';
+import { getUserLevel } from '@/lib/userLevel';
+import { PROMPT_VERSION } from '@/lib/cacheVersion';
 
 export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
   const [scanning, setScanning] = useState(false);
@@ -21,6 +24,9 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
   const videoRef = useRef(null);
   const readerRef = useRef(null);
   const streamRef = useRef(null);
+  const tapInFlightRef = useRef(false);
+  const [loadingBarcode, setLoadingBarcode] = useState(null);
+  const [missBarcode, setMissBarcode] = useState(null);
   const FREE_SCAN_LIMIT = 15;
 
   useEffect(() => {
@@ -109,6 +115,55 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
     setManualBarcode('');
   }
 
+  async function handleHistoryItemTap(item) {
+    if (!item.barcode || tapInFlightRef.current) return;
+    tapInFlightRef.current = true;
+    setLoadingBarcode(item.barcode);
+    setMissBarcode(null);
+
+    try {
+      if (!supabase) throw new Error('no-supabase');
+
+      const level = userLevel ?? getUserLevel();
+      const { data: cached, error } = await supabase
+        .from('scan_cache')
+        .select('*')
+        .eq('barcode', item.barcode)
+        .eq('user_level', level)
+        .eq('prompt_version', PROMPT_VERSION)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (cached) {
+        const result = {
+          verdict:               cached.verdict,
+          flags:                 cached.flags ?? [],
+          clearedBy:             cached.cleared_by ?? null,
+          productName:           cached.product_name,
+          ingredients:           cached.ingredients ?? null,
+          barcode:               cached.barcode,
+          source:                'cache',
+          found:                 true,
+          labelsDetected:        [],
+          unverifiedIngredients: cached.unverified_ingredients ?? [],
+          explanation:           cached.explanation ?? null,
+        };
+        tapInFlightRef.current = false;
+        setLoadingBarcode(null);
+        onScanResult && onScanResult(result);
+      } else {
+        tapInFlightRef.current = false;
+        setLoadingBarcode(null);
+        setMissBarcode(item.barcode);
+      }
+    } catch {
+      tapInFlightRef.current = false;
+      setLoadingBarcode(null);
+      setMissBarcode(item.barcode);
+    }
+  }
+
   function formatTime(iso) {
     const d = new Date(iso), now = new Date();
     const diffMin = Math.floor((now - d) / 60000);
@@ -188,13 +243,42 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
       {history.length > 0 && (
         <div style={{ margin: '16px 16px 0', background: 'var(--cream-dark)', borderRadius: 14, padding: 16 }}>
           <p style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: 15, fontWeight: 600, color: 'var(--text-dark)', marginBottom: 10 }}>Recently Scanned</p>
-          {history.map((item, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 10, paddingBottom: 10, borderBottom: i < history.length - 1 ? '1px solid rgba(0,0,0,0.08)' : 'none' }}>
-              <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: vc[item.verdict] || '#9A8260' }} />
-              <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text-dark)' }}>{item.productName}</span>
-              <span style={{ fontSize: 11, color: 'var(--text-light)' }}>{formatTime(item.timestamp)}</span>
-            </div>
-          ))}
+          {history.map((item, i) => {
+            const isLoading = loadingBarcode === item.barcode;
+            const isMiss    = missBarcode === item.barcode;
+            return (
+              <div key={i}>
+                <div
+                  onClick={() => handleHistoryItemTap(item)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    paddingTop: 10, paddingBottom: 10,
+                    borderBottom: (!isMiss && i < history.length - 1) ? '1px solid rgba(0,0,0,0.08)' : 'none',
+                    cursor: item.barcode ? 'pointer' : 'default',
+                    opacity: isLoading ? 0.5 : 1,
+                    transition: 'opacity 0.15s',
+                  }}
+                >
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: vc[item.verdict] || '#9A8260' }} />
+                  <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text-dark)' }}>{item.productName}</span>
+                  {isLoading ? (
+                    <span style={{ fontSize: 11, color: 'var(--text-light)' }}>…</span>
+                  ) : (
+                    <span style={{ fontSize: 11, color: 'var(--text-light)' }}>{formatTime(item.timestamp)}</span>
+                  )}
+                </div>
+                {isMiss && (
+                  <p style={{
+                    fontSize: 12, color: 'var(--text-light)', fontStyle: 'italic',
+                    padding: '0 0 10px 22px',
+                    borderBottom: i < history.length - 1 ? '1px solid rgba(0,0,0,0.08)' : 'none',
+                  }}>
+                    Scan this product again to see the full report.
+                  </p>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
