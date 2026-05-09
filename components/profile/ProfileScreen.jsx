@@ -89,13 +89,18 @@ export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRe
           unverifiedIngredients: cached.unverified_ingredients ?? [],
           explanation:           cached.explanation ?? null,
         };
+        // Reset local state before navigating away — onViewVerdict() unmounts
+        // this component, so any setState in finally would be a no-op and
+        // loadingBarcode could be left set if React reuses the instance on return.
+        setLoadingBarcode(null);
+        setMissBarcode(null);
         onViewVerdict && onViewVerdict(result);
       } else {
         setMissBarcode(item.barcode);
+        setLoadingBarcode(null);
       }
     } catch {
       setMissBarcode(item.barcode);
-    } finally {
       setLoadingBarcode(null);
     }
   }
