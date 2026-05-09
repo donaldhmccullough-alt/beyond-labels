@@ -42,6 +42,19 @@
 import rulesEngine from '../../lib/rulesEngine';
 const { analyzeIngredients } = rulesEngine;
 
+import { createClient } from '@supabase/supabase-js';
+
+/**
+ * Null-safe Supabase client for the API route.
+ * Returns null when env vars are absent so capture errors never affect scans.
+ */
+function getScanSupabase() {
+  const url  = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key  = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+  try { return createClient(url, key); } catch { return null; }
+}
+
 const OFF_BASE = 'https://world.openfoodfacts.org/api/v0/product';
 
 /**
@@ -82,6 +95,56 @@ function normalizeLabelTags(labelsTags) {
   }
 
   return result;
+}
+
+/**
+ * Persist unverified ingredients to Supabase for team review.
+ * Uses a select-then-insert-or-update pattern to correctly maintain
+ * first_seen (never overwritten) and occurrence_count (always incremented).
+ *
+ * Designed to be called fire-and-forget — caller should .catch(() => {}).
+ *
+ * @param {string[]} ingredients  - Unrecognised ingredient tokens from rulesEngine.
+ * @param {string}   productName  - Product name for context.
+ * @param {string}   barcode      - Cleaned barcode for context.
+ */
+async function captureUnverifiedIngredients(ingredients, productName, barcode) {
+  const sb = getScanSupabase();
+  if (!sb) return;
+
+  const now = new Date().toISOString();
+
+  for (const ingredient of ingredients) {
+    // Check if this ingredient is already known.
+    const { data: existing } = await sb
+      .from('unverified_ingredients')
+      .select('occurrence_count')
+      .eq('ingredient', ingredient.toLowerCase())
+      .maybeSingle();
+
+    if (existing) {
+      // Row exists — increment the counter and record the latest product context.
+      await sb
+        .from('unverified_ingredients')
+        .update({
+          occurrence_count: existing.occurrence_count + 1,
+          product_name: productName || null,
+          barcode: barcode || null,
+        })
+        .eq('ingredient', ingredient.toLowerCase());
+    } else {
+      // First time we've seen this ingredient — insert a new row.
+      await sb
+        .from('unverified_ingredients')
+        .insert({
+          ingredient: ingredient.toLowerCase(),
+          product_name: productName || null,
+          barcode: barcode || null,
+          first_seen: now,
+          occurrence_count: 1,
+        });
+    }
+  }
 }
 
 /**
@@ -179,7 +242,14 @@ export default async function handler(req, res) {
   const labelsDetected = normalizeLabelTags(product.labels_tags);
 
   // ── Run the rules engine ──────────────────────────────────────────────────
-  const { verdict, flags, clearedBy } = analyzeIngredients(ingredientsText, labelsDetected, userLevel);
+  const { verdict, flags, clearedBy, unverifiedIngredients } =
+    analyzeIngredients(ingredientsText, labelsDetected, userLevel);
+
+  // ── Capture unverified ingredients (fire-and-forget) ─────────────────────
+  // Errors here must never affect the scan result returned to the user.
+  if (unverifiedIngredients?.length) {
+    captureUnverifiedIngredients(unverifiedIngredients, productName, cleanBarcode).catch(() => {});
+  }
 
   return res.status(200).json({
     verdict,
