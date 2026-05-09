@@ -243,6 +243,7 @@ export default function Home() {
             onRetakeAssessment={handleRetakeAssessment}
             onStartOnboarding={handleStartOnboarding}
             onSignIn={() => setShowAuthModal(true)}
+            onViewVerdict={handleScanResult}
           />
         )}
       </div>

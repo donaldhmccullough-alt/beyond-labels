@@ -8,14 +8,20 @@ import { useState, useEffect } from 'react';
 import { getProfile, getScanUsage, clearProfile } from '@/lib/userProfile';
 import { signOut, getSupabaseScanCountThisMonth, getSupabaseScanHistory } from '@/lib/auth';
 import { STAGES } from '@/lib/onboardingData';
+import { supabase } from '@/lib/supabase';
+import { getUserLevel } from '@/lib/userLevel';
+import { PROMPT_VERSION } from '@/lib/cacheVersion';
 
 const FREE_SCAN_LIMIT = 15;
 
-export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRetakeAssessment, onStartOnboarding, onSignIn }) {
+export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRetakeAssessment, onStartOnboarding, onSignIn, onViewVerdict }) {
   const [profile, setProfile] = useState(undefined);
   const [scanUsage, setScanUsage] = useState({ scanCount: 0 });
   const [scanHistory, setScanHistory] = useState([]);
   const [signingOut, setSigningOut] = useState(false);
+  // Scan history tap state — tracks which barcode is loading and which showed a miss
+  const [loadingBarcode, setLoadingBarcode] = useState(null);
+  const [missBarcode, setMissBarcode] = useState(null);
 
   useEffect(() => {
     async function load() {
@@ -48,6 +54,50 @@ export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRe
     await signOut();    // clears Supabase session + all scan localStorage keys
     clearProfile();     // clears bl_profile (stage/flags)
     setSigningOut(false);
+  }
+
+  async function handleHistoryItemTap(item) {
+    if (!item.barcode || loadingBarcode) return;
+    setLoadingBarcode(item.barcode);
+    setMissBarcode(null);
+
+    try {
+      if (!supabase) throw new Error('no-supabase');
+
+      const level = userLevel ?? getUserLevel();
+      const { data: cached, error } = await supabase
+        .from('scan_cache')
+        .select('*')
+        .eq('barcode', item.barcode)
+        .eq('user_level', level)
+        .eq('prompt_version', PROMPT_VERSION)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (cached) {
+        const result = {
+          verdict:               cached.verdict,
+          flags:                 cached.flags ?? [],
+          clearedBy:             cached.cleared_by ?? null,
+          productName:           cached.product_name,
+          ingredients:           cached.ingredients ?? null,
+          barcode:               cached.barcode,
+          source:                'cache',
+          found:                 true,
+          labelsDetected:        [],
+          unverifiedIngredients: cached.unverified_ingredients ?? [],
+          explanation:           cached.explanation ?? null,
+        };
+        onViewVerdict && onViewVerdict(result);
+      } else {
+        setMissBarcode(item.barcode);
+      }
+    } catch {
+      setMissBarcode(item.barcode);
+    } finally {
+      setLoadingBarcode(null);
+    }
   }
 
   function formatTime(iso) {
@@ -222,17 +272,46 @@ export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRe
             <p style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: 15, fontWeight: 600, color: 'var(--text-dark)', marginBottom: 10 }}>
               Scan History {user ? '(last 20)' : '(last 10)'}
             </p>
-            {scanHistory.map((item, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 10, paddingBottom: 10, borderBottom: i < scanHistory.length - 1 ? '1px solid rgba(0,0,0,0.07)' : 'none' }}>
-                <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: vc[item.verdict] || '#9A8260' }} />
-                <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text-dark)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {item.productName}
-                </span>
-                <span style={{ fontSize: 11, color: 'var(--text-light)', flexShrink: 0 }}>
-                  {formatTime(item.timestamp)}
-                </span>
-              </div>
-            ))}
+            {scanHistory.map((item, i) => {
+              const isLoading = loadingBarcode === item.barcode;
+              const isMiss    = missBarcode === item.barcode;
+              return (
+                <div key={i}>
+                  <div
+                    onClick={() => handleHistoryItemTap(item)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      paddingTop: 10, paddingBottom: 10,
+                      borderBottom: (!isMiss && i < scanHistory.length - 1) ? '1px solid rgba(0,0,0,0.07)' : 'none',
+                      cursor: item.barcode ? 'pointer' : 'default',
+                      opacity: isLoading ? 0.5 : 1,
+                      transition: 'opacity 0.15s',
+                    }}
+                  >
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: vc[item.verdict] || '#9A8260' }} />
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text-dark)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.productName}
+                    </span>
+                    {isLoading ? (
+                      <span style={{ fontSize: 11, color: 'var(--text-light)', flexShrink: 0 }}>…</span>
+                    ) : (
+                      <span style={{ fontSize: 11, color: 'var(--text-light)', flexShrink: 0 }}>
+                        {formatTime(item.timestamp)}
+                      </span>
+                    )}
+                  </div>
+                  {isMiss && (
+                    <p style={{
+                      fontSize: 12, color: 'var(--text-light)', fontStyle: 'italic',
+                      padding: '0 0 10px 22px',
+                      borderBottom: i < scanHistory.length - 1 ? '1px solid rgba(0,0,0,0.07)' : 'none',
+                    }}>
+                      Scan this product again to see the full report.
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
