@@ -71,7 +71,7 @@ export default function VerdictScreen({ scanResult, userLevel = 2, onSeeSwaps, o
     );
   }
 
-  const { verdict, flags = [], productName, ingredients } = scanResult;
+  const { verdict, flags = [], productName, ingredients, unverifiedIngredients = [] } = scanResult;
 
   const LEVEL_1_CATEGORIES = new Set(['seed_oils', 'conventional_crops', 'bioengineering', 'natural_flavors']);
   const hasLevel1SoftFlags = userLevel === 1 && flags.some(f => f.severity === 'caution' && LEVEL_1_CATEGORIES.has(f.category));
@@ -172,6 +172,23 @@ export default function VerdictScreen({ scanResult, userLevel = 2, onSeeSwaps, o
       {verdict === 'green' && (
         <div style={{ margin: '16px 16px 0', background: '#EAFAF1', borderRadius: 16, padding: 16, border: '1.5px solid rgba(39,174,96,0.2)' }}>
           <p style={{ fontSize: 15, color: '#27AE60', fontWeight: 600 }}>This product passed all checks!</p>
+        </div>
+      )}
+
+      {/* Unrecognized Ingredients */}
+      {unverifiedIngredients.length > 0 && (
+        <div style={{ margin: '16px 16px 0', background: '#F5F5F5', borderRadius: 16, padding: 16, border: '1.5px solid rgba(0,0,0,0.08)' }}>
+          <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-dark)', marginBottom: 6 }}>Unrecognized Ingredients</p>
+          <p style={{ fontSize: 13, color: 'var(--text-mid)', lineHeight: 1.6, marginBottom: 12 }}>
+            We haven't formed an opinion on the following ingredients yet. As a general rule — if it's not something your grandmother would have had in her kitchen, it's probably not something you want to consume.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {unverifiedIngredients.map((ing, i) => (
+              <span key={i} style={{ background: 'white', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 20, padding: '4px 10px', fontSize: 12, color: 'var(--text-mid)', fontWeight: 500 }}>
+                {ing}
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
