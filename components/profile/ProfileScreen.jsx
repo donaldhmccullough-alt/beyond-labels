@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 const MVP_MODE = true;
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getProfile, getScanUsage, clearProfile } from '@/lib/userProfile';
 import { signOut, getSupabaseScanCountThisMonth, getSupabaseScanHistory } from '@/lib/auth';
 import { STAGES } from '@/lib/onboardingData';
@@ -19,7 +19,11 @@ export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRe
   const [scanUsage, setScanUsage] = useState({ scanCount: 0 });
   const [scanHistory, setScanHistory] = useState([]);
   const [signingOut, setSigningOut] = useState(false);
-  // Scan history tap state — tracks which barcode is loading and which showed a miss
+  // Scan history tap state
+  // tapInFlightRef is the authoritative guard — a ref is synchronous and survives
+  // unmount/remount without React 18 concurrent mode timing issues.
+  // loadingBarcode state is kept only for the visual indicator (opacity / "…").
+  const tapInFlightRef = useRef(false);
   const [loadingBarcode, setLoadingBarcode] = useState(null);
   const [missBarcode, setMissBarcode] = useState(null);
 
@@ -57,7 +61,9 @@ export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRe
   }
 
   async function handleHistoryItemTap(item) {
-    if (!item.barcode || loadingBarcode) return;
+    // Use the ref as the guard — synchronous, unaffected by React render scheduling.
+    if (!item.barcode || tapInFlightRef.current) return;
+    tapInFlightRef.current = true;
     setLoadingBarcode(item.barcode);
     setMissBarcode(null);
 
@@ -89,19 +95,21 @@ export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRe
           unverifiedIngredients: cached.unverified_ingredients ?? [],
           explanation:           cached.explanation ?? null,
         };
-        // Reset local state before navigating away — onViewVerdict() unmounts
-        // this component, so any setState in finally would be a no-op and
-        // loadingBarcode could be left set if React reuses the instance on return.
+        // Release the guard and clear visual state synchronously before navigating.
+        // onViewVerdict() unmounts this component; resetting via ref here ensures
+        // the guard is always clean if the component is reused on return.
+        tapInFlightRef.current = false;
         setLoadingBarcode(null);
-        setMissBarcode(null);
         onViewVerdict && onViewVerdict(result);
       } else {
-        setMissBarcode(item.barcode);
+        tapInFlightRef.current = false;
         setLoadingBarcode(null);
+        setMissBarcode(item.barcode);
       }
     } catch {
-      setMissBarcode(item.barcode);
+      tapInFlightRef.current = false;
       setLoadingBarcode(null);
+      setMissBarcode(item.barcode);
     }
   }
 
