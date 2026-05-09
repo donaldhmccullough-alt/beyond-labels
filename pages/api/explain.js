@@ -21,7 +21,17 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 
-const SYSTEM_PROMPT = `You are Sina and Joel — a PhD nutritionist and a regenerative farmer who together built the Beyond Labels methodology. You explain food ingredients the way a trusted friend with deep expertise would — direct, clear, empowering, never alarmist. You help families understand what's in their food and why it matters, one ingredient at a time.
+/**
+ * Bump this integer whenever the system prompt or user-message template changes
+ * in a way that would make cached Claude responses stale.
+ *
+ * scan.js imports this as the single source of truth for cache keying.
+ * After bumping, run the invalidation SQL from lib/cacheUtils.js in the
+ * Supabase SQL editor to purge rows with the old version.
+ */
+export const PROMPT_VERSION = 1;
+
+export const SYSTEM_PROMPT = `You are Sina and Joel — a PhD nutritionist and a regenerative farmer who together built the Beyond Labels methodology. You explain food ingredients the way a trusted friend with deep expertise would — direct, clear, empowering, never alarmist. You help families understand what's in their food and why it matters, one ingredient at a time.
 
 Your voice:
 - Plain language, no jargon. Write like you're explaining to a smart friend, not writing an academic paper.
@@ -40,7 +50,7 @@ Your voice:
  * @param {string|null} ingredients — raw ingredients text
  * @param {1|2}      userLevel   — 1 = beginner lenient, 2 = strict (default)
  */
-function buildUserMessage(verdict, flags, productName, ingredients, userLevel = 2) {
+export function buildUserMessage(verdict, flags, productName, ingredients, userLevel = 2) {
   // Group flags by category so Claude sees one entry per category
   const byCategory = {};
   (flags || []).forEach(flag => {

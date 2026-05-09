@@ -2,40 +2,47 @@
  * pages/api/scan.js — Beyond Labels barcode scan endpoint
  *
  * POST /api/scan
- * Body (JSON): { barcode: string }
+ * Body (JSON): { barcode: string, userLevel?: 1 | 2 }
  *
  * Flow:
  *   1. Validate method and input
  *   2. Sanitise barcode (strip non-digits, preserve leading zeros)
- *   3. Fetch product from Open Food Facts
- *   4. Normalise OFF labels_tags → our internal certification strings
- *   5. Run ingredients through rulesEngine.analyzeIngredients()
- *   6. Return structured JSON verdict
+ *   3. Check scan_cache — return immediately on hit (source: 'cache')
+ *   4. Fetch product from Open Food Facts
+ *   5. Normalise OFF labels_tags → our internal certification strings
+ *   6. Run ingredients through rulesEngine.analyzeIngredients()
+ *   7. Call Claude for plain-language explanation
+ *   8. Write full result to scan_cache
+ *   9. Return structured JSON verdict
  *
- * Response shape (200 — product found):
+ * Response shape (200 — product found or cache hit):
  * {
- *   verdict:        'red' | 'yellow' | 'green',
- *   flags:          Flag[],
- *   clearedBy:      string | null,
- *   productName:    string,
- *   ingredients:    string | null,
- *   barcode:        string,
- *   source:         'open-food-facts',
- *   found:          true,
- *   labelsDetected: string[]
+ *   verdict:               'red' | 'yellow' | 'green',
+ *   flags:                 Flag[],
+ *   clearedBy:             string | null,
+ *   productName:           string,
+ *   ingredients:           string | null,
+ *   barcode:               string,
+ *   source:                'open-food-facts' | 'cache',
+ *   found:                 true,
+ *   labelsDetected:        string[],
+ *   unverifiedIngredients: string[],
+ *   explanation:           { summary: string, details: object } | null
  * }
  *
  * Response shape (404 — product not in OFF database):
  * {
- *   verdict:        'unverified',
- *   flags:          [],
- *   clearedBy:      null,
- *   productName:    null,
- *   ingredients:    null,
- *   barcode:        string,
- *   source:         'open-food-facts',
- *   found:          false,
- *   labelsDetected: []
+ *   verdict:               'unverified',
+ *   flags:                 [],
+ *   clearedBy:             null,
+ *   productName:           null,
+ *   ingredients:           null,
+ *   barcode:               string,
+ *   source:                'open-food-facts',
+ *   found:                 false,
+ *   labelsDetected:        [],
+ *   unverifiedIngredients: [],
+ *   explanation:           null
  * }
  */
 
@@ -43,10 +50,12 @@ import rulesEngine from '../../lib/rulesEngine';
 const { analyzeIngredients } = rulesEngine;
 
 import { createClient } from '@supabase/supabase-js';
+import Anthropic from '@anthropic-ai/sdk';
+import { PROMPT_VERSION, SYSTEM_PROMPT, buildUserMessage } from './explain';
 
 /**
  * Null-safe Supabase client for the API route.
- * Returns null when env vars are absent so capture errors never affect scans.
+ * Returns null when env vars are absent so cache/capture errors never affect scans.
  */
 function getScanSupabase() {
   const url  = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -148,6 +157,48 @@ async function captureUnverifiedIngredients(ingredients, productName, barcode) {
 }
 
 /**
+ * Call the Claude API and return a parsed explanation object.
+ * Returns null on any error — callers must always handle null gracefully.
+ *
+ * @param {string}   verdict
+ * @param {object[]} flags
+ * @param {string}   productName
+ * @param {string|null} ingredientsText
+ * @param {1|2}      userLevel
+ * @returns {Promise<{summary: string, details: object} | null>}
+ */
+async function fetchExplanation(verdict, flags, productName, ingredientsText, userLevel) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const client = new Anthropic({ apiKey });
+
+    const message = await client.messages.create({
+      model:      'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      system:     SYSTEM_PROMPT,
+      messages: [{
+        role:    'user',
+        content: buildUserMessage(verdict, flags, productName, ingredientsText, userLevel),
+      }],
+    });
+
+    const rawText = message.content.find(b => b.type === 'text')?.text ?? '{}';
+
+    try {
+      return JSON.parse(rawText);
+    } catch {
+      const match = rawText.match(/\{[\s\S]*\}/);
+      if (match) return JSON.parse(match[0]);
+      return { summary: rawText, details: {} };
+    }
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Next.js API route handler.
  *
  * @param {import('next').NextApiRequest}  req
@@ -179,6 +230,45 @@ export default async function handler(req, res) {
     return res.status(400).json({
       error: '`barcode` must contain at least one digit.',
     });
+  }
+
+  // ── Cache lookup ──────────────────────────────────────────────────────────
+  const sb = getScanSupabase();
+
+  if (sb) {
+    try {
+      const { data: cached } = await sb
+        .from('scan_cache')
+        .select('*')
+        .eq('barcode', cleanBarcode)
+        .eq('user_level', userLevel)
+        .eq('prompt_version', PROMPT_VERSION)
+        .maybeSingle();
+
+      if (cached) {
+        // Touch last_accessed_at fire-and-forget — don't delay response.
+        sb.from('scan_cache')
+          .update({ last_accessed_at: new Date().toISOString() })
+          .eq('id', cached.id)
+          .then(() => {}).catch(() => {});
+
+        return res.status(200).json({
+          verdict:               cached.verdict,
+          flags:                 cached.flags ?? [],
+          clearedBy:             cached.cleared_by ?? null,
+          productName:           cached.product_name,
+          ingredients:           cached.ingredients ?? null,
+          barcode:               cleanBarcode,
+          source:                'cache',
+          found:                 true,
+          labelsDetected:        [],
+          unverifiedIngredients: cached.unverified_ingredients ?? [],
+          explanation:           cached.explanation ?? null,
+        });
+      }
+    } catch {
+      // Cache read failure is non-fatal — fall through to normal scan flow.
+    }
   }
 
   // ── Fetch from Open Food Facts ────────────────────────────────────────────
@@ -216,12 +306,14 @@ export default async function handler(req, res) {
       verdict,          // always 'unverified'
       flags,            // always []
       clearedBy,        // always null
-      productName:    null,
-      ingredients:    null,
-      barcode:        cleanBarcode,
-      source:         'open-food-facts',
-      found:          false,
-      labelsDetected: [],
+      productName:           null,
+      ingredients:           null,
+      barcode:               cleanBarcode,
+      source:                'open-food-facts',
+      found:                 false,
+      labelsDetected:        [],
+      unverifiedIngredients: [],
+      explanation:           null,
     });
   }
 
@@ -251,15 +343,46 @@ export default async function handler(req, res) {
     captureUnverifiedIngredients(unverifiedIngredients, productName, cleanBarcode).catch(() => {});
   }
 
+  // ── Fetch Claude explanation ──────────────────────────────────────────────
+  // Fail silently — null explanation degrades gracefully on the frontend.
+  const explanation = await fetchExplanation(
+    verdict, flags, productName, ingredientsText, userLevel,
+  );
+
+  // ── Write to scan cache (fire-and-forget) ─────────────────────────────────
+  // Only cache when we have a complete result. Errors must never affect response.
+  if (sb) {
+    sb.from('scan_cache')
+      .upsert(
+        {
+          barcode:               cleanBarcode,
+          user_level:            userLevel,
+          verdict,
+          flags,
+          ingredients:           ingredientsText,
+          cleared_by:            clearedBy,
+          unverified_ingredients: unverifiedIngredients ?? [],
+          explanation,
+          product_name:          productName,
+          prompt_version:        PROMPT_VERSION,
+          last_accessed_at:      new Date().toISOString(),
+        },
+        { onConflict: 'barcode,user_level' },
+      )
+      .then(() => {}).catch(() => {});
+  }
+
   return res.status(200).json({
     verdict,
     flags,
     clearedBy,
     productName,
-    ingredients:    ingredientsText,
-    barcode:        cleanBarcode,
-    source:         'open-food-facts',
-    found:          true,
+    ingredients:           ingredientsText,
+    barcode:               cleanBarcode,
+    source:                'open-food-facts',
+    found:                 true,
     labelsDetected,
+    unverifiedIngredients: unverifiedIngredients ?? [],
+    explanation,
   });
 }
