@@ -11,6 +11,7 @@ import { STAGES } from '@/lib/onboardingData';
 import { supabase } from '@/lib/supabase';
 import { getUserLevel } from '@/lib/userLevel';
 import { PROMPT_VERSION } from '@/lib/cacheVersion';
+import { formatTime, createHistoryTapHandler } from '@/lib/scanHistory';
 
 const FREE_SCAN_LIMIT = 15;
 
@@ -60,67 +61,15 @@ export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRe
     setSigningOut(false);
   }
 
-  async function handleHistoryItemTap(item) {
-    // Use the ref as the guard — synchronous, unaffected by React render scheduling.
-    if (!item.barcode || tapInFlightRef.current) return;
-    tapInFlightRef.current = true;
-    setLoadingBarcode(item.barcode);
-    setMissBarcode(null);
-
-    try {
-      if (!supabase) throw new Error('no-supabase');
-
-      const level = userLevel ?? getUserLevel();
-      const { data: cached, error } = await supabase
-        .from('scan_cache')
-        .select('*')
-        .eq('barcode', item.barcode)
-        .eq('user_level', level)
-        .eq('prompt_version', PROMPT_VERSION)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      if (cached) {
-        const result = {
-          verdict:               cached.verdict,
-          flags:                 cached.flags ?? [],
-          clearedBy:             cached.cleared_by ?? null,
-          productName:           cached.product_name,
-          ingredients:           cached.ingredients ?? null,
-          barcode:               cached.barcode,
-          source:                'cache',
-          found:                 true,
-          labelsDetected:        [],
-          unverifiedIngredients: cached.unverified_ingredients ?? [],
-          explanation:           cached.explanation ?? null,
-        };
-        // Release the guard and clear visual state synchronously before navigating.
-        // onViewVerdict() unmounts this component; resetting via ref here ensures
-        // the guard is always clean if the component is reused on return.
-        tapInFlightRef.current = false;
-        setLoadingBarcode(null);
-        onViewVerdict && onViewVerdict(result);
-      } else {
-        tapInFlightRef.current = false;
-        setLoadingBarcode(null);
-        setMissBarcode(item.barcode);
-      }
-    } catch {
-      tapInFlightRef.current = false;
-      setLoadingBarcode(null);
-      setMissBarcode(item.barcode);
-    }
-  }
-
-  function formatTime(iso) {
-    const d = new Date(iso), now = new Date();
-    const diffMin = Math.floor((now - d) / 60000);
-    if (diffMin < 1) return 'just now';
-    if (diffMin < 60) return diffMin + 'm ago';
-    const diffHr = Math.floor(diffMin / 60);
-    return diffHr < 24 ? diffHr + 'h ago' : d.toLocaleDateString();
-  }
+  const handleHistoryItemTap = createHistoryTapHandler({
+    supabase,
+    userLevel,
+    promptVersion: PROMPT_VERSION,
+    onResult: onViewVerdict,
+    tapInFlightRef,
+    setLoadingBarcode,
+    setMissBarcode,
+  });
 
   const vc = { red: '#C0392B', yellow: '#D4AC0D', green: '#27AE60', unverified: '#9A8260' };
 

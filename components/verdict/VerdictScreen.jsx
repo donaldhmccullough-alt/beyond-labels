@@ -6,7 +6,10 @@ const MVP_MODE = true;
 
 import { useState, useEffect } from 'react';
 import { getProfile, getTotalScans, shouldShowNudge, markNudgeDismissed } from '@/lib/userProfile';
+import rulesEngine from '@/lib/rulesEngine';
 import ConcernCard from './ConcernCard';
+
+const { LEVEL_1_YELLOW_CATEGORIES } = rulesEngine;
 
 // MVP_MODE: FLAG_KEYWORDS kept in place for when personal flags are re-enabled
 const FLAG_KEYWORDS = {
@@ -82,8 +85,7 @@ export default function VerdictScreen({ scanResult, userLevel = 2, onSeeSwaps, o
 
   const { verdict, flags = [], productName, ingredients, unverifiedIngredients = [] } = scanResult;
 
-  const LEVEL_1_CATEGORIES = new Set(['seed_oils', 'conventional_crops', 'bioengineering', 'natural_flavors']);
-  const hasLevel1SoftFlags = userLevel === 1 && flags.some(f => f.severity === 'caution' && LEVEL_1_CATEGORIES.has(f.category));
+  const hasLevel1SoftFlags = userLevel === 1 && flags.some(f => f.severity === 'caution' && LEVEL_1_YELLOW_CATEGORIES.has(f.category));
   const verdictColors = { red: '#C0392B', yellow: '#D4AC0D', green: '#27AE60', unverified: '#9A8260' };
   const verdictBg = { red: '#FDEDEC', yellow: '#FEF9E7', green: '#EAFAF1', unverified: '#F5F5F5' };
   const verdictLabel = { red: 'AVOID', yellow: 'CAUTION', green: 'CLEAN', unverified: 'UNVERIFIED' };

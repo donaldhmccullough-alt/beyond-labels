@@ -21,6 +21,9 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { PROMPT_VERSION } from '../../lib/cacheVersion';
+import rulesEngine from '../../lib/rulesEngine';
+
+const { LEVEL_1_YELLOW_CATEGORIES } = rulesEngine;
 
 export { PROMPT_VERSION };
 
@@ -51,12 +54,10 @@ export function buildUserMessage(verdict, flags, productName, ingredients, userL
     byCategory[flag.category].push(flag);
   });
 
-  const LEVEL_1_CATEGORIES = new Set(['seed_oils', 'conventional_crops', 'bioengineering', 'natural_flavors']);
-
   const categoryLines = Object.entries(byCategory).map(([cat, catFlags]) => {
     const matched  = catFlags.map(f => f.matchedIngredient).join(', ');
     const severity = catFlags.some(f => f.severity === 'reject') ? 'reject' : 'caution';
-    const isLevel1Soft = userLevel === 1 && severity === 'caution' && LEVEL_1_CATEGORIES.has(cat);
+    const isLevel1Soft = userLevel === 1 && severity === 'caution' && LEVEL_1_YELLOW_CATEGORIES.has(cat);
     const levelNote = isLevel1Soft ? ' [Level 1 awareness item — use encouraging, non-alarming tone]' : '';
     return `  - ${cat} (${severity}${levelNote}): found "${matched}"`;
   }).join('\n');
