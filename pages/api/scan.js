@@ -51,7 +51,8 @@ const { analyzeIngredients } = rulesEngine;
 
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
-import { PROMPT_VERSION, SYSTEM_PROMPT, buildUserMessage } from './explain';
+import { PROMPT_VERSION } from '../../lib/cacheVersion';
+import { SYSTEM_PROMPT, buildUserMessage } from './explain';
 
 /**
  * Null-safe Supabase client for the API route.
@@ -369,7 +370,7 @@ export default async function handler(req, res) {
         },
         { onConflict: 'barcode,user_level' },
       )
-      .then(() => {}).catch(() => {});
+      .then(() => {}).catch((err) => console.error('scan_cache write failed:', err));
   }
 
   return res.status(200).json({

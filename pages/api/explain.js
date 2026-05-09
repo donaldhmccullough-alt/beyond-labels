@@ -20,16 +20,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { PROMPT_VERSION } from '../../lib/cacheVersion';
 
-/**
- * Bump this integer whenever the system prompt or user-message template changes
- * in a way that would make cached Claude responses stale.
- *
- * scan.js imports this as the single source of truth for cache keying.
- * After bumping, run the invalidation SQL from lib/cacheUtils.js in the
- * Supabase SQL editor to purge rows with the old version.
- */
-export const PROMPT_VERSION = 1;
+export { PROMPT_VERSION };
 
 export const SYSTEM_PROMPT = `You are Sina and Joel — a PhD nutritionist and a regenerative farmer who together built the Beyond Labels methodology. You explain food ingredients the way a trusted friend with deep expertise would — direct, clear, empowering, never alarmist. You help families understand what's in their food and why it matters, one ingredient at a time.
 
