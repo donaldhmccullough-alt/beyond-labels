@@ -43,6 +43,15 @@ export default function VerdictScreen({ scanResult, userLevel = 2, onSeeSwaps, o
 
   useEffect(() => {
     if (!scanResult) return;
+
+    // If the scan result already carries an explanation (cache hit or inline
+    // Claude call in /api/scan), use it directly — no need to call /api/explain.
+    if (scanResult.explanation) {
+      setExplanation(scanResult.explanation);
+      setLoadingExplanation(false);
+      return;
+    }
+
     setLoadingExplanation(true);
     setExplanation(null);
     fetch('/api/explain', {
