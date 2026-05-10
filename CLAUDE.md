@@ -68,10 +68,10 @@ lib/
   userLevel.js            — getUserLevel(), setUserLevel(), hasUserLevel() — localStorage bl_user_level
   auth.js                 — Supabase auth wrappers (signUp, signIn, signOut, migration)
   supabase.js             — null-safe Supabase singleton; anon key + RLS; client-side only
-  supabaseServer.js       — null-safe Supabase singleton; service role key; server-side only (API routes)
+  supabaseServer.js       — null-safe Supabase singleton; service role key; SERVER-ONLY — never import from client components or app/
   cacheVersion.js         — PROMPT_VERSION constant (single source of truth for cache invalidation)
   cacheUtils.js           — getCacheInvalidationSQL() developer utility for manual cache purges
-  scanHistory.js          — formatTime(), createHistoryTapHandler() — shared across ScannerScreen + ProfileScreen
+  scanHistory.js          — formatTime(iso) and createHistoryTapHandler(opts) — shared utilities for tappable scan history in ScannerScreen + ProfileScreen
 
 pages/api/
   scan.js                 — POST barcode → cache check → Open Food Facts → rulesEngine → Claude → scan_cache upsert
@@ -271,8 +271,9 @@ Two separate clients — never mix them:
 
 **`lib/supabaseServer.js`** — server-side singleton (API routes only)
 - Uses `SUPABASE_SERVICE_ROLE_KEY` (server-only env var — never `NEXT_PUBLIC_`)
-- Bypasses RLS — never import from client components or any file under `app/`
+- Bypasses RLS — **never import from client components or any file under `app/`**
 - Used by: `pages/api/scan.js`
+- Auth persistence disabled (`persistSession: false`) — no user session on server
 
 Both return `null` when env vars are absent. Always null-check before using: `if (!supabase) return ...`
 
@@ -287,10 +288,11 @@ Both return `null` when env vars are absent. Always null-check before using: `if
   - Unique constraint on `(barcode, user_level)` — upserted on every fresh scan
   - Cache hit returns `source: 'cache'`; miss falls through to Open Food Facts
   - Invalidated by bumping `PROMPT_VERSION` in `lib/cacheVersion.js`
+  - **RLS requirements**: service role key for writes (server-side, `scan.js`); anon SELECT policy required for client-side tap-to-verdict reads (`scanHistory.js`); no anon INSERT/UPDATE policies needed
 - `unverified_ingredients` — team review queue for tokens not matched by any trigger:
   - `id`, `ingredient` (text, lowercase), `product_name`, `barcode`
   - `first_seen` (timestamptz), `occurrence_count` (integer)
-  - Populated fire-and-forget by `pages/api/scan.js` after each fresh scan
+  - Populated by `pages/api/scan.js` after each fresh scan (awaited, not fire-and-forget)
 
 ### Auth flow
 - Email/password signup with `emailRedirectTo: ${origin}/auth/callback`
@@ -335,6 +337,9 @@ ANTHROPIC_API_KEY=                 # server-side only
 - Returns: `{ summary: string, details: { [category]: string } }`
 - Exports `SYSTEM_PROMPT`, `buildUserMessage`, `PROMPT_VERSION` for use by `scan.js`
 - VerdictScreen skips this endpoint when `scanResult.explanation` is already populated (cache hit or fresh scan)
+- **System prompt voice**: Sina McCullough (PhD Nutrition, autoimmune healing journey, science-first, rhetorical questions, inflammation/gut/gene-expression framing) + Joel Salatin (Polyface Farm, story-and-analogy thinker, farming-system angle, "Feed the Good and Starve the Bad"). Together: empowering, not alarmist, skeptical of GRAS and industry-funded science.
+- **Level-aware tone**: Level 1 users get encouragement and awareness-building framing; Level 2 users get direct, graduate-level honesty. Controlled by `[Level 1 awareness item]` note injected per flagged category in `buildUserMessage()`.
+- **Current PROMPT_VERSION**: `2` (bumped from 1 when Sina/Joel voice was updated — `db6b419`)
 
 ---
 
@@ -347,6 +352,8 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 
 Cache lookup is keyed on `(barcode, user_level, prompt_version)` — changing the user's level or bumping the prompt version both trigger a fresh Claude call and cache re-population.
+
+**Current PROMPT_VERSION is 2.** Rows written at version 1 are invisible to the client — they will never be served and can be purged with `DELETE FROM scan_cache WHERE prompt_version < 2;`.
 
 ---
 
@@ -406,13 +413,41 @@ style={{
 disabled={true}
 ```
 
+### Vercel serverless — always await Supabase writes before res.json()
+
+**Critical pattern**: Vercel serverless functions freeze the execution context the moment `res.json()` is called. Any un-awaited promise launched before `res.json()` — including fire-and-forget `.then().catch()` chains — is silently discarded before it reaches the network. This caused the `scan_cache` upsert and `captureUnverifiedIngredients` to be dropped on every fresh scan.
+
+**Correct pattern** — await the write, wrap in try/catch so a failure never blocks the response:
+```js
+// ✅ Correct — awaited before res.json()
+if (sb) {
+  try {
+    await sb.from('scan_cache').upsert({ ... });
+  } catch (err) {
+    console.error('scan_cache write failed:', err);
+  }
+}
+return res.status(200).json({ ... });
+
+// ❌ Wrong — promise is dropped when function terminates on res.json()
+if (sb) {
+  sb.from('scan_cache').upsert({ ... }).then(() => {}).catch(() => {});
+}
+return res.status(200).json({ ... });
+```
+
+This applies to **all** Supabase writes in API routes, not just scan_cache. Never use fire-and-forget in a Vercel serverless handler.
+
 ---
 
 ## Commit History (mvp-beta)
 
-### Session — scan cache, level system, tap-to-verdict, code consolidation
+### Session — prompt update, cache write fix, code quality
 | Hash | Description |
 |------|-------------|
+| `82705a0` | fix: await Supabase writes before res.json() to prevent Vercel truncation |
+| `db6b419` | feat: updated Sina/Joel system prompt, bumped PROMPT_VERSION to 2 |
+| `debe4d9` | docs: update CLAUDE.md to reflect prior session changes |
 | `83c73bc` | Consolidate duplicated code: scanHistory utils and LEVEL_1_YELLOW_CATEGORIES |
 | `32f793d` | Use service role key for server-side Supabase writes |
 | `03d1d61` | Skip /api/explain fetch when scanResult.explanation already present |
