@@ -324,10 +324,15 @@ export default async function handler(req, res) {
   const { verdict, flags, clearedBy, unverifiedIngredients } =
     analyzeIngredients(ingredientsText, labelsDetected, userLevel);
 
-  // ── Capture unverified ingredients (fire-and-forget) ─────────────────────
-  // Errors here must never affect the scan result returned to the user.
+  // ── Capture unverified ingredients ───────────────────────────────────────
+  // Awaited so Vercel doesn't terminate the function before the write lands.
+  // A failed write is logged and skipped — it never blocks the response.
   if (unverifiedIngredients?.length) {
-    captureUnverifiedIngredients(unverifiedIngredients, productName, cleanBarcode).catch(() => {});
+    try {
+      await captureUnverifiedIngredients(unverifiedIngredients, productName, cleanBarcode);
+    } catch (err) {
+      console.error('unverified_ingredients write failed:', err);
+    }
   }
 
   // ── Fetch Claude explanation ──────────────────────────────────────────────
@@ -336,27 +341,31 @@ export default async function handler(req, res) {
     verdict, flags, productName, ingredientsText, userLevel,
   );
 
-  // ── Write to scan cache (fire-and-forget) ─────────────────────────────────
-  // Only cache when we have a complete result. Errors must never affect response.
+  // ── Write to scan cache ───────────────────────────────────────────────────
+  // Awaited so Vercel doesn't terminate the function before the write lands.
+  // A failed write is logged and skipped — it never blocks the response.
   if (sb) {
-    sb.from('scan_cache')
-      .upsert(
-        {
-          barcode:               cleanBarcode,
-          user_level:            userLevel,
-          verdict,
-          flags,
-          ingredients:           ingredientsText,
-          cleared_by:            clearedBy,
-          unverified_ingredients: unverifiedIngredients ?? [],
-          explanation,
-          product_name:          productName,
-          prompt_version:        PROMPT_VERSION,
-          last_accessed_at:      new Date().toISOString(),
-        },
-        { onConflict: 'barcode,user_level' },
-      )
-      .then(() => {}).catch((err) => console.error('scan_cache write failed:', err));
+    try {
+      await sb.from('scan_cache')
+        .upsert(
+          {
+            barcode:                cleanBarcode,
+            user_level:             userLevel,
+            verdict,
+            flags,
+            ingredients:            ingredientsText,
+            cleared_by:             clearedBy,
+            unverified_ingredients: unverifiedIngredients ?? [],
+            explanation,
+            product_name:           productName,
+            prompt_version:         PROMPT_VERSION,
+            last_accessed_at:       new Date().toISOString(),
+          },
+          { onConflict: 'barcode,user_level' },
+        );
+    } catch (err) {
+      console.error('scan_cache write failed:', err);
+    }
   }
 
   return res.status(200).json({
