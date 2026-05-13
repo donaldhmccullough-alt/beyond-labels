@@ -62,7 +62,8 @@ components/
 
 lib/
   rulesEngine.js          — deterministic ingredient analysis engine (core logic)
-  rulesEngine.test.js     — Jest tests for rules engine (319 tests)
+  rulesEngine.test.js     — Jest tests for rules engine (283 tests; 14 describe blocks; block 13 = SB 25 additions, 36 tests; block 14 = applyLevel2VerdictOverlay, 23 tests)
+  certifications.js       — checkUsdaOrganicCertification(labelsDetected) + checkNonGMOProject(labelsDetected); both use OFF labels_tags via normalizeLabelTags()
   onboardingData.js       — QUESTIONS array (13 Qs), STAGES array (5 stages), getStageFromScore()
   userProfile.js          — localStorage profile read/write/clear helpers
   userLevel.js            — getUserLevel(), setUserLevel(), hasUserLevel() — localStorage bl_user_level
@@ -188,7 +189,14 @@ artificial flavors, artificial colour, artificial color, artificial flavor,
 sucralose, aspartame, acesulfame potassium, acesulfame-k, ace-k, saccharin,
 neotame, advantame, steviol glycoside, stevia extract, rebaudioside, reb-a,
 interesterified oil, interesterified fat, carrageenan, titanium dioxide, propyl gallate,
-propylene glycol, yellow 5, yellow 6, red 40, blue 1, blue 2, green 3, tbhq, bha, bht
+propylene glycol, yellow 5, yellow 6, red 40, blue 1, blue 2, green 3, tbhq, bha, bht,
+**azodicarbonamide, ada, bromated flour, calcium bromate,
+datem, diacetyl tartaric acid esters, diacetyl, canthaxanthin,
+red 3, red 4, citrus red 2, olestra, olean, propylparaben,
+potassium iodate, potassium aluminum sulfate, sodium aluminum sulfate,
+sodium lauryl sulfate**
+_(18 entries added from Texas SB 25 disclosure list — `66c781c`)_
+_(Note: `bleached flour` was intentionally excluded — it already exists in `CONVENTIONAL_CROPS` which processes first; adding it to SYNTHETIC_ADDITIVES would be dead code and would break Level 1 red tests)_
 
 ### Level rules — YELLOW for Level 1, RED for Level 2
 **Seed oils** (SEED_OILS array — trans fats are in a separate TRANS_FATS array):
@@ -253,6 +261,29 @@ LEVEL_1_YELLOW_CATEGORIES
 - No hard rejects + soft flags (`severity: 'caution'`) → `'yellow'`
 - Nothing → `'green'`
 - Empty/null ingredients → `'unverified'`
+
+### Level 2 verdict overlay (lib/certifications.js + scan.js)
+
+For `userLevel === 2`, `scan.js` applies an allowlist overlay **after** `analyzeIngredients()` via `applyLevel2VerdictOverlay()` from `lib/rulesEngine.js`:
+
+| Condition | L2 verdict | `clearedBy` |
+|-----------|-----------|-------------|
+| Any L1 flag (reject or caution) | `red` | from L1 analysis |
+| No L1 flags + USDA organic label | `green` | `'usda-organic'` |
+| No L1 flags + Non-GMO label | `yellow` | `'non-gmo-project'` |
+| No L1 flags + no certification | `red` | `null` (conventional = assumed risk) |
+
+**`lib/certifications.js`** — two label-check helpers called from `scan.js`:
+- `checkUsdaOrganicCertification(labelsDetected)` — returns `true` if `'usda-organic'` is in the normalised OFF labels array.
+- `checkNonGMOProject(labelsDetected)` — returns `true` if `'non-gmo-project-verified'` is in the array.
+
+**Data source**: Both use Open Food Facts `labels_tags`, normalised by `normalizeLabelTags()` in `scan.js`. This is the same data used by the rules engine for Category 2 clearance. Results are cached via `scan_cache` — neither function is called on a cache hit.
+
+**Limitations**:
+- OFF labels are user-contributed; coverage is good but not authoritative.
+- Absence of a label does not mean the product is not certified — it may simply not have been tagged in OFF yet.
+- `checkNonGMOProject` is live and functional using OFF label data. A direct Non-GMO Project data partnership is pending to allow authoritative lookups independent of OFF community tagging.
+- `checkUsdaOrganicCertification` uses OFF label data. A direct USDA Organic Integrity API integration is pending. The USDA OData API (`OidPublicDataService.svc`) was confirmed retired as of May 2026; the replacement REST API (`OIDPublicAPI`) was investigated and found to return empty results for all queries — likely not accessible at the `api.data.gov` key tier.
 
 ### Key design principle
 The trigger arrays are the single source of truth. Adding/removing/moving a trigger between levels is a one-line change. No logic scattered across multiple files.
@@ -326,7 +357,7 @@ ANTHROPIC_API_KEY=                 # server-side only
 
 ### POST /api/scan
 - Body: `{ barcode: string, userLevel?: 1 | 2 }`
-- Flow: validate → sanitize barcode → check `scan_cache` (return immediately on hit) → fetch Open Food Facts → normalize labels → run `analyzeIngredients(text, labels, userLevel)` → call Claude for explanation → upsert `scan_cache` → return result
+- Flow: validate → sanitize barcode → check `scan_cache` (return immediately on hit) → fetch Open Food Facts → normalize labels → run `analyzeIngredients(text, labels, userLevel)` → apply Level 2 overlay (certifications.js) if userLevel === 2 → call Claude for explanation → upsert `scan_cache` → return result
 - Returns: `{ verdict, flags, clearedBy, productName, ingredients, barcode, source, found, labelsDetected, unverifiedIngredients, explanation }`
 - Uses `supabaseServer` (service role key) for all Supabase writes
 - Exports `SYSTEM_PROMPT` and `buildUserMessage` from `explain.js` for the inline Claude call
@@ -442,6 +473,22 @@ This applies to **all** Supabase writes in API routes, not just scan_cache. Neve
 
 ## Commit History (mvp-beta)
 
+### Session — certifications.js cleanup + CLAUDE.md sync
+| Hash | Description |
+|------|-------------|
+| `701b142` | docs: confirm checkNonGMOProject live via OFF labels, update CLAUDE.md |
+
+### Session — Level 2 allowlist verdict model
+| Hash | Description |
+|------|-------------|
+| `2e22823` | refactor: replace retired USDA OData API with OFF label lookup in certifications.js |
+| `9cea010` | feat: Level 2 allowlist verdict — USDA Organic Integrity lookup + certifications.js |
+
+### Session — SB 25 synthetic additives expansion
+| Hash | Description |
+|------|-------------|
+| `66c781c` | feat: add 18 Texas SB 25 chemicals to SYNTHETIC_ADDITIVES + 36 tests |
+
 ### Session — prompt update, cache write fix, code quality
 | Hash | Description |
 |------|-------------|
@@ -481,6 +528,4 @@ This applies to **all** Supabase writes in API routes, not just scan_cache. Neve
 - Do not delete feature code — use `MVP_MODE` flags
 - Do not use global MVP_MODE — keep it module-level per file
 - Do not commit `.env.local`
-- Do not import `lib/supabaseServer.js` from any client component or any file under `app/` — it holds the service role key
-- Do not import `PROMPT_VERSION` from `pages/api/explain.js` — import it from `lib/cacheVersion.js` (API route named exports can resolve as `undefined` under certain Next.js bundling scenarios)
-- Do not prefix `SUPABASE_SERVICE_ROLE_KEY` with `NEXT_PUBLIC_` — that would expose it to the browser
+- Do not import `lib/supabaseServer.js` from any client
