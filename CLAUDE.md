@@ -62,7 +62,7 @@ components/
 
 lib/
   rulesEngine.js          — deterministic ingredient analysis engine (core logic)
-  rulesEngine.test.js     — Jest tests for rules engine (283 tests; 14 describe blocks; block 13 = SB 25 additions, 36 tests; block 14 = applyLevel2VerdictOverlay, 23 tests)
+  rulesEngine.test.js     — Jest tests for rules engine (313 tests; 15 describe blocks; block 13 = SB 25 additions, 36 tests; block 14 = applyLevel2VerdictOverlay, 23 tests; block 15 = EU additives, 25 tests)
   certifications.js       — checkUsdaOrganicCertification(labelsDetected) + checkNonGMOProject(labelsDetected); both use OFF labels_tags via normalizeLabelTags()
   onboardingData.js       — QUESTIONS array (13 Qs), STAGES array (5 stages), getStageFromScore()
   userProfile.js          — localStorage profile read/write/clear helpers
@@ -243,7 +243,7 @@ analyzeIngredients(ingredientText, productLabels, userLevel = 2)
 // }
 
 LEVEL_1_YELLOW_CATEGORIES
-// Set<string> — {'seed_oils', 'conventional_crops', 'bioengineering', 'natural_flavors'}
+// Set<string> — {'seed_oils', 'conventional_crops', 'bioengineering', 'natural_flavors', 'eu_additives'}
 // Imported by VerdictScreen and explain.js (single source of truth)
 ```
 
@@ -253,8 +253,9 @@ LEVEL_1_YELLOW_CATEGORIES
 3. **CONVENTIONAL_CROPS** — Level 2: red; Level 1: yellow; clearable by `usda-organic` label, `non-gmo-project-verified` label, or "organic" word prefix on the ingredient
 4. **BIOENGINEERING_TERMS** — Level 2: red; Level 1: yellow; first match only
 5. **NATURAL_FLAVORS** — Level 2: red; Level 1: yellow; no clearance
-6. **SYNTHETIC_ADDITIVES** — always red at both levels; no clearance
-7. **GLUTEN_GRAINS** — soft flag (caution/yellow only at both levels)
+6. **SYNTHETIC_ADDITIVES** — always red at both levels; no clearance; expanded in EU additives session with ~200 additional triggers (full EU n/n list from Sina's review)
+7. **EU_ADDITIVES_L1_YELLOW** — Level 2: red; Level 1: yellow; no organic clearance; ~60 entries from Sina's y/n EU review (natural colors, food acids, hydrocolloids, waxes, enzymes). Category string: `'eu_additives'`.
+8. **GLUTEN_GRAINS** — soft flag (caution/yellow only at both levels)
 
 ### Verdict logic
 - Any hard reject (`severity: 'reject'`) → `'red'`
@@ -472,6 +473,11 @@ This applies to **all** Supabase writes in API routes, not just scan_cache. Neve
 ---
 
 ## Commit History (mvp-beta)
+
+### Session — EU additives expansion
+| Hash | Description |
+|------|-------------|
+| `8fd052d` | feat: EU additives expansion — SYNTHETIC_ADDITIVES + EU_ADDITIVES_L1_YELLOW |
 
 ### Session — certifications.js cleanup + CLAUDE.md sync
 | Hash | Description |
