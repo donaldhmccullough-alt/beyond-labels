@@ -62,7 +62,7 @@ components/
 
 lib/
   rulesEngine.js          — deterministic ingredient analysis engine (core logic)
-  rulesEngine.test.js     — Jest tests for rules engine (313 tests; 15 describe blocks; block 13 = SB 25 additions, 36 tests; block 14 = applyLevel2VerdictOverlay, 23 tests; block 15 = EU additives, 25 tests)
+  rulesEngine.test.js     — Jest tests for rules engine (394 tests total, 2 suites; 15 describe blocks; block 13 = SB 25 additions, 36 tests; block 14 = applyLevel2VerdictOverlay, 23 tests; block 15 = synthetic_additives/EU additives, 25 tests)
   certifications.js       — checkUsdaOrganicCertification(labelsDetected) + checkNonGMOProject(labelsDetected); both use OFF labels_tags via normalizeLabelTags()
   onboardingData.js       — QUESTIONS array (13 Qs), STAGES array (5 stages), getStageFromScore()
   userProfile.js          — localStorage profile read/write/clear helpers
@@ -189,14 +189,7 @@ artificial flavors, artificial colour, artificial color, artificial flavor,
 sucralose, aspartame, acesulfame potassium, acesulfame-k, ace-k, saccharin,
 neotame, advantame, steviol glycoside, stevia extract, rebaudioside, reb-a,
 interesterified oil, interesterified fat, carrageenan, titanium dioxide, propyl gallate,
-propylene glycol, yellow 5, yellow 6, red 40, blue 1, blue 2, green 3, tbhq, bha, bht,
-**azodicarbonamide, ada, bromated flour, calcium bromate,
-datem, diacetyl tartaric acid esters, diacetyl, canthaxanthin,
-red 3, red 4, citrus red 2, olestra, olean, propylparaben,
-potassium iodate, potassium aluminum sulfate, sodium aluminum sulfate,
-sodium lauryl sulfate**
-_(18 entries added from Texas SB 25 disclosure list — `66c781c`)_
-_(Note: `bleached flour` was intentionally excluded — it already exists in `CONVENTIONAL_CROPS` which processes first; adding it to SYNTHETIC_ADDITIVES would be dead code and would break Level 1 red tests)_
+propylene glycol, yellow 5, yellow 6, red 40, blue 1, blue 2, green 3, tbhq, bha, bht
 
 ### Level rules — YELLOW for Level 1, RED for Level 2
 **Seed oils** (SEED_OILS array — trans fats are in a separate TRANS_FATS array):
@@ -232,7 +225,8 @@ After a fresh scan, tokens not matched by any trigger are filtered through `filt
 ```js
 // CommonJS — import as:
 import rulesEngine from '@/lib/rulesEngine';
-const { analyzeIngredients, LEVEL_1_YELLOW_CATEGORIES } = rulesEngine;
+const { analyzeIngredients, LEVEL_1_YELLOW_CATEGORIES, applyLevel2VerdictOverlay,
+        SYNTHETIC_ADDITIVES_L1_YELLOW } = rulesEngine;
 
 analyzeIngredients(ingredientText, productLabels, userLevel = 2)
 // Returns: {
@@ -243,7 +237,7 @@ analyzeIngredients(ingredientText, productLabels, userLevel = 2)
 // }
 
 LEVEL_1_YELLOW_CATEGORIES
-// Set<string> — {'seed_oils', 'conventional_crops', 'bioengineering', 'natural_flavors', 'eu_additives'}
+// Set<string> — {'seed_oils', 'conventional_crops', 'bioengineering', 'natural_flavors', 'synthetic_additives'}
 // Imported by VerdictScreen and explain.js (single source of truth)
 ```
 
@@ -253,9 +247,9 @@ LEVEL_1_YELLOW_CATEGORIES
 3. **CONVENTIONAL_CROPS** — Level 2: red; Level 1: yellow; clearable by `usda-organic` label, `non-gmo-project-verified` label, or "organic" word prefix on the ingredient
 4. **BIOENGINEERING_TERMS** — Level 2: red; Level 1: yellow; first match only
 5. **NATURAL_FLAVORS** — Level 2: red; Level 1: yellow; no clearance
-6. **SYNTHETIC_ADDITIVES** — always red at both levels; no clearance; expanded in EU additives session with ~200 additional triggers (full EU n/n list from Sina's review)
-7. **EU_ADDITIVES_L1_YELLOW** — Level 2: red; Level 1: yellow; no organic clearance; ~60 entries from Sina's y/n EU review (natural colors, food acids, hydrocolloids, waxes, enzymes). Category string: `'eu_additives'`.
-8. **GLUTEN_GRAINS** — soft flag (caution/yellow only at both levels)
+6. **SYNTHETIC_ADDITIVES** — always red at both levels; no clearance; expanded with ~200 additional EU n/n triggers (full EU n/n list from Sina's review). Category string: `'synthetic_additives'`.
+7. **SYNTHETIC_ADDITIVES_L1_YELLOW** — Level 2: red; Level 1: yellow; no organic clearance; ~60 entries from Sina's y/n EU review (natural colors, food acids, hydrocolloids, waxes, enzymes). Category string: `'synthetic_additives'` (same category as SYNTHETIC_ADDITIVES — unified under one category for UI and AI explanations).
+8. **GLUTEN_GRAINS** — soft flag (caution/yellow only at both levels). Category string: `'gluten_grains'`.
 
 ### Verdict logic
 - Any hard reject (`severity: 'reject'`) → `'red'`
@@ -474,6 +468,11 @@ This applies to **all** Supabase writes in API routes, not just scan_cache. Neve
 
 ## Commit History (mvp-beta)
 
+### Session — category rename refactor
+| Hash | Description |
+|------|-------------|
+| `cbf5127` | refactor: unify additive categories — synthetic_additives + gluten_grains |
+
 ### Session — EU additives expansion
 | Hash | Description |
 |------|-------------|
@@ -534,4 +533,6 @@ This applies to **all** Supabase writes in API routes, not just scan_cache. Neve
 - Do not delete feature code — use `MVP_MODE` flags
 - Do not use global MVP_MODE — keep it module-level per file
 - Do not commit `.env.local`
-- Do not import `lib/supabaseServer.js` from any client
+- Do not import `lib/supabaseServer.js` from any client component or any file under `app/` — it holds the service role key
+- Do not import `PROMPT_VERSION` from `pages/api/explain.js` — import it from `lib/cacheVersion.js` (API route named exports can resolve as `undefined` under certain Next.js bundling scenarios)
+- Do not prefix `SUPABASE_SERVICE_ROLE_KEY` with `NEXT_PUBLIC_` — that would expose it to the browser
