@@ -56,9 +56,12 @@ export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRe
     // This eliminates any flash of previous user's history during the transition.
     setScanHistory([]);
     setScanUsage({ scanCount: 0 });
-    await signOut();    // clears Supabase session + all scan localStorage keys
-    clearProfile();     // clears bl_profile (stage/flags)
-    setSigningOut(false);
+    try {
+      await signOut();
+      clearProfile();
+    } finally {
+      setSigningOut(false);
+    }
   }
 
   const handleHistoryItemTap = createHistoryTapHandler({
@@ -339,7 +342,7 @@ export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRe
         </button>
 
         <p style={{ textAlign: 'center', marginTop: 24, fontSize: 12, color: 'var(--text-light)' }}>
-          Beyond Labels v1.0.0 · Session 7
+          Beyond Labels v1.0.0-beta
         </p>
       </div>
     </div>

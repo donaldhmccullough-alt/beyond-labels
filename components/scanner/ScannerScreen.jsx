@@ -27,6 +27,7 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
   const streamRef = useRef(null);
   const tapInFlightRef = useRef(false);
   const [loadingBarcode, setLoadingBarcode] = useState(null);
+  const [scanError, setScanError] = useState(null);
   const [missBarcode, setMissBarcode] = useState(null);
   const FREE_SCAN_LIMIT = 15;
 
@@ -77,6 +78,7 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
   }
 
   async function processBarcode(barcode) {
+    setScanError(null);
     setScanning(true);
     try {
       const res = await fetch('/api/scan', {
@@ -103,7 +105,10 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
         setHistory(getScanHistory());
       }
       onScanResult(data);
-    } catch (err) { console.error('Scan error:', err); } finally { setScanning(false); }
+    } catch (err) {
+      console.error('Scan error:', err);
+      setScanError('Something went wrong. Please try again.');
+    } finally { setScanning(false); }
   }
 
   async function handleManualSubmit(e) {
@@ -183,6 +188,12 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
         {scanning ? 'Stop Scanning' : 'Tap to Scan'}
       </button>
 
+      {scanError && (
+        <p style={{ textAlign: 'center', marginTop: 8, fontSize: 13, color: '#C0392B', fontWeight: 500, padding: '0 16px' }}>
+          {scanError}
+        </p>
+      )}
+
       {/* MVP_MODE: scan counter hidden entirely.
           To restore: remove the MVP_MODE check below and show the counter.
       {!MVP_MODE && scanUsage.scanCount > 3 && (
@@ -202,7 +213,7 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
             return (
               <div key={i}>
                 <div
-                  onClick={() => handleHistoryItemTap(item)}
+                  onClick={() => item.barcode && handleHistoryItemTap(item)}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 12,
                     paddingTop: 10, paddingBottom: 10,

@@ -6,6 +6,7 @@ const MVP_MODE = true;
 
 import { useState, useEffect } from 'react';
 import { getProfile, getTotalScans, shouldShowNudge, markNudgeDismissed } from '@/lib/userProfile';
+import { formatTime } from '@/lib/scanHistory';
 import rulesEngine from '@/lib/rulesEngine';
 import ConcernCard from './ConcernCard';
 
@@ -26,7 +27,7 @@ const FLAG_KEYWORDS = {
   'Vegan': ['milk', 'egg', 'meat', 'beef', 'pork', 'chicken', 'fish', 'gelatin', 'honey', 'whey', 'casein', 'lard'],
 };
 
-export default function VerdictScreen({ scanResult, userLevel = 2, onSeeSwaps, onBack, onStartOnboarding }) {
+export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, onBack, onStartOnboarding }) {
   const [explanation, setExplanation] = useState(null);
   const [loadingExplanation, setLoadingExplanation] = useState(false);
 
@@ -136,7 +137,9 @@ export default function VerdictScreen({ scanResult, userLevel = 2, onSeeSwaps, o
           <div style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: 18, fontWeight: 700, color: 'var(--text-dark)', lineHeight: 1.25, marginBottom: 4 }}>
             {productName || 'Unknown Product'}
           </div>
-          <div style={{ fontSize: 13, color: 'var(--text-light)' }}>Scanned just now</div>
+          <div style={{ fontSize: 13, color: 'var(--text-light)' }}>
+                {scanResult.timestamp ? formatTime(scanResult.timestamp) : 'Scanned just now'}
+              </div>
         </div>
       </div>
 
