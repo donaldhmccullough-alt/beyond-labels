@@ -233,7 +233,7 @@ export default function Home() {
           />
         )}
         {mainTab === 'swaps' && (
-          <SwapsScreen scanResult={lastScanResult} onBack={() => setMainTab('verdict')} />
+          <SwapsScreen scanResult={lastScanResult} userLevel={userLevel} onBack={() => setMainTab('verdict')} />
         )}
         {mainTab === 'profile' && (
           <ProfileScreen

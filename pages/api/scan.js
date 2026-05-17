@@ -96,6 +96,29 @@ function normalizeLabelTags(labelsTags) {
   return result;
 }
 
+// ── Product category mapping ──────────────────────────────────────────────
+const CATEGORY_TAG_MAP = [
+  { category: 'cereal',       keywords: ['cereal', 'granola', 'oatmeal', 'muesli', 'porridge'] },
+  { category: 'dairy',        keywords: ['dairy', 'yogurt', 'yoghurt', 'cheese', 'milk', 'butter', 'cream', 'kefir'] },
+  { category: 'bread',        keywords: ['bread', 'baked-goods', 'bakery', 'muffin', 'bagel', 'tortilla', 'wrap'] },
+  { category: 'beverages',    keywords: ['beverage', 'drink', 'juice', 'soda', 'water', 'tea', 'coffee', 'smoothie', 'energy-drink'] },
+  { category: 'frozen',       keywords: ['frozen'] },
+  { category: 'cooking_oils', keywords: ['oil', 'cooking-fat'] },
+  { category: 'condiments',   keywords: ['condiment', 'sauce', 'dressing', 'ketchup', 'mustard', 'mayonnaise', 'vinegar', 'salsa', 'marinade', 'spread'] },
+  { category: 'snacks',       keywords: ['snack', 'chip', 'crisp', 'cracker', 'cookie', 'biscuit', 'popcorn', 'pretzel', 'candy', 'chocolate', 'nut'] },
+];
+
+function mapProductCategory(categoriesTags) {
+  if (!Array.isArray(categoriesTags) || categoriesTags.length === 0) return null;
+  const normalized = categoriesTags.map(t => String(t).toLowerCase());
+  for (const { category, keywords } of CATEGORY_TAG_MAP) {
+    if (normalized.some(tag => keywords.some(kw => tag.includes(kw)))) {
+      return category;
+    }
+  }
+  return null;
+}
+
 /**
  * Persist unverified ingredients to Supabase for team review.
  * Uses a select-then-insert-or-update pattern to correctly maintain
@@ -251,6 +274,7 @@ export default async function handler(req, res) {
           labelsDetected:        [],
           unverifiedIngredients: cached.unverified_ingredients ?? [],
           explanation:           cached.explanation ?? null,
+          productCategory:       cached.product_category ?? null,
         });
       }
     } catch {
@@ -318,7 +342,9 @@ export default async function handler(req, res) {
     product.ingredients_text    ||
     null;
 
-  const labelsDetected = normalizeLabelTags(product.labels_tags);
+  const labelsDetected  = normalizeLabelTags(product.labels_tags);
+  const categoriesTags  = product.categories_tags ?? [];
+  const productCategory = mapProductCategory(categoriesTags);
 
   // ── Run the rules engine ──────────────────────────────────────────────────
   const { verdict, flags, clearedBy, unverifiedIngredients } =
@@ -358,6 +384,7 @@ export default async function handler(req, res) {
             unverified_ingredients: unverifiedIngredients ?? [],
             explanation,
             product_name:           productName,
+            product_category:       productCategory,
             prompt_version:         PROMPT_VERSION,
             last_accessed_at:       new Date().toISOString(),
           },
@@ -380,5 +407,6 @@ export default async function handler(req, res) {
     labelsDetected,
     unverifiedIngredients: unverifiedIngredients ?? [],
     explanation,
+    productCategory,
   });
 }
