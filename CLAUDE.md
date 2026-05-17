@@ -36,7 +36,7 @@ app/
 components/
   onboarding/
     WelcomeScreen.jsx     — first screen; logo + tagline + begin/skip
-    LevelSelectScreen.jsx — two-card level picker (NEW — current first onboarding step)
+    LevelSelectScreen.jsx — two-card level picker (current first onboarding step)
     AssessmentScreen.jsx  — 13-question quiz (BYPASSED in MVP_MODE — do not delete)
     CalculatingScreen.jsx — loading animation (BYPASSED in MVP_MODE — do not delete)
     RevealScreen.jsx      — shows stage result (BYPASSED in MVP_MODE — do not delete)
@@ -51,7 +51,7 @@ components/
   profile/
     ProfileScreen.jsx     — user profile, settings, level switcher, tappable scan history
   swaps/
-    SwapsScreen.jsx       — product swap suggestions
+    SwapsScreen.jsx       — product swap suggestions; level-aware Good/Better sections
     SwapCard.jsx
   shared/
     BottomNav.jsx         — 4-tab nav: Scan / Verdict / Swaps / Profile
@@ -77,7 +77,7 @@ lib/
 pages/api/
   scan.js                 — POST barcode → cache check → Open Food Facts → rulesEngine → Claude → scan_cache upsert
   explain.js              — POST verdict/flags → Claude API → plain-language explanation (standalone; also exports SYSTEM_PROMPT + buildUserMessage)
-  swaps.js                — swap suggestions (Google Sheet CSV + AI fallback)
+  swaps.js                — swap suggestions (Google Sheet CSV + AI fallback); level-aware Good/Better tiers
   health.js               — health check endpoint
 ```
 
@@ -135,10 +135,11 @@ This is module-level per file, not a global config. Re-enabling is a one-line ch
 | `ProfileScreen.jsx` | Pro coaching note |
 | `app/page.jsx` | Skips FlagsScreen in onboarding (goes reveal → launch directly) |
 
-### Completed MVP_MODE items (no longer pending):
+### Completed MVP_MODE items:
 - ✅ Replaced "Upgrade to Pro — $9.99/mo" button with disabled grey "Coming Soon" in ProfileScreen
 - ✅ Level-select onboarding screen built and wired into the flow
 - ✅ Level system fully implemented throughout (rules engine, UI, storage, AI tone)
+- ✅ Swaps system fully rebuilt with level-aware Good/Better tiers
 
 ### Still pending on mvp-beta:
 - No pending MVP_MODE items as of the last session.
@@ -247,8 +248,8 @@ LEVEL_1_YELLOW_CATEGORIES
 3. **CONVENTIONAL_CROPS** — Level 2: red; Level 1: yellow; clearable by `usda-organic` label, `non-gmo-project-verified` label, or "organic" word prefix on the ingredient
 4. **BIOENGINEERING_TERMS** — Level 2: red; Level 1: yellow; first match only
 5. **NATURAL_FLAVORS** — Level 2: red; Level 1: yellow; no clearance
-6. **SYNTHETIC_ADDITIVES** — always red at both levels; no clearance; expanded with ~200 additional EU n/n triggers (full EU n/n list from Sina's review). Category string: `'synthetic_additives'`.
-7. **SYNTHETIC_ADDITIVES_L1_YELLOW** — Level 2: red; Level 1: yellow; no organic clearance; ~60 entries from Sina's y/n EU review (natural colors, food acids, hydrocolloids, waxes, enzymes). Category string: `'synthetic_additives'` (same category as SYNTHETIC_ADDITIVES — unified under one category for UI and AI explanations).
+6. **SYNTHETIC_ADDITIVES** — always red at both levels; no clearance; expanded with ~200 additional EU n/n triggers. Category string: `'synthetic_additives'`.
+7. **SYNTHETIC_ADDITIVES_L1_YELLOW** — Level 2: red; Level 1: yellow; ~60 entries from Sina's EU review (natural colors, food acids, hydrocolloids, waxes, enzymes). Category string: `'synthetic_additives'`.
 8. **GLUTEN_GRAINS** — soft flag (caution/yellow only at both levels). Category string: `'gluten_grains'`.
 
 ### Verdict logic
@@ -272,16 +273,69 @@ For `userLevel === 2`, `scan.js` applies an allowlist overlay **after** `analyze
 - `checkUsdaOrganicCertification(labelsDetected)` — returns `true` if `'usda-organic'` is in the normalised OFF labels array.
 - `checkNonGMOProject(labelsDetected)` — returns `true` if `'non-gmo-project-verified'` is in the array.
 
-**Data source**: Both use Open Food Facts `labels_tags`, normalised by `normalizeLabelTags()` in `scan.js`. This is the same data used by the rules engine for Category 2 clearance. Results are cached via `scan_cache` — neither function is called on a cache hit.
-
 **Limitations**:
 - OFF labels are user-contributed; coverage is good but not authoritative.
-- Absence of a label does not mean the product is not certified — it may simply not have been tagged in OFF yet.
-- `checkNonGMOProject` is live and functional using OFF label data. A direct Non-GMO Project data partnership is pending to allow authoritative lookups independent of OFF community tagging.
-- `checkUsdaOrganicCertification` uses OFF label data. A direct USDA Organic Integrity API integration is pending. The USDA OData API (`OidPublicDataService.svc`) was confirmed retired as of May 2026; the replacement REST API (`OIDPublicAPI`) was investigated and found to return empty results for all queries — likely not accessible at the `api.data.gov` key tier.
+- `checkNonGMOProject` is live using OFF label data. Direct Non-GMO Project data partnership pending.
+- `checkUsdaOrganicCertification` uses OFF label data. USDA OData API confirmed retired May 2026; replacement REST API returns empty results — not accessible at current api.data.gov key tier.
 
-### Key design principle
-The trigger arrays are the single source of truth. Adding/removing/moving a trigger between levels is a one-line change. No logic scattered across multiple files.
+---
+
+## Swaps System (FULLY BUILT)
+
+### Concept
+When a user taps "See Cleaner Swaps" on the VerdictScreen, the app surfaces curated store-bought alternatives from a Google Sheet database. Swaps are level-aware and category-matched to the scanned product.
+
+### Google Sheet
+- Sheet ID stored in `SWAP_SHEET_ID` env var
+- Fetched as CSV, cached in-memory for 1 hour
+- Column order (exact): `product_name, brand, category, barcode, certifications, why_it_passes, where_to_buy, image_url, swap_level`
+- `certifications`: semicolon-separated — must use exact strings `usda-organic` and/or `non-gmo-project-verified`
+- `why_it_passes`: semicolon-separated reasons (rendered as checklist in UI)
+- `where_to_buy`: comma-separated store names
+- `swap_level`: `1` (passes Level 1 criteria) or `2` (passes Level 2 strict criteria)
+
+### Level tiers
+| User level | swap_level=1 rows | swap_level=2 rows |
+|---|---|---|
+| Level 2 | hidden | shown as flat list |
+| Level 1 | shown as "Good Swap" section | shown as "Better Swap" section |
+
+Level 2 products serve double duty — they are the gold standard for Level 2 users and the "Better" aspirational tier for Level 1 users.
+
+### Swap categories (8 total)
+Valid values for the `category` column: `snacks`, `cereal`, `condiments`, `beverages`, `dairy`, `bread`, `frozen`, `cooking_oils`. Spelling must be exact — the API validates against this list.
+
+### Product category mapping (scan.js)
+`scan.js` extracts `categories_tags` from the OFF API response and maps to one of the 8 swap categories via `CATEGORY_TAG_MAP` using **exact tag matching** (not substring). The map uses a priority-ordered array — first match wins. `snacks` is last as the broadest catch-all.
+
+**Critical**: use exact OFF tag values (e.g. `en:cheeses`, not `cheese`). Substring matching caused false positives — `en:cheese-flavored-snacks` would wrongly match dairy. Exact set lookup (`normalized.has(t)`) prevents this.
+
+If no OFF tag matches, `productCategory` returns `null`. `SwapsScreen` falls back to a `FLAG_CATEGORY_MAP` derived from the top scan flag:
+```js
+const FLAG_CATEGORY_MAP = {
+  trans_fats:          'condiments',
+  seed_oils:           'snacks',
+  conventional_crops:  'snacks',
+  bioengineering:      'snacks',
+  natural_flavors:     'snacks',
+  synthetic_additives: 'snacks',
+  gluten_grains:       'cereal',
+};
+```
+If both are null, the API returns all rows unfiltered.
+
+### Randomization
+The API shuffles matching rows before slicing to 3, so users see different products across sessions. The Google Sheet cache is stable for 1 hour; the shuffle is fresh per request.
+
+### AI fallback
+If 0 curated swaps exist for a category, Claude Sonnet is called to suggest 2-3 real products. The prompt is level-aware — Level 2 requires certification + no seed oils; Level 1 requires no synthetic additives or trans fats only.
+
+### Adding new swap products
+Add rows directly to the Google Sheet. The app picks them up within 1 hour (cache TTL). Always verify:
+- No synthetic additives or trans fats (required for any level)
+- No seed oils, conventional crops, or natural flavors (required for `swap_level=2`)
+- `certifications` column uses exact strings only
+- `category` column uses one of the 8 exact values
 
 ---
 
@@ -310,7 +364,7 @@ Both return `null` when env vars are absent. Always null-check before using: `if
   - `id`, `barcode`, `user_level` (1|2), `prompt_version` (integer)
   - `verdict`, `flags` (jsonb), `ingredients` (text), `cleared_by` (text|null)
   - `unverified_ingredients` (jsonb), `explanation` (jsonb — `{summary, details}`)
-  - `product_name`, `last_accessed_at`
+  - `product_name`, `product_category` (text|null), `last_accessed_at`
   - Unique constraint on `(barcode, user_level)` — upserted on every fresh scan
   - Cache hit returns `source: 'cache'`; miss falls through to Open Food Facts
   - Invalidated by bumping `PROMPT_VERSION` in `lib/cacheVersion.js`
@@ -331,6 +385,7 @@ NEXT_PUBLIC_SUPABASE_URL=          # used by both clients
 NEXT_PUBLIC_SUPABASE_ANON_KEY=     # client-side only (safe to expose)
 SUPABASE_SERVICE_ROLE_KEY=         # server-side only — NEVER use NEXT_PUBLIC_ prefix
 ANTHROPIC_API_KEY=                 # server-side only
+SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 ```
 
 ---
@@ -352,10 +407,10 @@ ANTHROPIC_API_KEY=                 # server-side only
 
 ### POST /api/scan
 - Body: `{ barcode: string, userLevel?: 1 | 2 }`
-- Flow: validate → sanitize barcode → check `scan_cache` (return immediately on hit) → fetch Open Food Facts → normalize labels → run `analyzeIngredients(text, labels, userLevel)` → apply Level 2 overlay (certifications.js) if userLevel === 2 → call Claude for explanation → upsert `scan_cache` → return result
-- Returns: `{ verdict, flags, clearedBy, productName, ingredients, barcode, source, found, labelsDetected, unverifiedIngredients, explanation }`
+- Flow: validate → sanitize barcode → check `scan_cache` (return immediately on hit) → fetch Open Food Facts → normalize labels → map `categories_tags` → run `analyzeIngredients(text, labels, userLevel)` → apply Level 2 overlay (certifications.js) if userLevel === 2 → call Claude for explanation → upsert `scan_cache` → return result
+- Returns: `{ verdict, flags, clearedBy, productName, ingredients, barcode, source, found, labelsDetected, unverifiedIngredients, explanation, productCategory }`
+- `productCategory`: one of the 8 swap categories or `null` if no OFF tag matched
 - Uses `supabaseServer` (service role key) for all Supabase writes
-- Exports `SYSTEM_PROMPT` and `buildUserMessage` from `explain.js` for the inline Claude call
 
 ### POST /api/explain
 - Body: `{ verdict, flags, productName, ingredients, userLevel?: 1 | 2 }`
@@ -363,9 +418,16 @@ ANTHROPIC_API_KEY=                 # server-side only
 - Returns: `{ summary: string, details: { [category]: string } }`
 - Exports `SYSTEM_PROMPT`, `buildUserMessage`, `PROMPT_VERSION` for use by `scan.js`
 - VerdictScreen skips this endpoint when `scanResult.explanation` is already populated (cache hit or fresh scan)
-- **System prompt voice**: Sina McCullough (PhD Nutrition, autoimmune healing journey, science-first, rhetorical questions, inflammation/gut/gene-expression framing) + Joel Salatin (Polyface Farm, story-and-analogy thinker, farming-system angle, "Feed the Good and Starve the Bad"). Together: empowering, not alarmist, skeptical of GRAS and industry-funded science.
+- **System prompt voice**: Sina McCullough (PhD Nutrition, autoimmune healing journey, science-first, rhetorical questions, inflammation/gut/gene-expression framing) + Joel Salatin (Polyface Farm, story-and-analogy thinker, farming-system angle). Together: empowering, not alarmist, skeptical of GRAS and industry-funded science.
 - **Level-aware tone**: Level 1 users get encouragement and awareness-building framing; Level 2 users get direct, graduate-level honesty. Controlled by `[Level 1 awareness item]` note injected per flagged category in `buildUserMessage()`.
-- **Current PROMPT_VERSION**: `2` (bumped from 1 when Sina/Joel voice was updated — `db6b419`)
+- **Current PROMPT_VERSION**: `2`
+
+### GET /api/swaps
+- Query params: `category` (one of 8 valid values, optional), `userLevel` (1 or 2, defaults to 2)
+- Flow: check in-memory cache (1hr TTL) → fetch Google Sheet CSV if stale → filter by category → filter/tag by swap_level → shuffle → slice to 3 per tier → AI fallback if 0 results
+- Returns: `{ swaps: SwapRow[], source: 'curated' | 'ai' }`
+- Each swap row includes `tier: 'good' | 'better'` — used by SwapsScreen to render sections
+- AI fallback prompt is level-aware — Level 2 requires certification + no seed oils; Level 1 requires no synthetic additives only
 
 ---
 
@@ -379,7 +441,7 @@ To invalidate the cache after a prompt change:
 
 Cache lookup is keyed on `(barcode, user_level, prompt_version)` — changing the user's level or bumping the prompt version both trigger a fresh Claude call and cache re-population.
 
-**Current PROMPT_VERSION is 2.** Rows written at version 1 are invisible to the client — they will never be served and can be purged with `DELETE FROM scan_cache WHERE prompt_version < 2;`.
+**Current PROMPT_VERSION is 2.**
 
 ---
 
@@ -390,19 +452,18 @@ Both `ScannerScreen` and `ProfileScreen` support tapping a history item to view 
 ```js
 import { formatTime, createHistoryTapHandler } from '@/lib/scanHistory';
 
-// Inside the component:
 const handleHistoryItemTap = createHistoryTapHandler({
   supabase,
   userLevel,
   promptVersion: PROMPT_VERSION,
-  onResult: onScanResult,      // or onViewVerdict in ProfileScreen
+  onResult: onScanResult,
   tapInFlightRef,              // useRef(false) — synchronous concurrency guard
   setLoadingBarcode,
   setMissBarcode,
 });
 ```
 
-The `tapInFlightRef` guard is a ref (not state) because `onResult()` triggers navigation that unmounts the component. State setters on an unmounted component are no-ops in React 18; ref mutations are synchronous and survive unmount. The ref is always reset before calling `onResult()`.
+The `tapInFlightRef` guard is a ref (not state) because `onResult()` triggers navigation that unmounts the component. State setters on an unmounted component are no-ops in React 18; ref mutations are synchronous and survive unmount.
 
 On a cache miss, a "Scan this product again to see the full report." message appears inline under the history item.
 
@@ -441,9 +502,8 @@ disabled={true}
 
 ### Vercel serverless — always await Supabase writes before res.json()
 
-**Critical pattern**: Vercel serverless functions freeze the execution context the moment `res.json()` is called. Any un-awaited promise launched before `res.json()` — including fire-and-forget `.then().catch()` chains — is silently discarded before it reaches the network. This caused the `scan_cache` upsert and `captureUnverifiedIngredients` to be dropped on every fresh scan.
+**Critical pattern**: Vercel serverless functions freeze the execution context the moment `res.json()` is called. Any un-awaited promise is silently discarded.
 
-**Correct pattern** — await the write, wrap in try/catch so a failure never blocks the response:
 ```js
 // ✅ Correct — awaited before res.json()
 if (sb) {
@@ -462,32 +522,18 @@ if (sb) {
 return res.status(200).json({ ... });
 ```
 
-This applies to **all** Supabase writes in API routes, not just scan_cache. Never use fire-and-forget in a Vercel serverless handler.
+This applies to **all** Supabase writes in API routes. Never use fire-and-forget in a Vercel serverless handler.
 
 ---
 
 ## Commit History (mvp-beta)
 
-### Session — category rename refactor
+### Session — level-aware swaps system
 | Hash | Description |
 |------|-------------|
-| `cbf5127` | refactor: unify additive categories — synthetic_additives + gluten_grains |
-
-### Session — EU additives expansion
-| Hash | Description |
-|------|-------------|
-| `8fd052d` | feat: EU additives expansion — SYNTHETIC_ADDITIVES + EU_ADDITIVES_L1_YELLOW |
-
-### Session — certifications.js cleanup + CLAUDE.md sync
-| Hash | Description |
-|------|-------------|
-| `701b142` | docs: confirm checkNonGMOProject live via OFF labels, update CLAUDE.md |
-
-### Session — Level 2 allowlist verdict model
-| Hash | Description |
-|------|-------------|
-| `2e22823` | refactor: replace retired USDA OData API with OFF label lookup in certifications.js |
-| `9cea010` | feat: Level 2 allowlist verdict — USDA Organic Integrity lookup + certifications.js |
+| `f302c69` | feat: randomize swap selections so users see variety across sessions |
+| `b70adad` | fix: exact OFF tag matching for product category, flag-based fallback for unrecognized barcodes |
+| `8f58aaa` | feat: level-aware swaps — product category mapping, Good/Better tiers, 8 categories |
 
 ### Session — SB 25 synthetic additives expansion
 | Hash | Description |
@@ -499,31 +545,8 @@ This applies to **all** Supabase writes in API routes, not just scan_cache. Neve
 |------|-------------|
 | `82705a0` | fix: await Supabase writes before res.json() to prevent Vercel truncation |
 | `db6b419` | feat: updated Sina/Joel system prompt, bumped PROMPT_VERSION to 2 |
-| `debe4d9` | docs: update CLAUDE.md to reflect prior session changes |
 | `83c73bc` | Consolidate duplicated code: scanHistory utils and LEVEL_1_YELLOW_CATEGORIES |
 | `32f793d` | Use service role key for server-side Supabase writes |
-| `03d1d61` | Skip /api/explain fetch when scanResult.explanation already present |
-| `d176411` | chore: remove temporary diagnostic console.log from filterUnrecognizedTokens |
-| `943dcb5` | debug: temporary console.log in filterUnrecognizedTokens (removed in d176411) |
-| `b96d90a` | refactor: flip Level 1 unverified filter to chemical-signal detection |
-| `984b063` | feat: level-aware heuristic filtering for unverifiedIngredients |
-| `a6a7fc6` | feat: tap-to-verdict on ScannerScreen recent scans list |
-| `85a73b0` | fix: use ref as tap-in-flight guard to prevent stuck history taps |
-| `0fde5ce` | fix: reset loadingBarcode before onViewVerdict() to prevent stuck tap state |
-| `2529a59` | feat: tap scan history item to view full verdict from cache |
-| `8b5f65f` | fix: move PROMPT_VERSION to lib/cacheVersion.js, log cache write errors |
-| `ea1722f` | feat: barcode-level scan cache in Supabase (scan_cache table) |
-| `c13a2f5` | feat: add unrecognized ingredients card to VerdictScreen |
-
-### Earlier sessions
-| Hash | Description |
-|------|-------------|
-| `fd07f4a` | feat: unverified ingredient capture — rules engine + Supabase logging |
-| `f1f3b25` | fix: sort concern cards red-first — reject flags above caution flags |
-| `6f5c9cf` | fix: remove welcome screen from first-visit flow, move Level 1 banner below concern cards |
-| `ece0ca7` | feat: level system — two-card onboarding, Level 1/2 rules, profile switcher, AI tone |
-| `6378911` | feat(mvp-beta): simplify app to MVP launch mode |
-| `640a0c0` | fix: scan history data isolation — clear localStorage on signout, Supabase-first for signed-in users |
 
 ---
 
@@ -536,3 +559,5 @@ This applies to **all** Supabase writes in API routes, not just scan_cache. Neve
 - Do not import `lib/supabaseServer.js` from any client component or any file under `app/` — it holds the service role key
 - Do not import `PROMPT_VERSION` from `pages/api/explain.js` — import it from `lib/cacheVersion.js` (API route named exports can resolve as `undefined` under certain Next.js bundling scenarios)
 - Do not prefix `SUPABASE_SERVICE_ROLE_KEY` with `NEXT_PUBLIC_` — that would expose it to the browser
+- Do not use substring matching for OFF category tags — use exact set lookup (`normalized.has(t)`). Substring matching causes false positives (e.g. `en:cheese-flavored-snacks` matching dairy).
+- Do not add new swap categories without updating `VALID_CATEGORIES` in `pages/api/swaps.js` and `CATEGORY_TAG_MAP` in `pages/api/scan.js`
