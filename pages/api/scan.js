@@ -98,21 +98,115 @@ function normalizeLabelTags(labelsTags) {
 
 // ── Product category mapping ──────────────────────────────────────────────
 const CATEGORY_TAG_MAP = [
-  { category: 'cereal',       keywords: ['cereal', 'granola', 'oatmeal', 'muesli', 'porridge'] },
-  { category: 'dairy',        keywords: ['dairy', 'yogurt', 'yoghurt', 'cheese', 'milk', 'butter', 'cream', 'kefir'] },
-  { category: 'bread',        keywords: ['bread', 'baked-goods', 'bakery', 'muffin', 'bagel', 'tortilla', 'wrap'] },
-  { category: 'beverages',    keywords: ['beverage', 'drink', 'juice', 'soda', 'water', 'tea', 'coffee', 'smoothie', 'energy-drink'] },
-  { category: 'frozen',       keywords: ['frozen'] },
-  { category: 'cooking_oils', keywords: ['oil', 'cooking-fat'] },
-  { category: 'condiments',   keywords: ['condiment', 'sauce', 'dressing', 'ketchup', 'mustard', 'mayonnaise', 'vinegar', 'salsa', 'marinade', 'spread'] },
-  { category: 'snacks',       keywords: ['snack', 'chip', 'crisp', 'cracker', 'cookie', 'biscuit', 'popcorn', 'pretzel', 'candy', 'chocolate', 'nut'] },
+  { category: 'cereal', tags: [
+    'en:cereals-and-their-products',
+    'en:cereals',
+    'en:breakfast-cereals',
+    'en:granolas',
+    'en:oatmeals',
+    'en:mueslis',
+    'en:porridges',
+    'en:hot-cereals',
+  ]},
+  { category: 'dairy', tags: [
+    'en:dairy-products',
+    'en:yogurts',
+    'en:milks',
+    'en:butters',
+    'en:creams',
+    'en:cheeses',
+    'en:kefirs',
+    'en:dairy-alternatives',
+    'en:plant-based-milks',
+    'en:oat-milks',
+    'en:almond-milks',
+  ]},
+  { category: 'bread', tags: [
+    'en:breads',
+    'en:english-muffins',
+    'en:bagels',
+    'en:baked-products',
+    'en:muffins',
+    'en:tortillas',
+    'en:flatbreads',
+    'en:wraps',
+    'en:rolls',
+    'en:pitas',
+  ]},
+  { category: 'beverages', tags: [
+    'en:beverages',
+    'en:drinks',
+    'en:juices',
+    'en:sodas',
+    'en:waters',
+    'en:teas',
+    'en:coffees',
+    'en:smoothies',
+    'en:energy-drinks',
+    'en:plant-based-beverages',
+    'en:kombuchas',
+    'en:coconut-waters',
+    'en:cold-brew-coffees',
+  ]},
+  { category: 'frozen', tags: [
+    'en:frozen-foods',
+    'en:frozen-meals',
+    'en:frozen-vegetables',
+    'en:frozen-desserts',
+    'en:frozen-meat',
+    'en:frozen-fish',
+    'en:frozen-waffles',
+    'en:frozen-pizza',
+  ]},
+  { category: 'cooking_oils', tags: [
+    'en:oils',
+    'en:cooking-oils',
+    'en:olive-oils',
+    'en:coconut-oils',
+    'en:avocado-oils',
+    'en:vegetable-oils',
+    'en:fats',
+    'en:cooking-fats',
+  ]},
+  { category: 'condiments', tags: [
+    'en:condiments',
+    'en:sauces',
+    'en:dressings',
+    'en:ketchups',
+    'en:mustards',
+    'en:mayonnaises',
+    'en:vinegars',
+    'en:hot-sauces',
+    'en:salad-dressings',
+    'en:marinades',
+    'en:spreads',
+    'en:dips',
+    'en:salsas',
+  ]},
+  { category: 'snacks', tags: [
+    'en:snacks',
+    'en:salty-snacks',
+    'en:chips-and-fries',
+    'en:crisps',
+    'en:popcorn',
+    'en:pretzels',
+    'en:crackers',
+    'en:nuts',
+    'en:seeds',
+    'en:dried-fruits',
+    'en:fruit-snacks',
+    'en:energy-bars',
+    'en:meat-snacks',
+    'en:jerky',
+    'en:rice-cakes',
+  ]},
 ];
 
 function mapProductCategory(categoriesTags) {
   if (!Array.isArray(categoriesTags) || categoriesTags.length === 0) return null;
-  const normalized = categoriesTags.map(t => String(t).toLowerCase());
-  for (const { category, keywords } of CATEGORY_TAG_MAP) {
-    if (normalized.some(tag => keywords.some(kw => tag.includes(kw)))) {
+  const normalized = new Set(categoriesTags.map(t => String(t).toLowerCase()));
+  for (const { category, tags } of CATEGORY_TAG_MAP) {
+    if (tags.some(t => normalized.has(t))) {
       return category;
     }
   }

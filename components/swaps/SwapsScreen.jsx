@@ -11,11 +11,25 @@ export default function SwapsScreen({ scanResult, userLevel = 1, onBack }) {
   const productCategory = scanResult?.productCategory ?? null;
   const flagCategories  = [...new Set((scanResult?.flags || []).map(f => f.category))];
 
+  const FLAG_CATEGORY_MAP = {
+    trans_fats:          'condiments',
+    seed_oils:           'snacks',
+    conventional_crops:  'snacks',
+    bioengineering:      'snacks',
+    natural_flavors:     'snacks',
+    synthetic_additives: 'snacks',
+    gluten_grains:       'cereal',
+  };
+
+  const topFlag         = (scanResult?.flags || [])[0]?.category ?? null;
+  const fallbackCategory = topFlag ? (FLAG_CATEGORY_MAP[topFlag] ?? null) : null;
+  const resolvedCategory = productCategory ?? fallbackCategory;
+
   useEffect(() => {
     setLoading(true);
     setError(null);
     const params = new URLSearchParams({ userLevel: String(userLevel) });
-    if (productCategory) params.set('category', productCategory);
+    if (resolvedCategory) params.set('category', resolvedCategory);
 
     fetch(`/api/swaps?${params.toString()}`)
       .then(r => r.json())
@@ -30,7 +44,7 @@ export default function SwapsScreen({ scanResult, userLevel = 1, onBack }) {
       })
       .catch(() => setError('Could not load swaps.'))
       .finally(() => setLoading(false));
-  }, [productCategory, userLevel]);
+  }, [resolvedCategory, userLevel]);
 
   const goodSwaps   = swaps.filter(s => s.tier === 'good');
   const betterSwaps = swaps.filter(s => s.tier === 'better');
