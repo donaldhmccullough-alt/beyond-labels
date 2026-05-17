@@ -43,6 +43,15 @@ const VALID_CATEGORIES = [
 let _cache = { rows: null, fetchedAt: 0 };
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
+function shuffleArray(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 function parseCSV(text) {
   const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split('\n');
   const rows = [];
@@ -156,8 +165,7 @@ export default async function handler(req, res) {
     const filtered = category ? allRows.filter(r => r.category === category) : allRows;
 
     if (userLevel === 2) {
-      const swaps = filtered
-        .filter(r => r.swap_level === '2')
+      const swaps = shuffleArray(filtered.filter(r => r.swap_level === '2'))
         .slice(0, 3)
         .map(r => ({ ...r, tier: 'better' }));
 
@@ -167,8 +175,8 @@ export default async function handler(req, res) {
       }
       return res.status(200).json({ swaps, source: 'curated' });
     } else {
-      const good   = filtered.filter(r => r.swap_level === '1').slice(0, 3).map(r => ({ ...r, tier: 'good' }));
-      const better = filtered.filter(r => r.swap_level === '2').slice(0, 3).map(r => ({ ...r, tier: 'better' }));
+      const good   = shuffleArray(filtered.filter(r => r.swap_level === '1')).slice(0, 3).map(r => ({ ...r, tier: 'good' }));
+      const better = shuffleArray(filtered.filter(r => r.swap_level === '2')).slice(0, 3).map(r => ({ ...r, tier: 'better' }));
       const swaps  = [...good, ...better];
 
       if (swaps.length === 0 && category) {
