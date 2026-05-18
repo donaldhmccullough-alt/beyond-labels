@@ -48,6 +48,9 @@ export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, o
   useEffect(() => {
     if (!scanResult) return;
 
+    // Unverified results have no ingredients — nothing to explain.
+    if (scanResult.verdict === 'unverified') return;
+
     // If the scan result already carries an explanation (cache hit or inline
     // Claude call in /api/scan), use it directly — no need to call /api/explain.
     if (scanResult.explanation) {
@@ -84,7 +87,7 @@ export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, o
     );
   }
 
-  const { verdict, flags = [], productName, ingredients, unverifiedIngredients = [] } = scanResult;
+  const { verdict, flags = [], productName, ingredients, unverifiedIngredients = [], unverifiedReason } = scanResult;
 
   const hasLevel1SoftFlags = userLevel === 1 && flags.some(f => f.severity === 'caution' && LEVEL_1_YELLOW_CATEGORIES.has(f.category));
   const verdictColors = { red: '#C0392B', yellow: '#D4AC0D', green: '#27AE60', unverified: '#9A8260' };
@@ -159,19 +162,29 @@ export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, o
       )}
       */}
 
-      {/* AI summary */}
-      <div style={{ margin: '12px 16px 0', background: 'var(--cream-dark)', borderRadius: 16, padding: 16, minHeight: 72 }}>
-        {loadingExplanation ? (
-          <div>
-            <div className="shimmer" style={{ height: 16, marginBottom: 8, width: '90%', borderRadius: 6 }} />
-            <div className="shimmer" style={{ height: 16, width: '70%', borderRadius: 6 }} />
-          </div>
-        ) : explanation ? (
-          <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--text-mid)' }}>{explanation.summary}</p>
-        ) : (
-          <p style={{ fontSize: 14, color: 'var(--text-light)' }}>Tap a concern card below for details.</p>
-        )}
-      </div>
+      {/* AI summary / unverified message */}
+      {verdict !== 'unverified' ? (
+        <div style={{ margin: '12px 16px 0', background: 'var(--cream-dark)', borderRadius: 16, padding: 16, minHeight: 72 }}>
+          {loadingExplanation ? (
+            <div>
+              <div className="shimmer" style={{ height: 16, marginBottom: 8, width: '90%', borderRadius: 6 }} />
+              <div className="shimmer" style={{ height: 16, width: '70%', borderRadius: 6 }} />
+            </div>
+          ) : explanation ? (
+            <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--text-mid)' }}>{explanation.summary}</p>
+          ) : (
+            <p style={{ fontSize: 14, color: 'var(--text-light)' }}>Tap a concern card below for details.</p>
+          )}
+        </div>
+      ) : (
+        <div style={{ margin: '12px 16px 0', background: 'var(--cream-dark)', borderRadius: 16, padding: 16 }}>
+          <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--text-mid)' }}>
+            {unverifiedReason === 'no_ingredients'
+              ? "We found this product but it has no ingredient data on file. We can’t screen what we can’t see — check the label directly."
+              : "We couldn’t identify this product. Try scanning again — if it still doesn’t work, it may not be in our database yet."}
+          </p>
+        </div>
+      )}
 
       {/* Concern cards */}
       {Object.keys(byCategory).length > 0 && (
@@ -216,10 +229,16 @@ export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, o
         </div>
       )}
 
-      {/* Swaps CTA */}
-      <button onClick={onSeeSwaps} style={{ margin: '20px 16px 0', width: 'calc(100% - 32px)', padding: 16, background: 'linear-gradient(135deg, #3A5A40, #4D7B55)', color: 'white', fontFamily: 'var(--font-inter), system-ui, sans-serif', fontSize: 15, fontWeight: 700, border: 'none', borderRadius: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: '0 4px 16px rgba(58,90,64,0.3)' }}>
-        See Cleaner Swaps →
-      </button>
+      {/* Swaps CTA / Scan Again */}
+      {verdict === 'unverified' ? (
+        <button onClick={onBack} style={{ margin: '20px 16px 0', width: 'calc(100% - 32px)', padding: 16, background: 'linear-gradient(135deg, #3A5A40, #4D7B55)', color: 'white', fontFamily: 'var(--font-inter), system-ui, sans-serif', fontSize: 15, fontWeight: 700, border: 'none', borderRadius: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: '0 4px 16px rgba(58,90,64,0.3)' }}>
+          Scan Again →
+        </button>
+      ) : (
+        <button onClick={onSeeSwaps} style={{ margin: '20px 16px 0', width: 'calc(100% - 32px)', padding: 16, background: 'linear-gradient(135deg, #3A5A40, #4D7B55)', color: 'white', fontFamily: 'var(--font-inter), system-ui, sans-serif', fontSize: 15, fontWeight: 700, border: 'none', borderRadius: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: '0 4px 16px rgba(58,90,64,0.3)' }}>
+          See Cleaner Swaps →
+        </button>
+      )}
 
       {/* MVP_MODE: onboarding nudge banner hidden.
           To restore: remove the MVP_MODE check in the useEffect above and

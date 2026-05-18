@@ -369,6 +369,7 @@ export default async function handler(req, res) {
           unverifiedIngredients: cached.unverified_ingredients ?? [],
           explanation:           cached.explanation ?? null,
           productCategory:       cached.product_category ?? null,
+          unverifiedReason:      cached.unverified_reason ?? null,
         });
       }
     } catch {
@@ -419,6 +420,7 @@ export default async function handler(req, res) {
       labelsDetected:        [],
       unverifiedIngredients: [],
       explanation:           null,
+      unverifiedReason:      'not_found',
     });
   }
 
@@ -436,9 +438,10 @@ export default async function handler(req, res) {
     product.ingredients_text    ||
     null;
 
-  const labelsDetected  = normalizeLabelTags(product.labels_tags);
-  const categoriesTags  = product.categories_tags ?? [];
-  const productCategory = mapProductCategory(categoriesTags);
+  const labelsDetected   = normalizeLabelTags(product.labels_tags);
+  const categoriesTags   = product.categories_tags ?? [];
+  const productCategory  = mapProductCategory(categoriesTags);
+  const unverifiedReason = !ingredientsText ? 'no_ingredients' : null;
 
   // ── Run the rules engine ──────────────────────────────────────────────────
   const { verdict, flags, clearedBy, unverifiedIngredients } =
@@ -456,10 +459,11 @@ export default async function handler(req, res) {
   }
 
   // ── Fetch Claude explanation ──────────────────────────────────────────────
-  // Fail silently — null explanation degrades gracefully on the frontend.
-  const explanation = await fetchExplanation(
-    verdict, flags, productName, ingredientsText, userLevel,
-  );
+  // Skip for unverified results — no ingredients to explain.
+  // Fail silently otherwise — null degrades gracefully on the frontend.
+  const explanation = verdict !== 'unverified'
+    ? await fetchExplanation(verdict, flags, productName, ingredientsText, userLevel)
+    : null;
 
   // ── Write to scan cache ───────────────────────────────────────────────────
   // Awaited so Vercel doesn't terminate the function before the write lands.
@@ -477,6 +481,7 @@ export default async function handler(req, res) {
             cleared_by:             clearedBy,
             unverified_ingredients: unverifiedIngredients ?? [],
             explanation,
+            unverified_reason:      unverifiedReason,
             product_name:           productName,
             product_category:       productCategory,
             prompt_version:         PROMPT_VERSION,
@@ -502,5 +507,6 @@ export default async function handler(req, res) {
     unverifiedIngredients: unverifiedIngredients ?? [],
     explanation,
     productCategory,
+    unverifiedReason,
   });
 }
