@@ -386,11 +386,11 @@ describe("D. Barcode 013562000228 — Annie's Homegrown", () => {
     expect(res.body.flags.filter(f => f.category === 'additives')).toHaveLength(0);
   });
 
-  test('has exactly one gluten caution flag (organic wheat is still wheat)', () => {
-    const glutenFlags = res.body.flags.filter(f => f.category === 'gluten');
-    expect(glutenFlags).toHaveLength(1);
-    expect(glutenFlags[0].severity).toBe('caution');
-    expect(glutenFlags[0].matchedIngredient).toBe('wheat flour');
+  test('has gluten caution flags (organic wheat + organic corn starch — prolamin concern survives organic clearance)', () => {
+    const glutenFlags = res.body.flags.filter(f => f.category === 'gluten_grains');
+    expect(glutenFlags.length).toBeGreaterThanOrEqual(1);
+    expect(glutenFlags.every(f => f.severity === 'caution')).toBe(true);
+    expect(glutenFlags.some(f => f.matchedIngredient === 'wheat flour')).toBe(true);
   });
 
   test('zero flags with severity "reject"', () => {

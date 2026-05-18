@@ -250,7 +250,10 @@ LEVEL_1_YELLOW_CATEGORIES
 5. **NATURAL_FLAVORS** — Level 2: red; Level 1: yellow; no clearance
 6. **SYNTHETIC_ADDITIVES** — always red at both levels; no clearance; expanded with ~200 additional EU n/n triggers. Category string: `'synthetic_additives'`.
 7. **SYNTHETIC_ADDITIVES_L1_YELLOW** — Level 2: red; Level 1: yellow; ~60 entries from Sina's EU review (natural colors, food acids, hydrocolloids, waxes, enzymes). Category string: `'synthetic_additives'`.
-8. **GLUTEN_GRAINS** — soft flag (caution/yellow only at both levels). Category string: `'gluten_grains'`.
+8. **GLUTEN_GRAINS** — soft flag (caution/yellow only at both levels). Category string: `'gluten_grains'` (not `'gluten'`).
+   - **Flags every match**, not just the first — a product with wheat flour, oats, and barley malt gets three separate `gluten_grains` flags.
+   - Organic/Non-GMO clearance does **not** suppress GLUTEN_GRAINS flags — organic wheat is still a prolamin concern. CONVENTIONAL_CROPS only adds a text span to `claimedRanges` when it actually emits a flag; cleared (organic) spans stay unclaimed so GLUTEN_GRAINS can still reach them.
+   - Parenthetical source notes are filtered: "maltodextrin (made from corn)" does **not** generate a GLUTEN_GRAINS flag for "corn" — detected via `isPrecededBySourceNote()` helper.
 
 ### Verdict logic
 - Any hard reject (`severity: 'reject'`) → `'red'`
