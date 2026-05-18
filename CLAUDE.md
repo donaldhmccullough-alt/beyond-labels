@@ -252,8 +252,11 @@ LEVEL_1_YELLOW_CATEGORIES
 7. **SYNTHETIC_ADDITIVES_L1_YELLOW** — Level 2: red; Level 1: yellow; ~60 entries from Sina's EU review (natural colors, food acids, hydrocolloids, waxes, enzymes). Category string: `'synthetic_additives'`.
 8. **GLUTEN_GRAINS** — soft flag (caution/yellow only at both levels). Category string: `'gluten_grains'` (not `'gluten'`).
    - **Flags every match**, not just the first — a product with wheat flour, oats, and barley malt gets three separate `gluten_grains` flags.
-   - Organic/Non-GMO clearance does **not** suppress GLUTEN_GRAINS flags — organic wheat is still a prolamin concern. CONVENTIONAL_CROPS only adds a text span to `claimedRanges` when it actually emits a flag; cleared (organic) spans stay unclaimed so GLUTEN_GRAINS can still reach them.
-   - Parenthetical source notes are filtered: "maltodextrin (made from corn)" does **not** generate a GLUTEN_GRAINS flag for "corn" — detected via `isPrecededBySourceNote()` helper.
+   - **Bypasses the claiming system entirely** — runs `findMatches(text, GLUTEN_GRAINS, [])` with an empty blocked-ranges list, so no prior category can suppress a grain match. Prolamin protein is an independent concern from pesticide exposure, bioengineering, or seed-oil content.
+   - Organic/Non-GMO clearance does **not** suppress GLUTEN_GRAINS flags — organic wheat is still a prolamin concern.
+   - **Two false-positive filters** applied per match before a flag is emitted:
+     1. `isPrecededBySourceNote()` — skips grains that appear in source-disclosure parentheticals, e.g. "maltodextrin (made from corn)" does not flag "corn".
+     2. `isOilDerivative()` — skips a grain word immediately followed by ` oil` (e.g. "corn" inside "corn oil"). Refined oils carry no meaningful prolamin and are already covered by SEED_OILS.
 
 ### Verdict logic
 - Any hard reject (`severity: 'reject'`) → `'red'`
