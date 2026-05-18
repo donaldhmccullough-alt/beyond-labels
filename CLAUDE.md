@@ -364,6 +364,7 @@ Both return `null` when env vars are absent. Always null-check before using: `if
   - `id`, `barcode`, `user_level` (1|2), `prompt_version` (integer)
   - `verdict`, `flags` (jsonb), `ingredients` (text), `cleared_by` (text|null)
   - `unverified_ingredients` (jsonb), `explanation` (jsonb — `{summary, details}`)
+  - `unverified_reason` (text|null) — `'not_found'` | `'no_ingredients'` | `null`
   - `product_name`, `product_category` (text|null), `last_accessed_at`
   - Unique constraint on `(barcode, user_level)` — upserted on every fresh scan
   - Cache hit returns `source: 'cache'`; miss falls through to Open Food Facts
@@ -407,9 +408,15 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 
 ### POST /api/scan
 - Body: `{ barcode: string, userLevel?: 1 | 2 }`
-- Flow: validate → sanitize barcode → check `scan_cache` (return immediately on hit) → fetch Open Food Facts → normalize labels → map `categories_tags` → run `analyzeIngredients(text, labels, userLevel)` → apply Level 2 overlay (certifications.js) if userLevel === 2 → call Claude for explanation → upsert `scan_cache` → return result
-- Returns: `{ verdict, flags, clearedBy, productName, ingredients, barcode, source, found, labelsDetected, unverifiedIngredients, explanation, productCategory }`
+- Flow: validate → sanitize barcode → check `scan_cache` (return immediately on hit) → fetch Open Food Facts → normalize labels → map `categories_tags` → run `analyzeIngredients(text, labels, userLevel)` → call Claude for explanation (skipped when `verdict === 'unverified'`) → upsert `scan_cache` → return result
+- Returns: `{ verdict, flags, clearedBy, productName, ingredients, barcode, source, found, labelsDetected, unverifiedIngredients, explanation, productCategory, unverifiedReason }`
 - `productCategory`: one of the 8 swap categories or `null` if no OFF tag matched
+- `unverifiedReason`: distinguishes why a scan returned `verdict: 'unverified'`:
+  - `'not_found'` — barcode not in the Open Food Facts database (`found: false`)
+  - `'no_ingredients'` — product record exists in OFF but has no ingredient text (`found: true`)
+  - `null` — verdict is red / yellow / green (not unverified)
+- Claude is never called when `verdict === 'unverified'` — no ingredients to explain
+- VerdictScreen renders a human-readable message card for unverified results (keyed on `unverifiedReason`) instead of the AI summary, and shows a "Scan Again" button instead of "See Cleaner Swaps"
 - Uses `supabaseServer` (service role key) for all Supabase writes
 
 ### POST /api/explain
