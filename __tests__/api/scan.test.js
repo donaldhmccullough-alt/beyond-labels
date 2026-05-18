@@ -390,7 +390,7 @@ describe("D. Barcode 013562000228 — Annie's Homegrown", () => {
     const glutenFlags = res.body.flags.filter(f => f.category === 'gluten');
     expect(glutenFlags).toHaveLength(1);
     expect(glutenFlags[0].severity).toBe('caution');
-    expect(glutenFlags[0].matchedIngredient).toBe('wheat');
+    expect(glutenFlags[0].matchedIngredient).toBe('wheat flour');
   });
 
   test('zero flags with severity "reject"', () => {
