@@ -420,7 +420,7 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 - VerdictScreen skips this endpoint when `scanResult.explanation` is already populated (cache hit or fresh scan)
 - **System prompt voice**: Sina McCullough (PhD Nutrition, autoimmune healing journey, science-first, rhetorical questions, inflammation/gut/gene-expression framing) + Joel Salatin (Polyface Farm, story-and-analogy thinker, farming-system angle). Together: empowering, not alarmist, skeptical of GRAS and industry-funded science.
 - **Level-aware tone**: Level 1 users get encouragement and awareness-building framing; Level 2 users get direct, graduate-level honesty. Controlled by `[Level 1 awareness item]` note injected per flagged category in `buildUserMessage()`.
-- **Current PROMPT_VERSION**: `2`
+- **Current PROMPT_VERSION**: `3`
 
 ### GET /api/swaps
 - Query params: `category` (one of 8 valid values, optional), `userLevel` (1 or 2, defaults to 2)
@@ -441,7 +441,7 @@ To invalidate the cache after a prompt change:
 
 Cache lookup is keyed on `(barcode, user_level, prompt_version)` — changing the user's level or bumping the prompt version both trigger a fresh Claude call and cache re-population.
 
-**Current PROMPT_VERSION is 2.**
+**Current PROMPT_VERSION is 3.**
 
 ---
 
