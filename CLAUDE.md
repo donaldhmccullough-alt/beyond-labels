@@ -62,7 +62,8 @@ components/
 
 lib/
   rulesEngine.js          — deterministic ingredient analysis engine (core logic)
-  rulesEngine.test.js     — Jest tests for rules engine (394 tests total, 2 suites; 15 describe blocks; block 13 = SB 25 additions, 36 tests; block 14 = applyLevel2VerdictOverlay, 23 tests; block 15 = synthetic_additives/EU additives, 25 tests)
+  rulesEngine.test.js     — Jest tests for rules engine (25 describe blocks; 709 tests total; block 20 = SYNTHETIC_ADDITIVES bucket-1 expansion (91 tests); block 21 = FD&C "No." normalization (19 tests); block 22 = mechanically separated meat (3 tests); block 23 = interesterified variants, lake forms, dye synonyms, new E-numbers, stearyl emulsifiers, cyclamate (78 tests); block 24 = synonym/E-number expansion: nitrates, BVO, bleaching agents, BHA/BHT names, SLS, E-numbers e320/e321/e924/e950–e955 (50 tests); block 25 = gluten grains expansion: ancient grains, botanical names, asafoetida/hing, smoke flavoring, brown rice syrup (34 tests))
+  __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (8 suites A–H; suite H = block 26: meat verdict logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 13 tests)
   certifications.js       — checkUsdaOrganicCertification(labelsDetected) + checkNonGMOProject(labelsDetected); both use OFF labels_tags via normalizeLabelTags()
   onboardingData.js       — QUESTIONS array (13 Qs), STAGES array (5 stages), getStageFromScore()
   userProfile.js          — localStorage profile read/write/clear helpers
@@ -187,19 +188,50 @@ New users choose Level 1 (lenient) or Level 2 (strict) during onboarding. The ru
 caramel color, sodium benzoate, potassium bromate, sodium nitrate, sodium nitrite,
 monosodium glutamate, msg, disodium inosinate, disodium guanylate,
 artificial flavors, artificial colour, artificial color, artificial flavor,
+flavor enhancer, flavor base, flavouring, flavor,
 sucralose, aspartame, acesulfame potassium, acesulfame-k, ace-k, saccharin,
 neotame, advantame, steviol glycoside, stevia extract, rebaudioside, reb-a,
-interesterified oil, interesterified fat, carrageenan, titanium dioxide, propyl gallate,
-propylene glycol, yellow 5, yellow 6, red 40, blue 1, blue 2, green 3, tbhq, bha, bht
+interesterified palm oil, interesterified soybean oil, interesterified oil, interesterified fat,
+carrageenan, titanium dioxide, propyl gallate, octyl gallate, dodecyl gallate,
+propylene glycol, acetylated monoglycerides, emulsifiers, acidity regulators,
+anticaking agent, antioxidant, silicon dioxide, nisin preparation, ferrous sulfate,
+mono- and diglycerides, mono and diglycerides, mono - and diglycerides, monoglycerides, diglycerides,
+glycerol monostearate, glyceryl monostearate, glycerol, humectants, hydrolyzed corn protein,
+folic acid, niacinamide, niacin, potassium phosphate,
+thiamine mononitrate, thiamin mononitrate, thiamin mononitrite, riboflavin, reduced iron,
+sodium alginate, sodium caseinate, sodium citrate, sodium diacetate, sodium phosphate, sorbic acid,
+potassium benzoate, benzoic acid, potassium sorbate, calcium propionate, sodium propionate,
+propionic acid, potassium nitrate, potassium nitrite, cyclamate, sodium cyclamate, natamycin, stannous chloride,
+sulfur dioxide, sodium bisulfite, sodium metabisulfite, sodium sulfite,
+potassium bisulfite, potassium metabisulfite, sulfites,
+calcium disodium edta, disodium edta, tetrasodium edta,
+sodium stearoyl-2-lactylate, sodium stearoyl lactylate, calcium stearoyl-2-lactylate,
+sodium stearyl fumarate, stearyl tartrate,
+salatrim, succistearin, sucroglycerides,
+methylparaben, ethylparaben, propylparaben, butylparaben, heptylparaben,
+yellow 5, yellow 5 lake, yellow 6, yellow 6 lake,
+red 40, red 40 lake, blue 1, blue 1 lake, blue 2, blue 2 lake, green 3, green 3 lake,
+brilliant blue fcf, fast green fcf, sunset yellow, tartrazine, allura red, indigotine, orange b,
+tbhq, bha, bht,
+red 3, red 3 lake, red 4, carmine, cochineal, erythrosine, iron oxide,
+canthaxanthin, citrus red 2,
+soy leghemoglobin, insect flour, ethyl vanillin, vanillin,
+mechanically separated meat,
+e102, e110, e127, e129, e132, e133, e143, e161g, e171,
+e319, e330, e339, e388, e471, e472a, e472b, e472e, e476, e483, e485, e487, e500,
+colorante amarillo 6, colorante artificial rojo 40,
+jarabe de maíz de alta fructosa, aceite de palma y/o karité, aceite de palma y/o palmiste,
+soya lecithin
 
 ### Level rules — YELLOW for Level 1, RED for Level 2
 **Seed oils** (SEED_OILS array — trans fats are in a separate TRANS_FATS array):
-high oleic sunflower/canola/safflower oil, canola oil, soybean oil, corn oil,
-sunflower oil, safflower oil, cottonseed oil, grapeseed oil, rice bran oil,
-vegetable oil, palm oil, rapeseed oil, peanut oil, palm kernel oil, palm olein,
+high oleic sunflower/canola/safflower oil, high oleic soybean oil, high oleic soybean,
+canola, canola oil, soybean oil, corn oil, sunflower oil, safflower oil,
+cottonseed, cottonseed oil, grapeseed oil, rice bran oil, vegetable oil, palm oil,
+rapeseed oil, peanut oil, mustard seed oil, palm kernel oil, palm olein,
 fractionated palm oil, fractionated palm
 
-**All conventional crops** (CONVENTIONAL_CROPS array; organic/Non-GMO clearance still applies)
+**All conventional crops** (CONVENTIONAL_CROPS array; organic/Non-GMO clearance still applies; recent additions: enriched long grain white rice, enriched macaroni product, dried potatoes, malt syrup, malt extract, malt flavor, soybean [bare crop form — soybean oil remains in SEED_OILS only])
 
 **Bioengineering disclosure** (BIOENGINEERING_TERMS array):
 contains a bioengineered food ingredient, genetically engineered, genetically modified,
@@ -242,18 +274,24 @@ LEVEL_1_YELLOW_CATEGORIES
 // Imported by VerdictScreen and explain.js (single source of truth)
 ```
 
+### Text preprocessing (inside `analyzeIngredients`)
+Before any trigger matching the raw ingredient string is normalized in two steps:
+1. **"No." stripping** — `/\bno\.\s+/gi` removes the FD&C ordinal suffix so label strings like `"FD&C Red No. 40"` → `"FD&C Red 40"` and then match the existing `red 40` trigger. Covers all FD&C dyes and `Citrus Red No. 2`. `\b` prevents the regex from firing inside words (e.g. "Casino."). The fix lives in `analyzeIngredients`, **not** in `scan.js`, because `scan.js` passes the raw OFF ingredient text directly — this ensures every caller (tests, future endpoints) gets consistent behavior automatically.
+2. **Lowercase** — the entire string is lowercased for case-insensitive trigger matching.
+
 ### Categories
 1. **TRANS_FATS** — always red at both levels; no clearance
 2. **SEED_OILS** — Level 2: red; Level 1: yellow; no organic clearance
 3. **CONVENTIONAL_CROPS** — Level 2: red; Level 1: yellow; clearable by `usda-organic` label, `non-gmo-project-verified` label, or "organic" word prefix on the ingredient
 4. **BIOENGINEERING_TERMS** — Level 2: red; Level 1: yellow; first match only
 5. **NATURAL_FLAVORS** — Level 2: red; Level 1: yellow; no clearance
-6. **SYNTHETIC_ADDITIVES** — always red at both levels; no clearance; expanded with ~200 additional EU n/n triggers. Category string: `'synthetic_additives'`.
+6. **SYNTHETIC_ADDITIVES** — always red at both levels; no clearance; expanded with ~200 additional EU n/n triggers. Category string: `'synthetic_additives'`. Includes lake dye forms (e.g. `yellow 5 lake`), chemical name synonyms (e.g. `tartrazine`, `allura red`), 22 E-numbers, stearyl ester emulsifiers, bare `cyclamate`, and a **"Processing methods"** section: `mechanically separated meat`. Two entries (`interesterified palm oil`, `interesterified soybean oil`) are matched in a **`PRIORITY_ADDITIVES` pre-pass** before SEED_OILS to prevent seed-oil sub-triggers (`palm oil`, `soybean oil`) from claiming the overlapping suffix and blocking the longer compound match.
 7. **SYNTHETIC_ADDITIVES_L1_YELLOW** — Level 2: red; Level 1: yellow; ~60 entries from Sina's EU review (natural colors, food acids, hydrocolloids, waxes, enzymes). Category string: `'synthetic_additives'`.
 8. **GLUTEN_GRAINS** — soft flag (caution/yellow only at both levels). Category string: `'gluten_grains'` (not `'gluten'`).
    - **Flags every match**, not just the first — a product with wheat flour, oats, and barley malt gets three separate `gluten_grains` flags.
    - **Bypasses the claiming system entirely** — runs `findMatches(text, GLUTEN_GRAINS, [])` with an empty blocked-ranges list, so no prior category can suppress a grain match. Prolamin protein is an independent concern from pesticide exposure, bioengineering, or seed-oil content.
    - Organic/Non-GMO clearance does **not** suppress GLUTEN_GRAINS flags — organic wheat is still a prolamin concern.
+   - **Broader prolamin definition**: rice entries (`whole grain brown rice flour`, `rice flour`, `rice`, etc.) are included because rice prolamins (oryzin) can trigger sensitivity in celiac and non-celiac gluten-sensitive individuals. Added `whole grain brown rice flour` (shadows `rice flour` and `brown rice` at the same position). Also added `malt flavor` to the barley/malt section.
    - **Two false-positive filters** applied per match before a flag is emitted:
      1. `isPrecededBySourceNote()` — skips grains that appear in source-disclosure parentheticals, e.g. "maltodextrin (made from corn)" does not flag "corn".
      2. `isOilDerivative()` — skips a grain word immediately followed by ` oil` (e.g. "corn" inside "corn oil"). Refined oils carry no meaningful prolamin and are already covered by SEED_OILS.
@@ -308,11 +346,11 @@ When a user taps "See Cleaner Swaps" on the VerdictScreen, the app surfaces cura
 
 Level 2 products serve double duty — they are the gold standard for Level 2 users and the "Better" aspirational tier for Level 1 users.
 
-### Swap categories (8 total)
-Valid values for the `category` column: `snacks`, `cereal`, `condiments`, `beverages`, `dairy`, `bread`, `frozen`, `cooking_oils`. Spelling must be exact — the API validates against this list.
+### Swap categories (9 total)
+Valid values for the `category` column: `chips`, `snacks`, `cereal`, `condiments`, `beverages`, `dairy`, `bread`, `frozen`, `cooking_oils`. Spelling must be exact — the API validates against this list.
 
 ### Product category mapping (scan.js)
-`scan.js` extracts `categories_tags` from the OFF API response and maps to one of the 8 swap categories via `CATEGORY_TAG_MAP` using **exact tag matching** (not substring). The map uses a priority-ordered array — first match wins. `snacks` is last as the broadest catch-all.
+`scan.js` extracts `categories_tags` from the OFF API response and maps to one of the 9 swap categories via `CATEGORY_TAG_MAP` using **exact tag matching** (not substring). The map uses a priority-ordered array — first match wins. `snacks` is last as the broadest catch-all.
 
 **Critical**: use exact OFF tag values (e.g. `en:cheeses`, not `cheese`). Substring matching caused false positives — `en:cheese-flavored-snacks` would wrongly match dairy. Exact set lookup (`normalized.has(t)`) prevents this.
 
@@ -416,7 +454,7 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 - Body: `{ barcode: string, userLevel?: 1 | 2 }`
 - Flow: validate → sanitize barcode → check `scan_cache` (return immediately on hit) → fetch Open Food Facts → normalize labels → map `categories_tags` → run `analyzeIngredients(text, labels, userLevel)` → call Claude for explanation (skipped when `verdict === 'unverified'`) → upsert `scan_cache` → return result
 - Returns: `{ verdict, flags, clearedBy, productName, ingredients, barcode, source, found, labelsDetected, unverifiedIngredients, explanation, productCategory, unverifiedReason }`
-- `productCategory`: one of the 8 swap categories or `null` if no OFF tag matched
+- `productCategory`: one of the 9 swap categories or `null` if no OFF tag matched
 - `unverifiedReason`: distinguishes why a scan returned `verdict: 'unverified'`:
   - `'not_found'` — barcode not in the Open Food Facts database (`found: false`)
   - `'no_ingredients'` — product record exists in OFF but has no ingredient text (`found: true`)
@@ -436,7 +474,7 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 - **Current PROMPT_VERSION**: `3`
 
 ### GET /api/swaps
-- Query params: `category` (one of 8 valid values, optional), `userLevel` (1 or 2, defaults to 2)
+- Query params: `category` (one of 9 valid values, optional), `userLevel` (1 or 2, defaults to 2)
 - Flow: check in-memory cache (1hr TTL) → fetch Google Sheet CSV if stale → filter by category → filter/tag by swap_level → shuffle → slice to 3 per tier → AI fallback if 0 results
 - Returns: `{ swaps: SwapRow[], source: 'curated' | 'ai' }`
 - Each swap row includes `tier: 'good' | 'better'` — used by SwapsScreen to render sections
@@ -553,6 +591,21 @@ This applies to **all** Supabase writes in API routes. Never use fire-and-forget
 |------|-------------|
 | `66c781c` | feat: add 18 Texas SB 25 chemicals to SYNTHETIC_ADDITIVES + 36 tests |
 
+### Session — meat verdict logic
+| Hash | Description |
+|------|-------------|
+| `e394a6a` | feat: meat verdict logic — L2 requires organic cert, custom unverified messaging by level |
+
+### Session — rules engine gluten grains + brown rice syrup expansion
+| Hash | Description |
+|------|-------------|
+| `a94f61a` | feat: rules engine — gluten grains expansion (ancient grains, botanical names, asafoetida, teff, sorghum, smoke flavoring) + brown rice syrup |
+
+### Session — rules engine synonym/E-number expansion
+| Hash | Description |
+|------|-------------|
+| `(see git log)` | feat: rules engine — synonym/E-number expansion (nitrates, BVO, bleaching agents, BHA/BHT names, SLS, dye synonyms) |
+
 ### Session — prompt update, cache write fix, code quality
 | Hash | Description |
 |------|-------------|
@@ -573,4 +626,4 @@ This applies to **all** Supabase writes in API routes. Never use fire-and-forget
 - Do not import `PROMPT_VERSION` from `pages/api/explain.js` — import it from `lib/cacheVersion.js` (API route named exports can resolve as `undefined` under certain Next.js bundling scenarios)
 - Do not prefix `SUPABASE_SERVICE_ROLE_KEY` with `NEXT_PUBLIC_` — that would expose it to the browser
 - Do not use substring matching for OFF category tags — use exact set lookup (`normalized.has(t)`). Substring matching causes false positives (e.g. `en:cheese-flavored-snacks` matching dairy).
-- Do not add new swap categories without updating `VALID_CATEGORIES` in `pages/api/swaps.js` and `CATEGORY_TAG_MAP` in `pages/api/scan.js`
+- Do not add new swap categories without updating `VALID_CATEGORIES` in `pages/api/swaps.js` and `CATEGORY_TAG_MAP` in `pages/api/scan.js` (current 9 categories: `chips`, `snacks`, `cereal`, `condiments`, `beverages`, `dairy`, `bread`, `frozen`, `cooking_oils`)
