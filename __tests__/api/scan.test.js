@@ -661,3 +661,142 @@ describe('G. Response shape — structural contract', () => {
     });
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// H. Meat verdict logic (block 26)
+//    isMeatProduct detection + L2 conventional_meat flag injection
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('H. Meat verdict logic', () => {
+  // ── Shared OFF fixture builder ────────────────────────────────────────────
+
+  /** Build a minimal OFF product response with the given categories_tags / labels_tags. */
+  function meatOffResp({
+    categoriesTags = [],
+    labelsTags     = [],
+    ingredientsText = 'beef, water, salt',
+  } = {}) {
+    return {
+      status: 1,
+      product: {
+        product_name:     'Test Beef Product',
+        ingredients_text: ingredientsText,
+        labels_tags:      labelsTags,
+        categories_tags:  categoriesTags,
+      },
+    };
+  }
+
+  // ── isMeatProduct detection ───────────────────────────────────────────────
+
+  test('isMeat is true for en:beef', async () => {
+    mockFetchOnce(meatOffResp({ categoriesTags: ['en:beef'] }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000001', userLevel: 2 }), res);
+    expect(res.body.isMeat).toBe(true);
+  });
+
+  test('isMeat is true for en:chicken', async () => {
+    mockFetchOnce(meatOffResp({ categoriesTags: ['en:chicken'] }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000002', userLevel: 2 }), res);
+    expect(res.body.isMeat).toBe(true);
+  });
+
+  test('isMeat is true for en:fish', async () => {
+    mockFetchOnce(meatOffResp({ categoriesTags: ['en:fish'], ingredientsText: 'salmon, water, salt' }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000003', userLevel: 2 }), res);
+    expect(res.body.isMeat).toBe(true);
+  });
+
+  test('isMeat is true for en:eggs', async () => {
+    mockFetchOnce(meatOffResp({ categoriesTags: ['en:eggs'], ingredientsText: 'whole eggs' }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000004', userLevel: 2 }), res);
+    expect(res.body.isMeat).toBe(true);
+  });
+
+  test('isMeat is true for en:sausages', async () => {
+    mockFetchOnce(meatOffResp({ categoriesTags: ['en:sausages'] }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000005', userLevel: 2 }), res);
+    expect(res.body.isMeat).toBe(true);
+  });
+
+  test('isMeat is false for en:breads', async () => {
+    mockFetchOnce({
+      status: 1,
+      product: {
+        product_name:     'Bread',
+        ingredients_text: 'wheat flour, water, yeast, salt',
+        labels_tags:      [],
+        categories_tags:  ['en:breads'],
+      },
+    });
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000006', userLevel: 2 }), res);
+    expect(res.body.isMeat).toBe(false);
+  });
+
+  // ── L2: meat + no organic → RED, conventional_meat flag ──────────────────
+
+  test('L2 meat + no organic label → verdict is RED', async () => {
+    mockFetchOnce(meatOffResp({ categoriesTags: ['en:beef'], labelsTags: [] }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000007', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+  });
+
+  test('L2 meat + no organic label → conventional_meat flag is present', async () => {
+    mockFetchOnce(meatOffResp({ categoriesTags: ['en:beef'], labelsTags: [] }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000008', userLevel: 2 }), res);
+    const flag = res.body.flags.find(f => f.category === 'conventional_meat');
+    expect(flag).toBeDefined();
+    expect(flag.severity).toBe('reject');
+  });
+
+  test('L2 meat + no organic label → conventional_meat flag is first in array', async () => {
+    mockFetchOnce(meatOffResp({ categoriesTags: ['en:beef'], labelsTags: [] }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000009', userLevel: 2 }), res);
+    expect(res.body.flags[0].category).toBe('conventional_meat');
+  });
+
+  // ── L2: meat + USDA Organic → no conventional_meat flag ──────────────────
+
+  test('L2 meat + en:usda-organic → no conventional_meat flag', async () => {
+    mockFetchOnce(meatOffResp({
+      categoriesTags: ['en:beef'],
+      labelsTags:     ['en:usda-organic'],
+      ingredientsText: 'organic beef, water, sea salt',
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000010', userLevel: 2 }), res);
+    const flag = res.body.flags.find(f => f.category === 'conventional_meat');
+    expect(flag).toBeUndefined();
+  });
+
+  test('L2 meat + en:usda-organic → verdict is NOT forced red by conventional_meat', async () => {
+    mockFetchOnce(meatOffResp({
+      categoriesTags: ['en:beef'],
+      labelsTags:     ['en:usda-organic'],
+      ingredientsText: 'organic beef, water, sea salt',
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000011', userLevel: 2 }), res);
+    // Organic beef with no other flags → green or yellow; must not be red from meat check
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+  });
+
+  // ── L1: meat + no organic → no conventional_meat flag ────────────────────
+
+  test('L1 meat + no organic label → no conventional_meat flag', async () => {
+    mockFetchOnce(meatOffResp({ categoriesTags: ['en:beef'], labelsTags: [] }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000012', userLevel: 1 }), res);
+    const flag = res.body.flags.find(f => f.category === 'conventional_meat');
+    expect(flag).toBeUndefined();
+  });
+});

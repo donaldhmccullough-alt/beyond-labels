@@ -96,6 +96,30 @@ function normalizeLabelTags(labelsTags) {
   return result;
 }
 
+// ── Meat product detection ────────────────────────────────────────────────
+const MEAT_CATEGORIES = new Set([
+  'en:meats', 'en:meat', 'en:beef', 'en:ground-beef', 'en:pork', 'en:chicken',
+  'en:turkey', 'en:lamb', 'en:veal', 'en:poultry', 'en:game-meats',
+  'en:fish', 'en:seafood', 'en:shellfish', 'en:crustaceans', 'en:molluscs',
+  'en:salmon', 'en:tuna', 'en:cod', 'en:tilapia', 'en:shrimp',
+  'en:deli-meats', 'en:cold-cuts', 'en:sausages', 'en:hot-dogs',
+  'en:charcuterie', 'en:bacon', 'en:ham', 'en:salami', 'en:pepperoni',
+  'en:smoked-meats', 'en:cured-meats',
+  'en:broths', 'en:stocks', 'en:bone-broth', 'en:chicken-broth', 'en:beef-broth',
+  'en:eggs', 'en:egg-products', 'en:poultry-eggs',
+]);
+
+/**
+ * Returns true if any OFF categories_tags value matches a known meat/fish/egg category.
+ *
+ * @param {string[]} categoriesTags — product.categories_tags from OFF
+ * @returns {boolean}
+ */
+function isMeatProduct(categoriesTags) {
+  if (!Array.isArray(categoriesTags) || categoriesTags.length === 0) return false;
+  return categoriesTags.some(t => MEAT_CATEGORIES.has(String(t).toLowerCase()));
+}
+
 // ── Product category mapping ──────────────────────────────────────────────
 const CATEGORY_TAG_MAP = [
   { category: 'cereal', tags: [
@@ -183,11 +207,13 @@ const CATEGORY_TAG_MAP = [
     'en:dips',
     'en:salsas',
   ]},
+  { category: 'chips', tags: [
+    'en:chips-and-fries',
+    'en:crisps',
+  ]},
   { category: 'snacks', tags: [
     'en:snacks',
     'en:salty-snacks',
-    'en:chips-and-fries',
-    'en:crisps',
     'en:popcorn',
     'en:pretzels',
     'en:crackers',
@@ -370,6 +396,7 @@ export default async function handler(req, res) {
           explanation:           cached.explanation ?? null,
           productCategory:       cached.product_category ?? null,
           unverifiedReason:      cached.unverified_reason ?? null,
+          isMeat:                cached.is_meat ?? false,
         });
       }
     } catch {
@@ -441,11 +468,31 @@ export default async function handler(req, res) {
   const labelsDetected   = normalizeLabelTags(product.labels_tags);
   const categoriesTags   = product.categories_tags ?? [];
   const productCategory  = mapProductCategory(categoriesTags);
+  const isMeat           = isMeatProduct(categoriesTags);
   const unverifiedReason = !ingredientsText ? 'no_ingredients' : null;
 
   // ── Run the rules engine ──────────────────────────────────────────────────
-  const { verdict, flags, clearedBy, unverifiedIngredients } =
-    analyzeIngredients(ingredientsText, labelsDetected, userLevel);
+  const engineResult = analyzeIngredients(ingredientsText, labelsDetected, userLevel);
+  let { verdict, flags, clearedBy, unverifiedIngredients } = engineResult;
+
+  // ── L2 meat check — require USDA Organic certification ───────────────────
+  // At Level 2, any meat/fish/egg product without a verified organic label is
+  // flagged red. The organic concern is independent of ingredient screening —
+  // a product with a clean ingredients list can still be conventional meat.
+  if (userLevel === 2 && isMeat && verdict !== 'unverified') {
+    const hasOrganic = labelsDetected.includes('usda-organic');
+    if (!hasOrganic) {
+      const meatFlag = {
+        category:          'conventional_meat',
+        severity:          'reject',
+        matchedIngredient: '',
+        summary:           'Meat product without USDA Organic certification',
+      };
+      flags   = [meatFlag, ...flags];
+      verdict = 'red';
+      clearedBy = null;
+    }
+  }
 
   // ── Capture unverified ingredients ───────────────────────────────────────
   // Awaited so Vercel doesn't terminate the function before the write lands.
@@ -484,6 +531,7 @@ export default async function handler(req, res) {
             unverified_reason:      unverifiedReason,
             product_name:           productName,
             product_category:       productCategory,
+            is_meat:                isMeat,
             prompt_version:         PROMPT_VERSION,
             last_accessed_at:       new Date().toISOString(),
           },
@@ -508,5 +556,6 @@ export default async function handler(req, res) {
     explanation,
     productCategory,
     unverifiedReason,
+    isMeat,
   });
 }

@@ -27,6 +27,19 @@ const FLAG_KEYWORDS = {
   'Vegan': ['milk', 'egg', 'meat', 'beef', 'pork', 'chicken', 'fish', 'gelatin', 'honey', 'whey', 'casein', 'lard'],
 };
 
+function getUnverifiedCopy(unverifiedReason, isMeat, userLevel) {
+  if (unverifiedReason === 'no_ingredients' && isMeat && userLevel === 1) {
+    return "We couldn't find the ingredient list for this product. Flip the package over and read the label before buying — skip it if you see any synthetic chemicals, artificial additives, artificial flavors, or preservatives.";
+  }
+  if (unverifiedReason === 'no_ingredients' && isMeat && userLevel === 2) {
+    return "We couldn't find this product in our database. Look for the USDA Organic seal before buying, and use your best judgment on quality — grass-fed, pasture-raised, or sourced from a farm you trust is always the better choice.";
+  }
+  if (unverifiedReason === 'no_ingredients') {
+    return "We found this product but it has no ingredient data on file. We can't screen what we can't see — check the label directly.";
+  }
+  return "We couldn't identify this product. Try scanning again — if it still doesn't work, it may not be in our database yet.";
+}
+
 export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, onBack, onStartOnboarding }) {
   const [explanation, setExplanation] = useState(null);
   const [loadingExplanation, setLoadingExplanation] = useState(false);
@@ -87,7 +100,7 @@ export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, o
     );
   }
 
-  const { verdict, flags = [], productName, ingredients, unverifiedIngredients = [], unverifiedReason } = scanResult;
+  const { verdict, flags = [], productName, ingredients, unverifiedIngredients = [], unverifiedReason, isMeat = false } = scanResult;
 
   const hasLevel1SoftFlags = userLevel === 1 && flags.some(f => f.severity === 'caution' && LEVEL_1_YELLOW_CATEGORIES.has(f.category));
   const verdictColors = { red: '#C0392B', yellow: '#D4AC0D', green: '#27AE60', unverified: '#9A8260' };
@@ -110,6 +123,8 @@ export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, o
     const keywords = FLAG_KEYWORDS[flag] || [];
     return keywords.some(kw => ingredientsLower.includes(kw));
   });
+
+  const unverifiedCopy = getUnverifiedCopy(unverifiedReason, isMeat, userLevel);
 
   const tl = [
     { color: '#E74C3C', active: verdict === 'red' },
@@ -179,9 +194,7 @@ export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, o
       ) : (
         <div style={{ margin: '12px 16px 0', background: 'var(--cream-dark)', borderRadius: 16, padding: 16 }}>
           <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--text-mid)' }}>
-            {unverifiedReason === 'no_ingredients'
-              ? "We found this product but it has no ingredient data on file. We can’t screen what we can’t see — check the label directly."
-              : "We couldn’t identify this product. Try scanning again — if it still doesn’t work, it may not be in our database yet."}
+            {unverifiedCopy}
           </p>
         </div>
       )}
