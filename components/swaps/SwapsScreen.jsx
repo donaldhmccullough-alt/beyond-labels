@@ -19,6 +19,7 @@ export default function SwapsScreen({ scanResult, userLevel = 1, onBack }) {
     natural_flavors:     'snacks',
     synthetic_additives: 'snacks',
     gluten_grains:       'cereal',
+    conventional_meat:   null,   // no product-category swap for meat; use farm card instead
   };
 
   const topFlag         = (scanResult?.flags || [])[0]?.category ?? null;

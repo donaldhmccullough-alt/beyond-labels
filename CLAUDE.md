@@ -64,7 +64,6 @@ lib/
   rulesEngine.js          — deterministic ingredient analysis engine (core logic)
   rulesEngine.test.js     — Jest tests for rules engine (25 describe blocks; 709 tests total; block 20 = SYNTHETIC_ADDITIVES bucket-1 expansion (91 tests); block 21 = FD&C "No." normalization (19 tests); block 22 = mechanically separated meat (3 tests); block 23 = interesterified variants, lake forms, dye synonyms, new E-numbers, stearyl emulsifiers, cyclamate (78 tests); block 24 = synonym/E-number expansion: nitrates, BVO, bleaching agents, BHA/BHT names, SLS, E-numbers e320/e321/e924/e950–e955 (50 tests); block 25 = gluten grains expansion: ancient grains, botanical names, asafoetida/hing, smoke flavoring, brown rice syrup (34 tests))
   __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (8 suites A–H; suite H = block 26: meat verdict logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 13 tests)
-  certifications.js       — checkUsdaOrganicCertification(labelsDetected) + checkNonGMOProject(labelsDetected); both use OFF labels_tags via normalizeLabelTags()
   onboardingData.js       — QUESTIONS array (13 Qs), STAGES array (5 stages), getStageFromScore()
   userProfile.js          — localStorage profile read/write/clear helpers
   userLevel.js            — getUserLevel(), setUserLevel(), hasUserLevel() — localStorage bl_user_level
@@ -258,8 +257,7 @@ After a fresh scan, tokens not matched by any trigger are filtered through `filt
 ```js
 // CommonJS — import as:
 import rulesEngine from '@/lib/rulesEngine';
-const { analyzeIngredients, LEVEL_1_YELLOW_CATEGORIES, applyLevel2VerdictOverlay,
-        SYNTHETIC_ADDITIVES_L1_YELLOW } = rulesEngine;
+const { analyzeIngredients, LEVEL_1_YELLOW_CATEGORIES } = rulesEngine;
 
 analyzeIngredients(ingredientText, productLabels, userLevel = 2)
 // Returns: {
@@ -270,7 +268,8 @@ analyzeIngredients(ingredientText, productLabels, userLevel = 2)
 // }
 
 LEVEL_1_YELLOW_CATEGORIES
-// Set<string> — {'seed_oils', 'conventional_crops', 'bioengineering', 'natural_flavors', 'synthetic_additives'}
+// Set<string> — {'seed_oils', 'conventional_crops', 'bioengineering', 'natural_flavors'}
+// Trans fats and SYNTHETIC_ADDITIVES are intentionally excluded — always red at both levels.
 // Imported by VerdictScreen and explain.js (single source of truth)
 ```
 
@@ -286,8 +285,7 @@ Before any trigger matching the raw ingredient string is normalized in two steps
 4. **BIOENGINEERING_TERMS** — Level 2: red; Level 1: yellow; first match only
 5. **NATURAL_FLAVORS** — Level 2: red; Level 1: yellow; no clearance
 6. **SYNTHETIC_ADDITIVES** — always red at both levels; no clearance; expanded with ~200 additional EU n/n triggers. Category string: `'synthetic_additives'`. Includes lake dye forms (e.g. `yellow 5 lake`), chemical name synonyms (e.g. `tartrazine`, `allura red`), 22 E-numbers, stearyl ester emulsifiers, bare `cyclamate`, and a **"Processing methods"** section: `mechanically separated meat`. Two entries (`interesterified palm oil`, `interesterified soybean oil`) are matched in a **`PRIORITY_ADDITIVES` pre-pass** before SEED_OILS to prevent seed-oil sub-triggers (`palm oil`, `soybean oil`) from claiming the overlapping suffix and blocking the longer compound match.
-7. **SYNTHETIC_ADDITIVES_L1_YELLOW** — Level 2: red; Level 1: yellow; ~60 entries from Sina's EU review (natural colors, food acids, hydrocolloids, waxes, enzymes). Category string: `'synthetic_additives'`.
-8. **GLUTEN_GRAINS** — soft flag (caution/yellow only at both levels). Category string: `'gluten_grains'` (not `'gluten'`).
+7. **GLUTEN_GRAINS** — soft flag (caution/yellow only at both levels). Category string: `'gluten_grains'` (not `'gluten'`).
    - **Flags every match**, not just the first — a product with wheat flour, oats, and barley malt gets three separate `gluten_grains` flags.
    - **Bypasses the claiming system entirely** — runs `findMatches(text, GLUTEN_GRAINS, [])` with an empty blocked-ranges list, so no prior category can suppress a grain match. Prolamin protein is an independent concern from pesticide exposure, bioengineering, or seed-oil content.
    - Organic/Non-GMO clearance does **not** suppress GLUTEN_GRAINS flags — organic wheat is still a prolamin concern.
@@ -302,9 +300,9 @@ Before any trigger matching the raw ingredient string is normalized in two steps
 - Nothing → `'green'`
 - Empty/null ingredients → `'unverified'`
 
-### Level 2 verdict overlay (lib/certifications.js + scan.js)
+### Level 2 verdict overlay (inline in scan.js)
 
-For `userLevel === 2`, `scan.js` applies an allowlist overlay **after** `analyzeIngredients()` via `applyLevel2VerdictOverlay()` from `lib/rulesEngine.js`:
+For `userLevel === 2`, `scan.js` applies a certification overlay **after** `analyzeIngredients()`. The logic is inline in the handler, not a separate helper:
 
 | Condition | L2 verdict | `clearedBy` |
 |-----------|-----------|-------------|
@@ -313,14 +311,12 @@ For `userLevel === 2`, `scan.js` applies an allowlist overlay **after** `analyze
 | No L1 flags + Non-GMO label | `yellow` | `'non-gmo-project'` |
 | No L1 flags + no certification | `red` | `null` (conventional = assumed risk) |
 
-**`lib/certifications.js`** — two label-check helpers called from `scan.js`:
-- `checkUsdaOrganicCertification(labelsDetected)` — returns `true` if `'usda-organic'` is in the normalised OFF labels array.
-- `checkNonGMOProject(labelsDetected)` — returns `true` if `'non-gmo-project-verified'` is in the array.
+Certification checks use `labelsDetected.includes('usda-organic')` and `labelsDetected.includes('non-gmo-project-verified')`. `labelsDetected` is the normalised OFF `labels_tags` array produced by `normalizeLabelTags()` in `scan.js`.
 
 **Limitations**:
 - OFF labels are user-contributed; coverage is good but not authoritative.
-- `checkNonGMOProject` is live using OFF label data. Direct Non-GMO Project data partnership pending.
-- `checkUsdaOrganicCertification` uses OFF label data. USDA OData API confirmed retired May 2026; replacement REST API returns empty results — not accessible at current api.data.gov key tier.
+- Non-GMO Project check is live using OFF label data. Direct Non-GMO Project data partnership pending.
+- USDA OData API confirmed retired May 2026; replacement REST API returns empty results — not accessible at current api.data.gov key tier.
 
 ---
 
@@ -379,7 +375,7 @@ Add rows directly to the Google Sheet. The app picks them up within 1 hour (cach
 - No synthetic additives or trans fats (required for any level)
 - No seed oils, conventional crops, or natural flavors (required for `swap_level=2`)
 - `certifications` column uses exact strings only
-- `category` column uses one of the 8 exact values
+- `category` column uses one of the 9 exact values
 
 ---
 
@@ -409,7 +405,7 @@ Both return `null` when env vars are absent. Always null-check before using: `if
   - `verdict`, `flags` (jsonb), `ingredients` (text), `cleared_by` (text|null)
   - `unverified_ingredients` (jsonb), `explanation` (jsonb — `{summary, details}`)
   - `unverified_reason` (text|null) — `'not_found'` | `'no_ingredients'` | `null`
-  - `product_name`, `product_category` (text|null), `last_accessed_at`
+  - `product_name`, `product_category` (text|null), `is_meat` (boolean, default false), `last_accessed_at`
   - Unique constraint on `(barcode, user_level)` — upserted on every fresh scan
   - Cache hit returns `source: 'cache'`; miss falls through to Open Food Facts
   - Invalidated by bumping `PROMPT_VERSION` in `lib/cacheVersion.js`
@@ -453,7 +449,7 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 ### POST /api/scan
 - Body: `{ barcode: string, userLevel?: 1 | 2 }`
 - Flow: validate → sanitize barcode → check `scan_cache` (return immediately on hit) → fetch Open Food Facts → normalize labels → map `categories_tags` → run `analyzeIngredients(text, labels, userLevel)` → call Claude for explanation (skipped when `verdict === 'unverified'`) → upsert `scan_cache` → return result
-- Returns: `{ verdict, flags, clearedBy, productName, ingredients, barcode, source, found, labelsDetected, unverifiedIngredients, explanation, productCategory, unverifiedReason }`
+- Returns: `{ verdict, flags, clearedBy, productName, ingredients, barcode, source, found, labelsDetected, unverifiedIngredients, explanation, productCategory, unverifiedReason, isMeat }`
 - `productCategory`: one of the 9 swap categories or `null` if no OFF tag matched
 - `unverifiedReason`: distinguishes why a scan returned `verdict: 'unverified'`:
   - `'not_found'` — barcode not in the Open Food Facts database (`found: false`)

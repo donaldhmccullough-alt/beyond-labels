@@ -447,7 +447,9 @@ export default async function handler(req, res) {
       labelsDetected:        [],
       unverifiedIngredients: [],
       explanation:           null,
+      productCategory:       null,
       unverifiedReason:      'not_found',
+      isMeat:                false,
     });
   }
 

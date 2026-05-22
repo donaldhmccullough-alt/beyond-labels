@@ -2,12 +2,15 @@
 import { useState } from 'react';
 
 const CATEGORY_INFO = {
-  seed_oils: { icon: '🫙', label: 'Seed Oils' },
-  conventional_crops: { icon: '🌽', label: 'Conventional Crops' },
-  bioengineering: { icon: '🧬', label: 'Bioengineering' },
-  additives: { icon: '🧪', label: 'Additives' },
-  gluten: { icon: '🌾', label: 'Gluten' },
-  natural_flavors: { icon: '🍃', label: 'Natural Flavors' },
+  trans_fats:          { icon: '⛔', label: 'Trans Fats' },
+  seed_oils:           { icon: '🫙', label: 'Seed Oils' },
+  conventional_crops:  { icon: '🌽', label: 'Conventional Crops' },
+  bioengineering:      { icon: '🧬', label: 'Bioengineering' },
+  natural_flavors:     { icon: '🍃', label: 'Natural Flavors' },
+  additives:           { icon: '🧪', label: 'Additives' },
+  synthetic_additives: { icon: '🧪', label: 'Additives' },
+  gluten_grains:       { icon: '🌾', label: 'Gluten Grains' },
+  conventional_meat:   { icon: '🥩', label: 'Conventional Meat' },
 };
 
 export default function ConcernCard({ category, flags, explanation }) {
