@@ -800,3 +800,52 @@ describe('H. Meat verdict logic', () => {
     expect(flag).toBeUndefined();
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// I. Inconclusive verdict — product found, ingredients present, all unrecognized
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * A product whose entire ingredient list consists of tokens the engine has
+ * never seen — no triggers fire, no whole-food tokens clear them, so they all
+ * land in unverifiedIngredients at Level 2. Before the inconclusive fix these
+ * returned a false 'green' verdict.
+ *
+ * Seven made-up tokens are used (threshold for inconclusive is > 5) so the
+ * proxy check reliably fires. None of the tokens contain any known trigger
+ * substring and none appear in WHOLE_FOOD_TOKENS_L2.
+ */
+const ALL_UNKNOWN_OFF = {
+  status: 1,
+  product: {
+    product_name: 'Mystery Product',
+    ingredients_text:
+      'zymotrixal, biophenolate, hexamorphite, gluvaxitol, cryomethylane, phytorextrin, neovitriol',
+    labels_tags: [],
+    categories_tags: [],
+  },
+};
+
+describe('I — inconclusive verdict: all ingredients unrecognized', () => {
+  test('returns verdict: inconclusive (not green) when all ingredient tokens are unrecognized', async () => {
+    mockFetchOnce(ALL_UNKNOWN_OFF);
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000099', userLevel: 2 }), res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.verdict).toBe('inconclusive');
+  });
+
+  test('inconclusive result has a non-empty unverifiedIngredients array', async () => {
+    mockFetchOnce(ALL_UNKNOWN_OFF);
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000099', userLevel: 2 }), res);
+    expect(res.body.unverifiedIngredients.length).toBeGreaterThan(0);
+  });
+
+  test('inconclusive result has flags: []', async () => {
+    mockFetchOnce(ALL_UNKNOWN_OFF);
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000099', userLevel: 2 }), res);
+    expect(res.body.flags).toEqual([]);
+  });
+});

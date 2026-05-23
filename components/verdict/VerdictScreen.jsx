@@ -103,9 +103,9 @@ export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, o
   const { verdict, flags = [], productName, ingredients, unverifiedIngredients = [], unverifiedReason, isMeat = false } = scanResult;
 
   const hasLevel1SoftFlags = userLevel === 1 && flags.some(f => f.severity === 'caution' && LEVEL_1_YELLOW_CATEGORIES.has(f.category));
-  const verdictColors = { red: '#C0392B', yellow: '#D4AC0D', green: '#27AE60', unverified: '#9A8260' };
-  const verdictBg = { red: '#FDEDEC', yellow: '#FEF9E7', green: '#EAFAF1', unverified: '#F5F5F5' };
-  const verdictLabel = { red: 'AVOID', yellow: 'CAUTION', green: 'CLEAN', unverified: 'UNVERIFIED' };
+  const verdictColors = { red: '#C0392B', yellow: '#D4AC0D', green: '#27AE60', unverified: '#9A8260', inconclusive: '#D4872A' };
+  const verdictBg = { red: '#FDEDEC', yellow: '#FEF9E7', green: '#EAFAF1', unverified: '#F5F5F5', inconclusive: '#FDF6EE' };
+  const verdictLabel = { red: 'AVOID', yellow: 'CAUTION', green: 'CLEAN', unverified: 'UNVERIFIED', inconclusive: 'INCONCLUSIVE' };
 
   const sortedFlags = [...flags].sort((a, b) =>
     a.severity === b.severity ? 0 : a.severity === 'reject' ? -1 : 1
@@ -177,8 +177,20 @@ export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, o
       )}
       */}
 
-      {/* AI summary / unverified message */}
-      {verdict !== 'unverified' ? (
+      {/* AI summary / unverified message / inconclusive message */}
+      {verdict === 'unverified' ? (
+        <div style={{ margin: '12px 16px 0', background: 'var(--cream-dark)', borderRadius: 16, padding: 16 }}>
+          <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--text-mid)' }}>
+            {unverifiedCopy}
+          </p>
+        </div>
+      ) : verdict === 'inconclusive' ? (
+        <div style={{ margin: '12px 16px 0', background: 'var(--cream-dark)', borderRadius: 16, padding: 16 }}>
+          <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--text-mid)' }}>
+            We found this product but couldn't confidently analyze its ingredients — they may be listed in an unfamiliar format or language. Scan again for a fresh attempt, or check the label manually.
+          </p>
+        </div>
+      ) : (
         <div style={{ margin: '12px 16px 0', background: 'var(--cream-dark)', borderRadius: 16, padding: 16, minHeight: 72 }}>
           {loadingExplanation ? (
             <div>
@@ -190,12 +202,6 @@ export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, o
           ) : (
             <p style={{ fontSize: 14, color: 'var(--text-light)' }}>Tap a concern card below for details.</p>
           )}
-        </div>
-      ) : (
-        <div style={{ margin: '12px 16px 0', background: 'var(--cream-dark)', borderRadius: 16, padding: 16 }}>
-          <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--text-mid)' }}>
-            {unverifiedCopy}
-          </p>
         </div>
       )}
 
@@ -243,7 +249,7 @@ export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, o
       )}
 
       {/* Swaps CTA / Scan Again */}
-      {verdict === 'unverified' ? (
+      {(verdict === 'unverified' || verdict === 'inconclusive') ? (
         <button onClick={onBack} style={{ margin: '20px 16px 0', width: 'calc(100% - 32px)', padding: 16, background: 'linear-gradient(135deg, #3A5A40, #4D7B55)', color: 'white', fontFamily: 'var(--font-inter), system-ui, sans-serif', fontSize: 15, fontWeight: 700, border: 'none', borderRadius: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: '0 4px 16px rgba(58,90,64,0.3)' }}>
           Scan Again →
         </button>

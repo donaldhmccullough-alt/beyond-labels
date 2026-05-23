@@ -510,6 +510,26 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── Inconclusive verdict — recognized product, all-unknown ingredients ───────
+  // If the engine returns 'green' with no flags but a long unverified list, the
+  // product has ingredients but the engine couldn't screen any of them — likely
+  // a foreign-language or oddly-formatted label. Returning 'green' here would be
+  // a false-positive; 'inconclusive' signals that screening was impossible.
+  //
+  // Proxy threshold: > 5 unverified tokens. This avoids flipping genuinely clean
+  // products that have a handful of unfamiliar whole-food tokens (e.g. a specialty
+  // spice blend where 1–3 exotic items are unrecognized but the rest are clean).
+  // A product with 6+ unrecognized tokens and zero flags has not been screened at
+  // all — it is not safe to call it green.
+  if (
+    ingredientsText !== null &&
+    verdict === 'green' &&
+    flags.length === 0 &&
+    (unverifiedIngredients?.length ?? 0) > 5
+  ) {
+    verdict = 'inconclusive';
+  }
+
   // ── Capture unverified ingredients ───────────────────────────────────────
   // Awaited so Vercel doesn't terminate the function before the write lands.
   // A failed write is logged and skipped — it never blocks the response.
@@ -522,9 +542,9 @@ export default async function handler(req, res) {
   }
 
   // ── Fetch Claude explanation ──────────────────────────────────────────────
-  // Skip for unverified results — no ingredients to explain.
-  // Fail silently otherwise — null degrades gracefully on the frontend.
-  const explanation = verdict !== 'unverified'
+  // Skip for unverified and inconclusive results — no screened ingredients to
+  // explain. Fail silently otherwise — null degrades gracefully on the frontend.
+  const explanation = (verdict !== 'unverified' && verdict !== 'inconclusive')
     ? await fetchExplanation(verdict, flags, productName, ingredientsText, userLevel)
     : null;
 
