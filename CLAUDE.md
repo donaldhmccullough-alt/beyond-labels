@@ -596,6 +596,11 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 | `2bad2f6` | feat: v4 prompt — restore full v2 voice depth (distinct roles, signature phrases, level-specific instructions) on v3 plumbing |
 | `d6ebd68` | feat: v5 prompt — restore shared philosophy paragraph, add explicit Sina/Joel self-introduction instruction |
 
+### Session — add meat as 10th swap category
+| Hash | Description |
+|------|-------------|
+| `d245abe` | feat: add meat as 10th swap category — VALID_CATEGORIES, CATEGORY_TAG_MAP, CLAUDE.md |
+
 ---
 
 ## What NOT to Do
