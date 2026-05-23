@@ -62,8 +62,8 @@ components/
 
 lib/
   rulesEngine.js          — deterministic ingredient analysis engine (core logic)
-  rulesEngine.test.js     — Jest tests for rules engine (27 describe blocks; 748 tests total; block 20 = SYNTHETIC_ADDITIVES bucket-1 expansion (91 tests); block 21 = FD&C "No." normalization (19 tests); block 22 = mechanically separated meat (3 tests); block 23 = interesterified variants, lake forms, dye synonyms, new E-numbers, stearyl emulsifiers, cyclamate (78 tests); block 24 = synonym/E-number expansion: nitrates, BVO, bleaching agents, BHA/BHT names, SLS, E-numbers e320/e321/e924/e950–e955 (50 tests); block 25 = gluten grains expansion: ancient grains, botanical names, asafoetida/hing, smoke flavoring, brown rice syrup (34 tests); block 26 = H2: artifact phrases and red list additions — polysorbates, synthetic phosphates, red 3/#-normalizer (17 tests); block 27 = I: Sina gluten expansion — 65 new GLUTEN_GRAINS entries across corn derivatives, wheat flour varieties, barley/rye/oat forms, processed ingredients (22 tests))
-  __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (9 suites A–I; suite H = meat verdict logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 13 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests)
+  rulesEngine.test.js     — Jest tests for rules engine (30 describe blocks; 773 tests total; block 20 = SYNTHETIC_ADDITIVES bucket-1 expansion (91 tests); block 21 = FD&C "No." normalization (19 tests); block 22 = mechanically separated meat (3 tests); block 23 = interesterified variants, lake forms, dye synonyms, new E-numbers, stearyl emulsifiers, cyclamate (78 tests); block 24 = synonym/E-number expansion: nitrates, BVO, bleaching agents, BHA/BHT names, SLS, E-numbers e320/e321/e924/e950–e955 (50 tests); block 25 = gluten grains expansion: ancient grains, botanical names, asafoetida/hing, smoke flavoring, brown rice syrup (34 tests); block 26 = H2: artifact phrases and red list additions — polysorbates, synthetic phosphates, red 3/#-normalizer (17 tests); block 27 = I: Sina gluten expansion — 65 new GLUTEN_GRAINS entries across corn derivatives, wheat flour varieties, barley/rye/oat forms, processed ingredients (22 tests); block 28 = FORTIFIED_VITAMINS group — synthetic vitamin fortification detection (13 tests); block 29 = NATURAL_COLORANTS group — plant-derived colorant detection (12 tests))
+  __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (9 suites A–I; 103 tests total; suite H = L2 verdict waterfall coverage: cert gate, organic path, non-organic path, meat logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 13 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests)
   onboardingData.js       — QUESTIONS array (13 Qs), STAGES array (5 stages), getStageFromScore()
   userProfile.js          — localStorage profile read/write/clear helpers
   userLevel.js            — getUserLevel(), setUserLevel(), hasUserLevel() — localStorage bl_user_level
@@ -554,7 +554,11 @@ disabled={true}
 
 ### ConcernCard CATEGORY_INFO contract
 
-`ConcernCard.jsx` maintains a `CATEGORY_INFO` map keyed on engine category strings. Current keys: `seed_oils`, `conventional_crops`, `bioengineering`, `natural_flavors`, `synthetic_additives`, `trans_fats`, `gluten_grains`, `conventional_meat`. If a new engine category is added without a matching key, the card silently falls back to a generic label and renders the raw category string. **Always update `CATEGORY_INFO` in `ConcernCard.jsx` when adding a new flag category to the rules engine.**
+`ConcernCard.jsx` maintains a `CATEGORY_INFO` map keyed on engine category strings. Current keys: `seed_oils`, `conventional_crops`, `bioengineering`, `natural_flavors`, `synthetic_additives`, `trans_fats`, `gluten_grains`, `conventional_meat`, `fortified_vitamins`, `natural_colorants`. If a new engine category is added without a matching key, the card silently falls back to a generic label and renders the raw category string. **Always update `CATEGORY_INFO` in `ConcernCard.jsx` when adding a new flag category to the rules engine.**
+
+### L2 Verdict Waterfall (scan.js)
+
+Level 2 users get a waterfall applied AFTER the rules engine runs. Order: (1) instant-red on any `'additives'`, `'natural_flavors'`, `'seed_oils'`, `'trans_fats'`, or `'conventional_meat'` flag → RED; (2) cert gate — USDA organic → organic path, else non-organic path; (3) organic path: fortified vitamins → YELLOW, natural colorants → YELLOW, olive oil → YELLOW with adulteration note, else → GREEN; (4) non-organic path: non-gmo-project-verified → YELLOW, glyphosate-free → YELLOW, else → RED. Gluten grains flags are explicitly excluded from the waterfall (paywall feature). Inconclusive verdict fires before the waterfall.
 
 ### Vercel serverless — always await Supabase writes before res.json()
 
@@ -625,6 +629,12 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 |------|-------------|
 | `565b17b` | feat: expand GLUTEN_GRAINS with Sina clinical list — 65 new entries across corn derivatives, grain varieties, and processed ingredients |
 | `468c2e0` | fix: scope 4 overlap-prevention tests to conventional_crops only |
+
+### Session — L2 verdict waterfall + new ingredient groups
+| Hash | Description |
+|------|-------------|
+| `691ff02` | feat: add FORTIFIED_VITAMINS and NATURAL_COLORANTS groups to rules engine |
+| `839f361` | feat: implement L2 verdict waterfall in scan.js — cert gate, organic/non-organic paths, fortified vitamins, natural colorants, olive oil caution |
 
 ---
 
