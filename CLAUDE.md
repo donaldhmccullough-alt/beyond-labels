@@ -620,6 +620,12 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 |------|-------------|
 | `565b17b` | feat: expand GLUTEN_GRAINS with Sina clinical list — 65 new entries across corn derivatives, grain varieties, and processed ingredients |
 
+### Session — Sina gluten expansion
+| Hash | Description |
+|------|-------------|
+| `565b17b` | feat: expand GLUTEN_GRAINS with Sina clinical list — 65 new entries across corn derivatives, grain varieties, and processed ingredients |
+| `468c2e0` | fix: scope 4 overlap-prevention tests to conventional_crops only |
+
 ---
 
 ## What NOT to Do
