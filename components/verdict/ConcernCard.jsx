@@ -11,6 +11,8 @@ const CATEGORY_INFO = {
   synthetic_additives: { icon: '🧪', label: 'Additives' },
   gluten_grains:       { icon: '🌾', label: 'Gluten Grains' },
   conventional_meat:   { icon: '🥩', label: 'Conventional Meat' },
+  fortified_vitamins:  { icon: '💊', label: 'Synthetic Fortification', description: 'Synthetic vitamins and minerals added back after industrial processing strips naturally occurring nutrients — a sign of heavily refined ingredients.' },
+  natural_colorants:   { icon: '🎨', label: 'Natural Colorants', description: 'Plant-derived colorants (annatto, beet juice, beta-carotene, etc.) that indicate the product required color correction after processing.' },
 };
 
 export default function ConcernCard({ category, flags, explanation }) {
