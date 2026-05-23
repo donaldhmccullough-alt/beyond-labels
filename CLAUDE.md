@@ -606,6 +606,14 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 |------|-------------|
 | `1ee5ca7` | feat: add artifact phrases and red list — polysorbates, phosphates, red 3, erythrosine |
 
+### Session — inconclusive verdict + unverified queue triage
+| Hash | Description |
+|------|-------------|
+| `d245abe` | feat: add meat as 10th swap category — VALID_CATEGORIES, CATEGORY_TAG_MAP, CLAUDE.md |
+| `1ee5ca7` | feat: add artifact phrases and red list — polysorbates, phosphates, red 3, erythrosine |
+| `b862d7f` | docs: log 1ee5ca7 in CLAUDE.md commit history |
+| `01d11c5` | feat: add inconclusive verdict for all-unrecognized ingredient scans |
+
 ---
 
 ## What NOT to Do
