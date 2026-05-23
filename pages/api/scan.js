@@ -47,7 +47,7 @@
  */
 
 import rulesEngine from '../../lib/rulesEngine';
-const { analyzeIngredients } = rulesEngine;
+const { analyzeIngredients, containsFortifiedVitamins, containsNaturalColorants } = rulesEngine;
 
 import { supabaseServer as sb } from '../../lib/supabaseServer';
 import Anthropic from '@anthropic-ai/sdk';
@@ -68,6 +68,8 @@ const OFF_LABEL_MAP = {
   'en:usda-organic':              'usda-organic',
   'en:organic':                   'usda-organic',
   'en:non-gmo-project-verified':  'non-gmo-project-verified',
+  'en:glyphosate-free':           'glyphosate-free',
+  'en:glyphosate-residue-free':   'glyphosate-free',
   // "en:no-gmos" is a self-declared claim, not a third-party certification;
   // we do NOT map it to non-gmo-project-verified to avoid false clearance.
 };
@@ -491,36 +493,14 @@ export default async function handler(req, res) {
   const engineResult = analyzeIngredients(ingredientsText, labelsDetected, userLevel);
   let { verdict, flags, clearedBy, unverifiedIngredients } = engineResult;
 
-  // ── L2 meat check — require USDA Organic certification ───────────────────
-  // At Level 2, any meat/fish/egg product without a verified organic label is
-  // flagged red. The organic concern is independent of ingredient screening —
-  // a product with a clean ingredients list can still be conventional meat.
-  if (userLevel === 2 && isMeat && verdict !== 'unverified') {
-    const hasOrganic = labelsDetected.includes('usda-organic');
-    if (!hasOrganic) {
-      const meatFlag = {
-        category:          'conventional_meat',
-        severity:          'reject',
-        matchedIngredient: '',
-        summary:           'Meat product without USDA Organic certification',
-      };
-      flags   = [meatFlag, ...flags];
-      verdict = 'red';
-      clearedBy = null;
-    }
-  }
-
   // ── Inconclusive verdict — recognized product, all-unknown ingredients ───────
-  // If the engine returns 'green' with no flags but a long unverified list, the
-  // product has ingredients but the engine couldn't screen any of them — likely
-  // a foreign-language or oddly-formatted label. Returning 'green' here would be
-  // a false-positive; 'inconclusive' signals that screening was impossible.
+  // Runs BEFORE the L2 waterfall so a product the engine could not screen at all
+  // is never evaluated by the cert gate (there are no screened ingredients to
+  // certify). Returning 'green' here would be a false-positive; 'inconclusive'
+  // signals that screening was impossible.
   //
-  // Proxy threshold: > 5 unverified tokens. This avoids flipping genuinely clean
-  // products that have a handful of unfamiliar whole-food tokens (e.g. a specialty
-  // spice blend where 1–3 exotic items are unrecognized but the rest are clean).
-  // A product with 6+ unrecognized tokens and zero flags has not been screened at
-  // all — it is not safe to call it green.
+  // Proxy threshold: > 5 unverified tokens avoids flipping genuinely clean
+  // products that have a handful of unfamiliar whole-food tokens.
   if (
     ingredientsText !== null &&
     verdict === 'green' &&
@@ -528,6 +508,98 @@ export default async function handler(req, res) {
     (unverifiedIngredients?.length ?? 0) > 5
   ) {
     verdict = 'inconclusive';
+  }
+
+  // ── Level 2 verdict waterfall ─────────────────────────────────────────────
+  // Overrides the engine verdict for Level 2 users only. First match wins.
+  // Does not run for unverified or inconclusive results — no ingredients to gate.
+  // Level 1 users are completely unaffected.
+  //
+  // Category name note: the engine emits 'additives' for all of
+  // SYNTHETIC_ADDITIVES (artificial dyes, MSG, sweeteners, preservatives, etc.).
+  // There are no separate 'artificial_dyes', 'flavor_enhancers', or
+  // 'artificial_sweeteners' categories in the engine output.
+  //
+  // Gluten grains: gluten_grains flags are intentionally NOT in INSTANT_RED and
+  // do not influence the waterfall verdict at Level 2. They remain in the flags
+  // array for display but gluten screening is reserved for a future feature.
+  if (userLevel === 2 && verdict !== 'unverified' && verdict !== 'inconclusive') {
+    const hasOrganic = labelsDetected.includes('usda-organic');
+
+    // ── INSTANT RED categories (nodes 1–7) ───────────────────────────────────
+    // Any flag in these categories stops evaluation immediately → RED.
+    const INSTANT_RED_CATEGORIES = new Set([
+      'additives',       // covers all SYNTHETIC_ADDITIVES: dyes, MSG, sweeteners, preservatives
+      'natural_flavors',
+      'seed_oils',
+      'trans_fats',
+    ]);
+
+    const hasInstantRedFlag = flags.some(f => INSTANT_RED_CATEGORIES.has(f.category));
+
+    // Node 8: meat/fish/egg product without USDA Organic certification.
+    const needsMeatFlag = isMeat && !hasOrganic;
+
+    if (hasInstantRedFlag || needsMeatFlag) {
+      // Inject conventional_meat flag first (node 8) when applicable.
+      if (needsMeatFlag) {
+        flags = [{
+          category:          'conventional_meat',
+          severity:          'reject',
+          matchedIngredient: '',
+          summary:           'Meat product without USDA Organic certification',
+        }, ...flags];
+      }
+      verdict   = 'red';
+      clearedBy = null;
+
+    } else if (hasOrganic) {
+      // ── ORGANIC PATH (nodes 10–13) ─────────────────────────────────────────
+      // Product passed all instant-red nodes and carries USDA Organic cert.
+      // Minor concerns can still downgrade the verdict to yellow.
+      // clearedBy is preserved from the engine ('organic') in all organic-path branches.
+      if (ingredientsText && containsFortifiedVitamins(ingredientsText)) {
+        // Node 10: synthetic vitamin fortification present.
+        verdict = 'yellow';
+      } else if (ingredientsText && containsNaturalColorants(ingredientsText)) {
+        // Node 11: plant-derived colorants indicate processing-related color correction.
+        verdict = 'yellow';
+      } else if (ingredientsText && ingredientsText.toLowerCase().includes('olive oil')) {
+        // Node 12: olive oil adulteration risk — even organic labels are not immune.
+        verdict = 'yellow';
+        flags = [...flags, {
+          category:          'olive_oil_adulteration',
+          severity:          'caution',
+          matchedIngredient: 'olive oil',
+          summary:           'Olive oil adulteration is common — even organic olive oil may be cut with cheaper oils.',
+        }];
+      } else {
+        // Node 13: no concerns found → fully clean.
+        verdict = 'green';
+      }
+
+    } else {
+      // ── NON-ORGANIC PATH (nodes 14–16) ────────────────────────────────────
+      // Product passed all instant-red nodes but has no USDA Organic cert.
+      const hasNonGmo = labelsDetected.includes('non-gmo-project-verified');
+      const hasGlyphosateFree = labelsDetected.some(
+        l => l === 'glyphosate-free' || l === 'glyphosate free'
+      );
+
+      if (hasNonGmo) {
+        // Node 14: Non-GMO Project Verified → caution yellow.
+        verdict   = 'yellow';
+        clearedBy = 'non-gmo-project-verified';
+      } else if (hasGlyphosateFree) {
+        // Node 15: Glyphosate Free certification → caution yellow.
+        verdict   = 'yellow';
+        clearedBy = 'glyphosate-free';
+      } else {
+        // Node 16: no certification → conventional product → RED.
+        verdict   = 'red';
+        clearedBy = null;
+      }
+    }
   }
 
   // ── Capture unverified ingredients ───────────────────────────────────────
