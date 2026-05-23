@@ -226,6 +226,20 @@ const CATEGORY_TAG_MAP = [
     'en:jerky',
     'en:rice-cakes',
   ]},
+  { category: 'meat', tags: [
+    'en:meats',
+    'en:fresh-meats',
+    'en:frozen-meats',
+    'en:poultry',
+    'en:beef',
+    'en:pork',
+    'en:chicken',
+    'en:turkey',
+    'en:ground-meat',
+    'en:sausages',
+    'en:deli-meats',
+    'en:bacon',
+  ]},
 ];
 
 function mapProductCategory(categoriesTags) {

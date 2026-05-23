@@ -1,7 +1,7 @@
 /**
  * pages/api/swaps.js — Beyond Labels store-bought swap recommendations
  *
- * GET /api/swaps?category=snacks|cereal|condiments|beverages|dairy|bread|frozen|cooking_oils&userLevel=1|2
+ * GET /api/swaps?category=chips|snacks|cereal|condiments|beverages|dairy|bread|frozen|cooking_oils&userLevel=1|2
  *
  * Flow:
  *   1. Check 1-hour in-memory cache
@@ -37,7 +37,7 @@ const COLUMNS = [
 ];
 
 const VALID_CATEGORIES = [
-  'snacks', 'cereal', 'condiments', 'beverages', 'dairy', 'bread', 'frozen', 'cooking_oils',
+  'chips', 'snacks', 'cereal', 'condiments', 'beverages', 'dairy', 'bread', 'frozen', 'cooking_oils', 'meat',
 ];
 
 let _cache = { rows: null, fetchedAt: 0 };
