@@ -183,44 +183,7 @@ New users choose Level 1 (lenient) or Level 2 (strict) during onboarding. The ru
 **Trans fats** (TRANS_FATS array — separate from SEED_OILS):
 `partially hydrogenated`, `hydrogenated`, `margarine`, `shortening`
 
-**All of SYNTHETIC_ADDITIVES** (every item stays red for both levels):
-caramel color, sodium benzoate, potassium bromate, sodium nitrate, sodium nitrite,
-monosodium glutamate, msg, disodium inosinate, disodium guanylate,
-artificial flavors, artificial colour, artificial color, artificial flavor,
-flavor enhancer, flavor base, flavouring, flavor,
-sucralose, aspartame, acesulfame potassium, acesulfame-k, ace-k, saccharin,
-neotame, advantame, steviol glycoside, stevia extract, rebaudioside, reb-a,
-interesterified palm oil, interesterified soybean oil, interesterified oil, interesterified fat,
-carrageenan, titanium dioxide, propyl gallate, octyl gallate, dodecyl gallate,
-propylene glycol, acetylated monoglycerides, emulsifiers, acidity regulators,
-anticaking agent, antioxidant, silicon dioxide, nisin preparation, ferrous sulfate,
-mono- and diglycerides, mono and diglycerides, mono - and diglycerides, monoglycerides, diglycerides,
-glycerol monostearate, glyceryl monostearate, glycerol, humectants, hydrolyzed corn protein,
-folic acid, niacinamide, niacin, potassium phosphate,
-thiamine mononitrate, thiamin mononitrate, thiamin mononitrite, riboflavin, reduced iron,
-sodium alginate, sodium caseinate, sodium citrate, sodium diacetate, sodium phosphate, sorbic acid,
-potassium benzoate, benzoic acid, potassium sorbate, calcium propionate, sodium propionate,
-propionic acid, potassium nitrate, potassium nitrite, cyclamate, sodium cyclamate, natamycin, stannous chloride,
-sulfur dioxide, sodium bisulfite, sodium metabisulfite, sodium sulfite,
-potassium bisulfite, potassium metabisulfite, sulfites,
-calcium disodium edta, disodium edta, tetrasodium edta,
-sodium stearoyl-2-lactylate, sodium stearoyl lactylate, calcium stearoyl-2-lactylate,
-sodium stearyl fumarate, stearyl tartrate,
-salatrim, succistearin, sucroglycerides,
-methylparaben, ethylparaben, propylparaben, butylparaben, heptylparaben,
-yellow 5, yellow 5 lake, yellow 6, yellow 6 lake,
-red 40, red 40 lake, blue 1, blue 1 lake, blue 2, blue 2 lake, green 3, green 3 lake,
-brilliant blue fcf, fast green fcf, sunset yellow, tartrazine, allura red, indigotine, orange b,
-tbhq, bha, bht,
-red 3, red 3 lake, red 4, carmine, cochineal, erythrosine, iron oxide,
-canthaxanthin, citrus red 2,
-soy leghemoglobin, insect flour, ethyl vanillin, vanillin,
-mechanically separated meat,
-e102, e110, e127, e129, e132, e133, e143, e161g, e171,
-e319, e330, e339, e388, e471, e472a, e472b, e472e, e476, e483, e485, e487, e500,
-colorante amarillo 6, colorante artificial rojo 40,
-jarabe de maíz de alta fructosa, aceite de palma y/o karité, aceite de palma y/o palmiste,
-soya lecithin
+**All of SYNTHETIC_ADDITIVES** (every item stays red for both levels): All items in the SYNTHETIC_ADDITIVES array — see `lib/rulesEngine.js` for the full list.
 
 ### Level rules — YELLOW for Level 1, RED for Level 2
 **Seed oils** (SEED_OILS array — trans fats are in a separate TRANS_FATS array):
@@ -346,6 +309,8 @@ const MEAT_CATEGORIES = new Set([
   summary:           'Meat product without USDA Organic certification',
 }
 ```
+
+**`matchedIngredient: ''` convention** — the `conventional_meat` flag uses an empty string, not `null`. `ConcernCard` asserts `typeof matchedIngredient === 'string'`; do not change this to `null`.
 
 This forces `verdict = 'red'` and `clearedBy = null` regardless of ingredients. Level 1 users never receive this flag — ingredient-level screening only.
 
@@ -504,10 +469,10 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 - Calls Claude Sonnet with Sina-Joel voice system prompt
 - Returns: `{ summary: string, details: { [category]: string } }`
 - Exports `SYSTEM_PROMPT`, `buildUserMessage`, `PROMPT_VERSION` for use by `scan.js`
-- VerdictScreen skips this endpoint when `scanResult.explanation` is already populated (cache hit or fresh scan)
+- VerdictScreen never calls this endpoint directly — explanation is always returned inline in the POST /api/scan response.
 - **System prompt voice**: Sina McCullough (PhD Nutrition, autoimmune healing journey, science-first, rhetorical questions, inflammation/gut/gene-expression framing) + Joel Salatin (Polyface Farm, story-and-analogy thinker, farming-system angle). Together: empowering, not alarmist, skeptical of GRAS and industry-funded science.
 - **Level-aware tone**: Level 1 users get encouragement and awareness-building framing; Level 2 users get direct, graduate-level honesty. Controlled by `[Level 1 awareness item]` note injected per flagged category in `buildUserMessage()`.
-- **Current PROMPT_VERSION**: `5`
+- See Scan Cache Pattern section for current PROMPT_VERSION.
 
 ### GET /api/swaps
 - Query params: `category` (one of 9 valid values, optional), `userLevel` (1 or 2, defaults to 2)
@@ -520,13 +485,12 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 
 ## Scan Cache Pattern
 
-`lib/cacheVersion.js` exports `PROMPT_VERSION` (integer). This is the single source of truth — import it from here, never from an API route file.
+Cache is keyed on `(barcode, user_level, prompt_version)` — see the `scan_cache` table in the Supabase section for the full schema, and `POST /api/scan` for the hit/miss flow. `PROMPT_VERSION` is the single source of truth in `lib/cacheVersion.js` — import it from there, never from an API route file.
 
 To invalidate the cache after a prompt change:
 1. Bump `PROMPT_VERSION` in `lib/cacheVersion.js`
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
-
-Cache lookup is keyed on `(barcode, user_level, prompt_version)` — changing the user's level or bumping the prompt version both trigger a fresh Claude call and cache re-population.
+3. Deploy — new scans rebuild the cache at the new version
 
 **Current PROMPT_VERSION is 5.**
 
@@ -587,6 +551,10 @@ style={{
 disabled={true}
 ```
 
+### ConcernCard CATEGORY_INFO contract
+
+`ConcernCard.jsx` maintains a `CATEGORY_INFO` map keyed on engine category strings. Current keys: `seed_oils`, `conventional_crops`, `bioengineering`, `natural_flavors`, `synthetic_additives`, `trans_fats`, `gluten_grains`, `conventional_meat`. If a new engine category is added without a matching key, the card silently falls back to a generic label and renders the raw category string. **Always update `CATEGORY_INFO` in `ConcernCard.jsx` when adding a new flag category to the rules engine.**
+
 ### Vercel serverless — always await Supabase writes before res.json()
 
 **Critical pattern**: Vercel serverless functions freeze the execution context the moment `res.json()` is called. Any un-awaited promise is silently discarded.
@@ -615,23 +583,7 @@ This applies to **all** Supabase writes in API routes. Never use fire-and-forget
 
 ## Commit History (mvp-beta)
 
-### Session — level-aware swaps system
-| Hash | Description |
-|------|-------------|
-| `f302c69` | feat: randomize swap selections so users see variety across sessions |
-| `b70adad` | fix: exact OFF tag matching for product category, flag-based fallback for unrecognized barcodes |
-| `8f58aaa` | feat: level-aware swaps — product category mapping, Good/Better tiers, 8 categories |
-
-### Session — SB 25 synthetic additives expansion
-| Hash | Description |
-|------|-------------|
-| `66c781c` | feat: add 18 Texas SB 25 chemicals to SYNTHETIC_ADDITIVES + 36 tests |
-
-### Session — meat verdict logic
-| Hash | Description |
-|------|-------------|
-| `e394a6a` | feat: meat verdict logic — L2 requires organic cert, custom unverified messaging by level |
-| `ee74e0d` | docs: update CLAUDE.md — scan.test.js suite H, commit history for meat verdict logic |
+Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conventional crops, gluten grains), swaps system build, certifications, cache write fix, prompt iterations — see `git log` for full history.
 
 ### Session — audit fixes (gluten_grains key, conventional_meat UI, flavor over-match, scan response shape)
 | Hash | Description |
@@ -643,24 +595,6 @@ This applies to **all** Supabase writes in API routes. Never use fire-and-forget
 |------|-------------|
 | `2bad2f6` | feat: v4 prompt — restore full v2 voice depth (distinct roles, signature phrases, level-specific instructions) on v3 plumbing |
 | `d6ebd68` | feat: v5 prompt — restore shared philosophy paragraph, add explicit Sina/Joel self-introduction instruction |
-
-### Session — rules engine gluten grains + brown rice syrup expansion
-| Hash | Description |
-|------|-------------|
-| `a94f61a` | feat: rules engine — gluten grains expansion (ancient grains, botanical names, asafoetida, teff, sorghum, smoke flavoring) + brown rice syrup |
-
-### Session — rules engine synonym/E-number expansion
-| Hash | Description |
-|------|-------------|
-| `dc3dfe1` | feat: rules engine — synonym/E-number expansion (nitrates, BVO, bleaching agents, BHA/BHT names, SLS, dye synonyms) |
-
-### Session — prompt update, cache write fix, code quality
-| Hash | Description |
-|------|-------------|
-| `82705a0` | fix: await Supabase writes before res.json() to prevent Vercel truncation |
-| `db6b419` | feat: updated Sina/Joel system prompt, bumped PROMPT_VERSION to 2 |
-| `83c73bc` | Consolidate duplicated code: scanHistory utils and LEVEL_1_YELLOW_CATEGORIES |
-| `32f793d` | Use service role key for server-side Supabase writes |
 
 ---
 
