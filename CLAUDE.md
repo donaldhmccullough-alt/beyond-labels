@@ -284,7 +284,7 @@ Before any trigger matching the raw ingredient string is normalized in two steps
 3. **CONVENTIONAL_CROPS** — Level 2: red; Level 1: yellow; clearable by `usda-organic` label, `non-gmo-project-verified` label, or "organic" word prefix on the ingredient
 4. **BIOENGINEERING_TERMS** — Level 2: red; Level 1: yellow; first match only
 5. **NATURAL_FLAVORS** — Level 2: red; Level 1: yellow; no clearance
-6. **SYNTHETIC_ADDITIVES** — always red at both levels; no clearance; expanded with ~200 additional EU n/n triggers. Category string: `'synthetic_additives'`. Includes lake dye forms (e.g. `yellow 5 lake`), chemical name synonyms (e.g. `tartrazine`, `allura red`), 22 E-numbers, stearyl ester emulsifiers, bare `cyclamate`, and a **"Processing methods"** section: `mechanically separated meat`. Two entries (`interesterified palm oil`, `interesterified soybean oil`) are matched in a **`PRIORITY_ADDITIVES` pre-pass** before SEED_OILS to prevent seed-oil sub-triggers (`palm oil`, `soybean oil`) from claiming the overlapping suffix and blocking the longer compound match.
+6. **SYNTHETIC_ADDITIVES** — always red at both levels; no clearance; expanded with ~200 additional EU n/n triggers. Category string: `'synthetic_additives'`. Includes lake dye forms (e.g. `yellow 5 lake`), chemical name synonyms (e.g. `tartrazine`, `allura red`), 22 E-numbers, stearyl ester emulsifiers, bare `cyclamate`, and a **"Processing methods"** section: `mechanically separated meat`. Two entries (`interesterified palm oil`, `interesterified soybean oil`) are matched in a **`PRIORITY_ADDITIVES` pre-pass** before SEED_OILS to prevent seed-oil sub-triggers (`palm oil`, `soybean oil`) from claiming the overlapping suffix and blocking the longer compound match. The bare `flavor` trigger uses a **word-boundary guard** in the SYNTHETIC_ADDITIVES loop: if `trigger === 'flavor'` and the character two positions before the match is a letter (pattern `<word> flavor`), the flag is skipped — this prevents over-matching compound flavor descriptors like `"natural butter flavor"` or `"cheese flavor"` as synthetic additives while leaving standalone `"flavor"` as a label declaration untouched.
 7. **GLUTEN_GRAINS** — soft flag (caution/yellow only at both levels). Category string: `'gluten_grains'` (not `'gluten'`).
    - **Flags every match**, not just the first — a product with wheat flour, oats, and barley malt gets three separate `gluten_grains` flags.
    - **Bypasses the claiming system entirely** — runs `findMatches(text, GLUTEN_GRAINS, [])` with an empty blocked-ranges list, so no prior category can suppress a grain match. Prolamin protein is an independent concern from pesticide exposure, bioengineering, or seed-oil content.
@@ -317,6 +317,43 @@ Certification checks use `labelsDetected.includes('usda-organic')` and `labelsDe
 - OFF labels are user-contributed; coverage is good but not authoritative.
 - Non-GMO Project check is live using OFF label data. Direct Non-GMO Project data partnership pending.
 - USDA OData API confirmed retired May 2026; replacement REST API returns empty results — not accessible at current api.data.gov key tier.
+
+### L2 meat check (inline in scan.js)
+
+A separate post-engine check runs for `userLevel === 2` on any product whose OFF `categories_tags` matches the `MEAT_CATEGORIES` set:
+
+```js
+const MEAT_CATEGORIES = new Set([
+  'en:meats', 'en:meat', 'en:beef', 'en:ground-beef', 'en:pork', 'en:chicken',
+  'en:turkey', 'en:lamb', 'en:veal', 'en:poultry', 'en:game-meats',
+  'en:fish', 'en:seafood', 'en:shellfish', 'en:crustaceans', 'en:molluscs',
+  'en:salmon', 'en:tuna', 'en:cod', 'en:tilapia', 'en:shrimp',
+  'en:deli-meats', 'en:cold-cuts', 'en:sausages', 'en:hot-dogs',
+  'en:charcuterie', 'en:bacon', 'en:ham', 'en:salami', 'en:pepperoni',
+  'en:smoked-meats', 'en:cured-meats',
+  'en:broths', 'en:stocks', 'en:bone-broth', 'en:chicken-broth', 'en:beef-broth',
+  'en:eggs', 'en:egg-products', 'en:poultry-eggs',
+]);
+```
+
+`isMeatProduct(categoriesTags)` returns `true` if any tag is in this set. At Level 2, if `isMeat && !labelsDetected.includes('usda-organic')`, a `conventional_meat` flag is injected as the first flag:
+
+```js
+{
+  category:          'conventional_meat',
+  severity:          'reject',
+  matchedIngredient: '',
+  summary:           'Meat product without USDA Organic certification',
+}
+```
+
+This forces `verdict = 'red'` and `clearedBy = null` regardless of ingredients. Level 1 users never receive this flag — ingredient-level screening only.
+
+**Custom unverified messaging for meat products** (keyed on `isMeat` + `unverifiedReason` in VerdictScreen):
+- L1 + `no_ingredients` + `isMeat`: "Flip the package over and read the label before buying — skip it if you see any synthetic chemicals, artificial additives, artificial flavors, or preservatives."
+- L2 + `no_ingredients` + `isMeat`: "Look for the USDA Organic seal before buying, and use your best judgment on quality — grass-fed, pasture-raised, or sourced from a farm you trust is always the better choice."
+
+`isMeat` is included in the scan response and written to the `scan_cache` table (`is_meat` boolean column, default false). The `isMeat: false` default is also included in the 404 not-found response for shape consistency.
 
 ---
 
@@ -360,6 +397,7 @@ const FLAG_CATEGORY_MAP = {
   natural_flavors:     'snacks',
   synthetic_additives: 'snacks',
   gluten_grains:       'cereal',
+  conventional_meat:   null,   // no product-category swap; user directed to local farm card
 };
 ```
 If both are null, the API returns all rows unfiltered.
@@ -456,7 +494,9 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
   - `'no_ingredients'` — product record exists in OFF but has no ingredient text (`found: true`)
   - `null` — verdict is red / yellow / green (not unverified)
 - Claude is never called when `verdict === 'unverified'` — no ingredients to explain
-- VerdictScreen renders a human-readable message card for unverified results (keyed on `unverifiedReason`) instead of the AI summary, and shows a "Scan Again" button instead of "See Cleaner Swaps"
+- VerdictScreen renders a human-readable message card for unverified results (keyed on `unverifiedReason` + `isMeat`) instead of the AI summary, and shows a "Scan Again" button instead of "See Cleaner Swaps"
+- At Level 2, `isMeatProduct()` is checked after `analyzeIngredients()` — if the product is meat and has no `usda-organic` label, a `conventional_meat` reject flag is injected and `verdict` is forced to `'red'` (see L2 meat check section above)
+- `isMeat: false` is included in the 404 not-found response for consistent response shape
 - Uses `supabaseServer` (service role key) for all Supabase writes
 
 ### POST /api/explain
@@ -467,7 +507,7 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 - VerdictScreen skips this endpoint when `scanResult.explanation` is already populated (cache hit or fresh scan)
 - **System prompt voice**: Sina McCullough (PhD Nutrition, autoimmune healing journey, science-first, rhetorical questions, inflammation/gut/gene-expression framing) + Joel Salatin (Polyface Farm, story-and-analogy thinker, farming-system angle). Together: empowering, not alarmist, skeptical of GRAS and industry-funded science.
 - **Level-aware tone**: Level 1 users get encouragement and awareness-building framing; Level 2 users get direct, graduate-level honesty. Controlled by `[Level 1 awareness item]` note injected per flagged category in `buildUserMessage()`.
-- **Current PROMPT_VERSION**: `3`
+- **Current PROMPT_VERSION**: `5`
 
 ### GET /api/swaps
 - Query params: `category` (one of 9 valid values, optional), `userLevel` (1 or 2, defaults to 2)
@@ -488,7 +528,7 @@ To invalidate the cache after a prompt change:
 
 Cache lookup is keyed on `(barcode, user_level, prompt_version)` — changing the user's level or bumping the prompt version both trigger a fresh Claude call and cache re-population.
 
-**Current PROMPT_VERSION is 3.**
+**Current PROMPT_VERSION is 5.**
 
 ---
 
@@ -591,6 +631,18 @@ This applies to **all** Supabase writes in API routes. Never use fire-and-forget
 | Hash | Description |
 |------|-------------|
 | `e394a6a` | feat: meat verdict logic — L2 requires organic cert, custom unverified messaging by level |
+| `ee74e0d` | docs: update CLAUDE.md — scan.test.js suite H, commit history for meat verdict logic |
+
+### Session — audit fixes (gluten_grains key, conventional_meat UI, flavor over-match, scan response shape)
+| Hash | Description |
+|------|-------------|
+| `7d2fa42` | fix: audit fixes — gluten_grains key, conventional_meat UI, flavor over-match, scan response shape, CLAUDE.md cleanup |
+
+### Session — prompt v4/v5 (restore full Sina/Joel voice depth)
+| Hash | Description |
+|------|-------------|
+| `2bad2f6` | feat: v4 prompt — restore full v2 voice depth (distinct roles, signature phrases, level-specific instructions) on v3 plumbing |
+| `d6ebd68` | feat: v5 prompt — restore shared philosophy paragraph, add explicit Sina/Joel self-introduction instruction |
 
 ### Session — rules engine gluten grains + brown rice syrup expansion
 | Hash | Description |
@@ -600,7 +652,7 @@ This applies to **all** Supabase writes in API routes. Never use fire-and-forget
 ### Session — rules engine synonym/E-number expansion
 | Hash | Description |
 |------|-------------|
-| `(see git log)` | feat: rules engine — synonym/E-number expansion (nitrates, BVO, bleaching agents, BHA/BHT names, SLS, dye synonyms) |
+| `dc3dfe1` | feat: rules engine — synonym/E-number expansion (nitrates, BVO, bleaching agents, BHA/BHT names, SLS, dye synonyms) |
 
 ### Session — prompt update, cache write fix, code quality
 | Hash | Description |
