@@ -601,6 +601,11 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 |------|-------------|
 | `d245abe` | feat: add meat as 10th swap category — VALID_CATEGORIES, CATEGORY_TAG_MAP, CLAUDE.md |
 
+### Session — unverified ingredient triage (artifacts + red list)
+| Hash | Description |
+|------|-------------|
+| `1ee5ca7` | feat: add artifact phrases and red list — polysorbates, phosphates, red 3, erythrosine |
+
 ---
 
 ## What NOT to Do
