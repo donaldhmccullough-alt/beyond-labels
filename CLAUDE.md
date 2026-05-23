@@ -618,7 +618,7 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 ### Session — GLUTEN_GRAINS expansion (Sina clinical list)
 | Hash | Description |
 |------|-------------|
-| *(pending commit)* | feat: expand GLUTEN_GRAINS with Sina clinical list — 65 new entries across corn derivatives, grain varieties, and processed ingredients |
+| `565b17b` | feat: expand GLUTEN_GRAINS with Sina clinical list — 65 new entries across corn derivatives, grain varieties, and processed ingredients |
 
 ---
 
