@@ -790,14 +790,16 @@ describe('H. Meat verdict logic', () => {
     expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
   });
 
-  // ── L1: meat + no organic → no conventional_meat flag ────────────────────
+  // ── L1: meat → educational caution flag (not the L2 reject) ─────────────
 
-  test('L1 meat + no organic label → no conventional_meat flag', async () => {
+  test('L1 meat + no organic label → conventional_meat flag is caution (not reject)', async () => {
     mockFetchOnce(meatOffResp({ categoriesTags: ['en:beef'], labelsTags: [] }));
     const res = makeRes();
     await handler(makeReq('POST', { barcode: '000000000012', userLevel: 1 }), res);
     const flag = res.body.flags.find(f => f.category === 'conventional_meat');
-    expect(flag).toBeUndefined();
+    // L1 always injects an educational caution — never a reject — for meat products.
+    expect(flag).toBeDefined();
+    expect(flag.severity).toBe('caution');
   });
 });
 
@@ -847,5 +849,113 @@ describe('I — inconclusive verdict: all ingredients unrecognized', () => {
     const res = makeRes();
     await handler(makeReq('POST', { barcode: '000000000099', userLevel: 2 }), res);
     expect(res.body.flags).toEqual([]);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// J. Level 1 explicit overrides — gluten suppression + conventional meat caution
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('J. Level 1 explicit overrides', () => {
+  /** Minimal OFF response builder for L1 override tests. */
+  function l1OffResp({
+    ingredientsText = 'water, salt',
+    labelsTags      = [],
+    categoriesTags  = [],
+  } = {}) {
+    return {
+      status: 1,
+      product: {
+        product_name:     'Test Product',
+        ingredients_text: ingredientsText,
+        labels_tags:      labelsTags,
+        categories_tags:  categoriesTags,
+      },
+    };
+  }
+
+  // ── Override 1: gluten suppression ────────────────────────────────────────
+
+  test('L1: product with only a gluten flag → verdict is green (gluten suppressed)', async () => {
+    // rye triggers gluten_grains only (not conventional_crops) — clean isolation for this test
+    mockFetchOnce(l1OffResp({ ingredientsText: 'rye, water, salt' }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000101', userLevel: 1 }), res);
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.flags.filter(f => f.category === 'gluten_grains')).toHaveLength(0);
+  });
+
+  test('L1: product with gluten AND seed_oils → verdict is yellow (seed oil remains, gluten removed)', async () => {
+    // canola oil → seed_oils caution at L1; wheat flour → gluten_grains caution (suppressed)
+    mockFetchOnce(l1OffResp({ ingredientsText: 'wheat flour, canola oil, salt' }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000102', userLevel: 1 }), res);
+    expect(res.body.verdict).toBe('yellow');
+    expect(res.body.flags.some(f => f.category === 'seed_oils')).toBe(true);
+    expect(res.body.flags.filter(f => f.category === 'gluten_grains')).toHaveLength(0);
+  });
+
+  test('L1: gluten flag is absent from the response flags array after suppression', async () => {
+    mockFetchOnce(l1OffResp({ ingredientsText: 'oat flour, water, salt' }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000103', userLevel: 1 }), res);
+    expect(res.body.flags.some(f => f.category === 'gluten_grains')).toBe(false);
+  });
+
+  // ── Override 2: conventional meat caution ─────────────────────────────────
+
+  test('L1: meat product → conventional_meat flag with severity caution', async () => {
+    mockFetchOnce(l1OffResp({
+      ingredientsText: 'beef, water, salt',
+      categoriesTags:  ['en:beef'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000104', userLevel: 1 }), res);
+    const flag = res.body.flags.find(f => f.category === 'conventional_meat');
+    expect(flag).toBeDefined();
+    expect(flag.severity).toBe('caution');
+  });
+
+  test('L1: meat product with clean ingredients → verdict is yellow (caution from meat flag)', async () => {
+    mockFetchOnce(l1OffResp({
+      ingredientsText: 'beef, water, salt',
+      categoriesTags:  ['en:beef'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000105', userLevel: 1 }), res);
+    expect(res.body.verdict).toBe('yellow');
+  });
+
+  test('L1: non-meat product → no conventional_meat flag', async () => {
+    mockFetchOnce(l1OffResp({
+      ingredientsText: 'water, salt',
+      categoriesTags:  ['en:snacks'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000106', userLevel: 1 }), res);
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+  });
+
+  test('L1: meat product with reject additives → verdict stays red (caution cannot override reject)', async () => {
+    // yellow 5 → additives reject at both levels; meat caution added on top
+    mockFetchOnce(l1OffResp({
+      ingredientsText: 'beef, yellow 5, salt',
+      categoriesTags:  ['en:beef'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000107', userLevel: 1 }), res);
+    expect(res.body.verdict).toBe('red');
+    // conventional_meat caution is still injected alongside the reject flag
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(true);
+  });
+
+  // ── Override independence: additives still red ────────────────────────────
+
+  test('L1: product with only additives → verdict is red (instant red unaffected by L1 logic)', async () => {
+    mockFetchOnce(l1OffResp({ ingredientsText: 'water, yellow 5, salt' }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000108', userLevel: 1 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'additives')).toBe(true);
   });
 });

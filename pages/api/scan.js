@@ -493,6 +493,39 @@ export default async function handler(req, res) {
   const engineResult = analyzeIngredients(ingredientsText, labelsDetected, userLevel);
   let { verdict, flags, clearedBy, unverifiedIngredients } = engineResult;
 
+  // ── Level 1 explicit overrides ───────────────────────────────────────────────
+  // Two post-engine adjustments for L1 users only. L2 has its own waterfall below.
+  if (userLevel === 1) {
+    // Override 1: suppress gluten_grains flags (paywall feature — not shown at L1).
+    // Recalculate verdict from remaining flags so gluten never inflates the colour.
+    const nonGlutenFlags = flags.filter(f => f.category !== 'gluten_grains');
+    if (nonGlutenFlags.length !== flags.length) {
+      flags = nonGlutenFlags;
+      // Recalculate verdict from the pruned flag set.
+      if (flags.some(f => f.severity === 'reject')) {
+        verdict = 'red';
+      } else if (flags.some(f => f.severity === 'caution')) {
+        verdict = 'yellow';
+      } else {
+        verdict = 'green';
+      }
+    }
+
+    // Override 2: conventional meat caution at L1 (educational yellow, no cert check).
+    // Certification is irrelevant at L1 — the flag is always informational.
+    // Does not run for unverified products (nothing screened, no ingredients present).
+    if (isMeat && verdict !== 'unverified') {
+      flags = [{
+        category:          'conventional_meat',
+        severity:          'caution',
+        matchedIngredient: '',
+        summary:           'Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed, pasture-raised, or meat from a farm you trust.',
+      }, ...flags];
+      // A caution flag can upgrade green → yellow, but cannot override red.
+      if (verdict === 'green') verdict = 'yellow';
+    }
+  }
+
   // ── Inconclusive verdict — recognized product, all-unknown ingredients ───────
   // Runs BEFORE the L2 waterfall so a product the engine could not screen at all
   // is never evaluated by the cert gate (there are no screened ingredients to
