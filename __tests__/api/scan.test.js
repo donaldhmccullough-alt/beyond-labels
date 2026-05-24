@@ -386,11 +386,10 @@ describe("D. Barcode 013562000228 — Annie's Homegrown", () => {
     expect(res.body.flags.filter(f => f.category === 'additives')).toHaveLength(0);
   });
 
-  test('has gluten caution flags (organic wheat + organic corn starch — prolamin concern survives organic clearance)', () => {
+  test('gluten_grains flags are stripped from the L2 response (paywall feature — not shown at any level)', () => {
+    // gluten_grains flags are removed before the waterfall runs at L2, matching L1 behaviour.
     const glutenFlags = res.body.flags.filter(f => f.category === 'gluten_grains');
-    expect(glutenFlags.length).toBeGreaterThanOrEqual(1);
-    expect(glutenFlags.every(f => f.severity === 'caution')).toBe(true);
-    expect(glutenFlags.some(f => f.matchedIngredient === 'wheat flour')).toBe(true);
+    expect(glutenFlags).toHaveLength(0);
   });
 
   test('zero flags with severity "reject"', () => {
@@ -957,5 +956,86 @@ describe('J. Level 1 explicit overrides', () => {
     await handler(makeReq('POST', { barcode: '000000000108', userLevel: 1 }), res);
     expect(res.body.verdict).toBe('red');
     expect(res.body.flags.some(f => f.category === 'additives')).toBe(true);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// K. Level 2 flags array cleanup — gluten strip + conventional_crops strip
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('K. Level 2 flags cleanup', () => {
+  /** Minimal OFF response builder for L2 cleanup tests. */
+  function l2CleanupOffResp({
+    ingredientsText = 'water, salt',
+    labelsTags      = [],
+    categoriesTags  = [],
+  } = {}) {
+    return {
+      status: 1,
+      product: {
+        product_name:     'Test Product',
+        ingredients_text: ingredientsText,
+        labels_tags:      labelsTags,
+        categories_tags:  categoriesTags,
+      },
+    };
+  }
+
+  // ── Fix 1: gluten strip at L2 ─────────────────────────────────────────────
+
+  test('K1: L2 + organic cert + only gluten → verdict GREEN with empty flags array', async () => {
+    // rye triggers gluten_grains only; organic cert clears conventional_crops (none here anyway)
+    mockFetchOnce(l2CleanupOffResp({
+      ingredientsText: 'rye, water, salt',
+      labelsTags:      ['en:usda-organic'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000201', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.flags.filter(f => f.category === 'gluten_grains')).toHaveLength(0);
+    expect(res.body.flags).toHaveLength(0);
+  });
+
+  test('K2: L2 + no cert + only gluten → verdict RED with empty flags array (non-organic path)', async () => {
+    // gluten stripped before waterfall; no cert → non-organic path → RED
+    mockFetchOnce(l2CleanupOffResp({ ingredientsText: 'rye, water, salt' }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000202', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.filter(f => f.category === 'gluten_grains')).toHaveLength(0);
+    expect(res.body.flags).toHaveLength(0);
+  });
+
+  test('K3: L2 + gluten AND seed_oils → RED with seed_oils in flags, gluten_grains absent', async () => {
+    // canola oil → seed_oils (instant-red); rye → gluten_grains (stripped before waterfall)
+    mockFetchOnce(l2CleanupOffResp({ ingredientsText: 'rye, canola oil, salt' }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000203', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'seed_oils')).toBe(true);
+    expect(res.body.flags.filter(f => f.category === 'gluten_grains')).toHaveLength(0);
+  });
+
+  // ── Fix 2: conventional_crops strip for L2 organic products ──────────────
+
+  test('K4: L2 organic product has no conventional_crops flags in response', async () => {
+    // USDA organic clears conventional_crops in the engine; Fix 2 ensures no stragglers
+    mockFetchOnce(l2CleanupOffResp({
+      ingredientsText: 'wheat flour, sea salt',
+      labelsTags:      ['en:usda-organic'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000204', userLevel: 2 }), res);
+    expect(res.body.flags.filter(f => f.category === 'conventional_crops')).toHaveLength(0);
+    expect(res.body.clearedBy).toBe('organic');
+  });
+
+  test('K5: L2 non-organic product retains conventional_crops flags (explains the red verdict)', async () => {
+    // No cert → conventional_crops flags are kept so the user understands why it is red
+    mockFetchOnce(l2CleanupOffResp({ ingredientsText: 'corn starch, sea salt' }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000205', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'conventional_crops')).toBe(true);
   });
 });

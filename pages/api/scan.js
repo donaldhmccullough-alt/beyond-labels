@@ -552,11 +552,19 @@ export default async function handler(req, res) {
   // SYNTHETIC_ADDITIVES (artificial dyes, MSG, sweeteners, preservatives, etc.).
   // There are no separate 'artificial_dyes', 'flavor_enhancers', or
   // 'artificial_sweeteners' categories in the engine output.
-  //
-  // Gluten grains: gluten_grains flags are intentionally NOT in INSTANT_RED and
-  // do not influence the waterfall verdict at Level 2. They remain in the flags
-  // array for display but gluten screening is reserved for a future feature.
   if (userLevel === 2 && verdict !== 'unverified' && verdict !== 'inconclusive') {
+    // Strip gluten_grains flags before the waterfall evaluates verdict and flags.
+    // Gluten is a future paywall feature — invisible at both levels. Without this
+    // strip the engine's caution verdict (from gluten) would enter the cert gate
+    // inflated, and gluten ConcernCards would render in the UI.
+    const nonGlutenL2 = flags.filter(f => f.category !== 'gluten_grains');
+    if (nonGlutenL2.length !== flags.length) {
+      flags = nonGlutenL2;
+      if (flags.some(f => f.severity === 'reject'))       verdict = 'red';
+      else if (flags.some(f => f.severity === 'caution')) verdict = 'yellow';
+      else                                                 verdict = 'green';
+    }
+
     const hasOrganic = labelsDetected.includes('usda-organic');
 
     // ── INSTANT RED categories (nodes 1–7) ───────────────────────────────────
@@ -633,6 +641,14 @@ export default async function handler(req, res) {
         clearedBy = null;
       }
     }
+  }
+
+  // ── L2 post-waterfall: strip conventional_crops for organic products ──────
+  // The cert gate already used conventional_crops flags to route the waterfall.
+  // Displaying them alongside an organic verdict would mislead the user —
+  // the organic certification supersedes the conventional-crop concern.
+  if (userLevel === 2 && clearedBy === 'organic') {
+    flags = flags.filter(f => f.category !== 'conventional_crops');
   }
 
   // ── Capture unverified ingredients ───────────────────────────────────────
