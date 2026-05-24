@@ -62,8 +62,8 @@ components/
 
 lib/
   rulesEngine.js          — deterministic ingredient analysis engine (core logic)
-  rulesEngine.test.js     — Jest tests for rules engine (30 describe blocks; 773 tests total; block 20 = SYNTHETIC_ADDITIVES bucket-1 expansion (91 tests); block 21 = FD&C "No." normalization (19 tests); block 22 = mechanically separated meat (3 tests); block 23 = interesterified variants, lake forms, dye synonyms, new E-numbers, stearyl emulsifiers, cyclamate (78 tests); block 24 = synonym/E-number expansion: nitrates, BVO, bleaching agents, BHA/BHT names, SLS, E-numbers e320/e321/e924/e950–e955 (50 tests); block 25 = gluten grains expansion: ancient grains, botanical names, asafoetida/hing, smoke flavoring, brown rice syrup (34 tests); block 26 = H2: artifact phrases and red list additions — polysorbates, synthetic phosphates, red 3/#-normalizer (17 tests); block 27 = I: Sina gluten expansion — 65 new GLUTEN_GRAINS entries across corn derivatives, wheat flour varieties, barley/rye/oat forms, processed ingredients (22 tests); block 28 = FORTIFIED_VITAMINS group — synthetic vitamin fortification detection (13 tests); block 29 = NATURAL_COLORANTS group — plant-derived colorant detection (12 tests))
-  __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (10 suites A–J; 111 tests total; suite H = L2 verdict waterfall coverage: cert gate, organic path, non-organic path, meat logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 13 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests; suite J = L1 explicit overrides — gluten suppression, conventional meat caution injection (8 tests))
+  rulesEngine.test.js     — Jest tests for rules engine (30 describe blocks; 775 tests total; block 20 = SYNTHETIC_ADDITIVES bucket-1 expansion (91 tests); block 21 = FD&C "No." normalization (19 tests); block 22 = mechanically separated meat (3 tests); block 23 = interesterified variants, lake forms, dye synonyms, new E-numbers, stearyl emulsifiers, cyclamate (78 tests); block 24 = synonym/E-number expansion: nitrates, BVO, bleaching agents, BHA/BHT names, SLS, E-numbers e320/e321/e924/e950–e955 (50 tests); block 25 = gluten grains expansion: ancient grains, botanical names, asafoetida/hing, smoke flavoring, brown rice syrup (34 tests); block 26 = H2: artifact phrases and red list additions — polysorbates, synthetic phosphates, red 3/#-normalizer (17 tests); block 27 = I: Sina gluten expansion — 65 new GLUTEN_GRAINS entries across corn derivatives, wheat flour varieties, barley/rye/oat forms, processed ingredients (22 tests); block 28 = FORTIFIED_VITAMINS group — synthetic vitamin fortification detection (13 tests); block 29 = NATURAL_COLORANTS group — plant-derived colorant detection (12 tests))
+  __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (11 suites A–K; 116 tests total; suite H = L2 verdict waterfall coverage: cert gate, organic path, non-organic path, meat logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 13 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests; suite J = L1 explicit overrides — gluten suppression, conventional meat caution injection (8 tests); suite K = L2 flags array cleanup — gluten suppression and organic conventional_crops strip (5 tests))
   onboardingData.js       — QUESTIONS array (13 Qs), STAGES array (5 stages), getStageFromScore()
   userProfile.js          — localStorage profile read/write/clear helpers
   userLevel.js            — getUserLevel(), setUserLevel(), hasUserLevel() — localStorage bl_user_level
@@ -560,6 +560,12 @@ disabled={true}
 
 Level 2 users get a waterfall applied AFTER the rules engine runs. Order: (1) instant-red on any `'additives'`, `'natural_flavors'`, `'seed_oils'`, `'trans_fats'`, or `'conventional_meat'` flag → RED; (2) cert gate — USDA organic → organic path, else non-organic path; (3) organic path: fortified vitamins → YELLOW, natural colorants → YELLOW, olive oil → YELLOW with adulteration note, else → GREEN; (4) non-organic path: non-gmo-project-verified → YELLOW, glyphosate-free → YELLOW, else → RED. Gluten grains flags are explicitly excluded from the waterfall (paywall feature). Inconclusive verdict fires before the waterfall.
 
+Gluten grains flags are stripped from the L2 flags array entirely before the waterfall runs (same as L1) — this also fixes organic-path verdict inflation where a gluten-only product with organic cert was incorrectly returning yellow instead of green. Conventional crops flags are stripped post-waterfall when clearedBy === 'organic'.
+
+### Known Limitations
+- ZBAR and similar products with organic asterisks in ingredient lists but no usda-organic label in Open Food Facts will not receive organic cert detection. Fix requires updating the OFF database for those barcodes, not a code change.
+- Sodium citrate remains in SYNTHETIC_ADDITIVES pending further review — flagged as a potential false positive but not yet removed.
+
 ### L1 Verdict Overrides (scan.js)
 
 Level 1 users get two explicit overrides applied after the engine runs, before the inconclusive check. (1) Gluten suppression: gluten_grains flags are removed from the flags array; verdict is recalculated from remaining flags (reject → red, caution → yellow, no flags → green). Gluten is a future paywall feature — do not wire it back into L1 or L2 logic. (2) Conventional meat caution: if isMeatProduct and verdict is not `'unverified'`, a `conventional_meat` caution flag is injected unconditionally — no cert check at L1, always educational yellow. The flag can upgrade green → yellow but cannot downgrade red. For everything else at L1, the engine's built-in level-aware verdict is used directly: trans_fats and additives return red; seed_oils, natural_flavors, conventional_crops, and bioengineering return yellow.
@@ -644,6 +650,12 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 | Hash | Description |
 |------|-------------|
 | `0555b96` | feat: implement L1 explicit overrides in scan.js — gluten suppression, conventional meat caution injection |
+
+### Session — L2 flags cleanup + rules engine false positive fixes
+| Hash | Description |
+|------|-------------|
+| `7dcf575` | fix: strip gluten_grains and conventional_crops from L2 flags array — fixes organic verdict inflation and ConcernCard display bugs |
+| `2904a6b` | fix: remove antioxidant false positive from SYNTHETIC_ADDITIVES |
 
 ---
 
