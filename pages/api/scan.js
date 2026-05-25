@@ -601,9 +601,21 @@ export default async function handler(req, res) {
       // clearedBy is preserved from the engine ('organic') in all organic-path branches.
       if (ingredientsText && containsFortifiedVitamins(ingredientsText)) {
         // Node 10: synthetic vitamin fortification present.
+        flags = [...flags, {
+          category:          'fortified_vitamins',
+          severity:          'caution',
+          matchedIngredient: '',
+          summary:           'Organic product with synthetic vitamin fortification',
+        }];
         verdict = 'yellow';
       } else if (ingredientsText && containsNaturalColorants(ingredientsText)) {
         // Node 11: plant-derived colorants indicate processing-related color correction.
+        flags = [...flags, {
+          category:          'natural_colorants',
+          severity:          'caution',
+          matchedIngredient: '',
+          summary:           'Organic product with natural plant-derived colorants',
+        }];
         verdict = 'yellow';
       } else if (ingredientsText && ingredientsText.toLowerCase().includes('olive oil')) {
         // Node 12: olive oil adulteration risk — even organic labels are not immune.

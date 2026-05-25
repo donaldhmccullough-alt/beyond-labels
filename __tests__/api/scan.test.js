@@ -800,6 +800,74 @@ describe('H. Meat verdict logic', () => {
     expect(flag).toBeDefined();
     expect(flag.severity).toBe('caution');
   });
+
+  // ── L2 organic path: fortified vitamins → yellow + flag ───────────────────
+
+  test('L2 organic + fortified vitamins → verdict is YELLOW', async () => {
+    mockFetchOnce({
+      status: 1,
+      product: {
+        product_name:     'Organic Enriched Test',
+        ingredients_text: 'water, riboflavin, folic acid',
+        labels_tags:      ['en:usda-organic'],
+        categories_tags:  [],
+      },
+    });
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000013', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('yellow');
+  });
+
+  test('L2 organic + fortified vitamins → flags contains exactly one fortified_vitamins caution flag', async () => {
+    mockFetchOnce({
+      status: 1,
+      product: {
+        product_name:     'Organic Enriched Test',
+        ingredients_text: 'water, riboflavin, folic acid',
+        labels_tags:      ['en:usda-organic'],
+        categories_tags:  [],
+      },
+    });
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000014', userLevel: 2 }), res);
+    const fortifiedFlags = res.body.flags.filter(f => f.category === 'fortified_vitamins');
+    expect(fortifiedFlags).toHaveLength(1);
+    expect(fortifiedFlags[0].severity).toBe('caution');
+  });
+
+  // ── L2 organic path: natural colorants → yellow + flag ────────────────────
+
+  test('L2 organic + natural colorants → verdict is YELLOW', async () => {
+    mockFetchOnce({
+      status: 1,
+      product: {
+        product_name:     'Organic Colored Test',
+        ingredients_text: 'water, annatto extract',
+        labels_tags:      ['en:usda-organic'],
+        categories_tags:  [],
+      },
+    });
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000015', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('yellow');
+  });
+
+  test('L2 organic + natural colorants → flags contains exactly one natural_colorants caution flag', async () => {
+    mockFetchOnce({
+      status: 1,
+      product: {
+        product_name:     'Organic Colored Test',
+        ingredients_text: 'water, annatto extract',
+        labels_tags:      ['en:usda-organic'],
+        categories_tags:  [],
+      },
+    });
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000016', userLevel: 2 }), res);
+    const colorantFlags = res.body.flags.filter(f => f.category === 'natural_colorants');
+    expect(colorantFlags).toHaveLength(1);
+    expect(colorantFlags[0].severity).toBe('caution');
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════════════

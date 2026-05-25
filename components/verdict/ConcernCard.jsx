@@ -13,6 +13,7 @@ const CATEGORY_INFO = {
   conventional_meat:   { icon: '🥩', label: 'Conventional Meat' },
   fortified_vitamins:  { icon: '💊', label: 'Synthetic Fortification', description: 'Synthetic vitamins and minerals added back after industrial processing strips naturally occurring nutrients — a sign of heavily refined ingredients.' },
   natural_colorants:   { icon: '🎨', label: 'Natural Colorants', description: 'Plant-derived colorants (annatto, beet juice, beta-carotene, etc.) that indicate the product required color correction after processing.' },
+  olive_oil_adulteration: { icon: '🫒', label: 'Olive Oil Quality', description: 'Olive oil is one of the most frequently adulterated foods on the market — even certified organic bottles are sometimes cut with cheaper oils. Worth sourcing from a brand you trust.' },
 };
 
 export default function ConcernCard({ category, flags, explanation }) {

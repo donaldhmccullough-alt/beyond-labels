@@ -496,10 +496,10 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 6.**
+**Current PROMPT_VERSION is 7.**
 
 ### Cache Invalidation
-When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 6. All v5 rows must be purged before users will see the new prompt behavior.
+When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 7. All v6 rows must be purged before users will see the new prompt behavior.
 
 ---
 
@@ -564,15 +564,16 @@ disabled={true}
 
 ### L2 Verdict Waterfall (scan.js)
 
-Level 2 users get a waterfall applied AFTER the rules engine runs. Order: (1) instant-red on any `'additives'`, `'natural_flavors'`, `'seed_oils'`, `'trans_fats'`, or `'conventional_meat'` flag → RED; (2) cert gate — USDA organic → organic path, else non-organic path; (3) organic path: fortified vitamins → YELLOW, natural colorants → YELLOW, olive oil → YELLOW with adulteration note, else → GREEN; (4) non-organic path: non-gmo-project-verified → YELLOW, glyphosate-free → YELLOW, else → RED. Gluten grains flags are explicitly excluded from the waterfall (paywall feature). Inconclusive verdict fires before the waterfall.
+Level 2 users get a waterfall applied AFTER the rules engine runs. Order: (1) instant-red on any `'additives'`, `'natural_flavors'`, `'seed_oils'`, `'trans_fats'`, or `'conventional_meat'` flag → RED; (2) cert gate — USDA organic → organic path, else non-organic path; (3) organic path: fortified vitamins → inject `fortified_vitamins` caution flag + YELLOW, natural colorants → inject `natural_colorants` caution flag + YELLOW, olive oil → YELLOW with `olive_oil_adulteration` caution flag, else → GREEN; (4) non-organic path: non-gmo-project-verified → YELLOW, glyphosate-free → YELLOW, else → RED. Gluten grains flags are explicitly excluded from the waterfall (paywall feature). Inconclusive verdict fires before the waterfall.
 
-**FORTIFIED_VITAMINS** (53 ingredients): Detected by `containsFortifiedVitamins()` in the L2 organic path — if matched, verdict is YELLOW rather than GREEN. Contains synthetic B vitamins (niacin, niacinamide, riboflavin, thiamine variants, folic acid, pyridoxine hydrochloride, B6, B12, pantothenic acid, biotin, choline salts, inositol), fat-soluble vitamins (A palmitate/acetate, D2/D3, tocopherol forms, vitamin E, phytonadione, menaquinone, vitamin K), minerals (reduced iron, ferrous sulfate, zinc oxide/gluconate/sulfate, calcium carbonate/phosphate/citrate, magnesium forms, potassium iodide/phosphate, sodium iodide, copper salts, manganese sulfate, chromium picolinate, selenium forms, molybdenum), and amino acids/conditionally essential nutrients (taurine, l-carnitine, l-tryptophan, l-theanine, lysine). These ingredients were previously in SYNTHETIC_ADDITIVES and have been moved here — they are not synthetic additive red flags and do not trigger the instant-red path.
+**FORTIFIED_VITAMINS** (56 ingredients): Detected by `containsFortifiedVitamins()` in the L2 organic path — if matched, verdict is YELLOW rather than GREEN. A `fortified_vitamins` caution flag is injected into the flags array before `verdict = 'yellow'` is set, so ConcernCard renders and the AI receives flag context. Contains synthetic B vitamins (niacin, niacinamide, riboflavin, thiamine variants, folic acid, pyridoxine hydrochloride, B6, B12, pantothenic acid, biotin, choline salts, inositol), fat-soluble vitamins (A palmitate/acetate, D2/D3, tocopherol forms, vitamin E, phytonadione, menaquinone, vitamin K), minerals (reduced iron, ferrous sulfate, zinc oxide/gluconate/sulfate, calcium carbonate/phosphate/citrate, magnesium forms, potassium iodide/phosphate, sodium iodide, copper salts, manganese sulfate, chromium picolinate, selenium forms, molybdenum), and amino acids/conditionally essential nutrients (taurine, l-carnitine, l-tryptophan, l-theanine, lysine). These ingredients were previously in SYNTHETIC_ADDITIVES and have been moved here — they are not synthetic additive red flags and do not trigger the instant-red path.
 
 Gluten grains flags are stripped from the L2 flags array entirely before the waterfall runs (same as L1) — this also fixes organic-path verdict inflation where a gluten-only product with organic cert was incorrectly returning yellow instead of green. Conventional crops flags are stripped post-waterfall when clearedBy === 'organic'.
 
 ### Known Limitations
 - ZBAR and similar products with organic asterisks in ingredient lists but no usda-organic label in Open Food Facts will not receive organic cert detection. Fix requires updating the OFF database for those barcodes, not a code change.
 - Sodium citrate remains in SYNTHETIC_ADDITIVES — flagged as a potential false positive but deferred pending further review.
+- `olive_oil_adulteration` ConcernCard entry added (icon 🫒, label "Olive Oil Quality") — previously the category key was missing from CATEGORY_INFO and the card fell back to the raw category string as label.
 
 ### L1 Verdict Overrides (scan.js)
 
@@ -668,7 +669,7 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 ### Session — FORTIFIED_VITAMINS expansion + fortification false positive cleanup
 | Hash | Description |
 |------|-------------|
-| `0cf25ed` | feat: expand FORTIFIED_VITAMINS to 53 ingredients, remove fortification vitamins from SYNTHETIC_ADDITIVES |
+| `0cf25ed` | feat: expand FORTIFIED_VITAMINS to 56 ingredients, remove fortification vitamins from SYNTHETIC_ADDITIVES |
 
 ### Session — PROMPT_VERSION 6: single voice per category
 | Hash | Description |
