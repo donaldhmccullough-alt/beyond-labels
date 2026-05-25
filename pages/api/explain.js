@@ -122,7 +122,7 @@ Respond with a JSON object with exactly this structure — no markdown, no text 
 {
   "summary": "<1-2 sentence plain-language summary of the overall verdict, written to the parent or person scanning the product>",
   "details": {
-    "<category_name>": "<2-3 sentences: what was found in this product, why it matters for a family, and one empowering note>"
+    "<category_name>": "<Open with 'Sina here —' or 'Joel here —' per the voice assignment in the system prompt, then 2-3 sentences: what was found in this product, why it matters, and one empowering note>"
   }
 }
 

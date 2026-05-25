@@ -496,10 +496,10 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 7.**
+**Current PROMPT_VERSION is 8.**
 
 ### Cache Invalidation
-When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 7. All v6 rows must be purged before users will see the new prompt behavior.
+When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 8. All v7 rows must be purged before users will see the new prompt behavior.
 
 ---
 
@@ -675,6 +675,12 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 | Hash | Description |
 |------|-------------|
 | `8f05c05` | feat: v6 prompt — one voice per category, assign categories to Sina/Joel |
+
+### Session — PROMPT_VERSION 8: restore Sina/Joel self-introduction in details JSON template
+| Hash | Description |
+|------|-------------|
+| `c9a46dc` | feat: fix olive_oil_adulteration ConcernCard, inject fortified_vitamins and natural_colorants flags on L2 organic path, bump PROMPT_VERSION to 7 |
+| (pending) | fix: restore Sina/Joel self-introduction in details JSON template, bump PROMPT_VERSION to 8 |
 
 ---
 
