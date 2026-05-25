@@ -475,6 +475,9 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 - **Level-aware tone**: Level 1 users get encouragement and awareness-building framing; Level 2 users get direct, graduate-level honesty. Controlled by `[Level 1 awareness item]` note injected per flagged category in `buildUserMessage()`.
 - See Scan Cache Pattern section for current PROMPT_VERSION.
 
+### Explanation Prompt Voice Assignment (v6+)
+Each flagged category is explained by ONE voice only. Sina owns: trans_fats, seed_oils, additives, natural_flavors, fortified_vitamins, natural_colorants. Joel owns: conventional_crops, conventional_meat, bioengineering. Sina focuses on biochemistry and regulatory failure. Joel focuses on farming systems and food philosophy. Do not reassign voices without bumping PROMPT_VERSION.
+
 ### GET /api/swaps
 - Query params: `category` (one of 9 valid values, optional), `userLevel` (1 or 2, defaults to 2)
 - Flow: check in-memory cache (1hr TTL) → fetch Google Sheet CSV if stale → filter by category → filter/tag by swap_level → shuffle → slice to 3 per tier → AI fallback if 0 results
@@ -494,6 +497,9 @@ To invalidate the cache after a prompt change:
 3. Deploy — new scans rebuild the cache at the new version
 
 **Current PROMPT_VERSION is 6.**
+
+### Cache Invalidation
+When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 6. All v5 rows must be purged before users will see the new prompt behavior.
 
 ---
 
@@ -663,6 +669,11 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 | Hash | Description |
 |------|-------------|
 | `0cf25ed` | feat: expand FORTIFIED_VITAMINS to 53 ingredients, remove fortification vitamins from SYNTHETIC_ADDITIVES |
+
+### Session — PROMPT_VERSION 6: single voice per category
+| Hash | Description |
+|------|-------------|
+| `8f05c05` | feat: v6 prompt — one voice per category, assign categories to Sina/Joel |
 
 ---
 
