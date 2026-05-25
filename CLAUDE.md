@@ -680,7 +680,7 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 | Hash | Description |
 |------|-------------|
 | `c9a46dc` | feat: fix olive_oil_adulteration ConcernCard, inject fortified_vitamins and natural_colorants flags on L2 organic path, bump PROMPT_VERSION to 7 |
-| (pending) | fix: restore Sina/Joel self-introduction in details JSON template, bump PROMPT_VERSION to 8 |
+| `5eb9e78` | fix: restore Sina/Joel self-introduction in details JSON template, bump PROMPT_VERSION to 8 |
 
 ---
 
