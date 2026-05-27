@@ -686,7 +686,7 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 ### Session — PROMPT_VERSION 9: handle red + empty flags in buildUserMessage
 | Hash | Description |
 |------|-------------|
-| (pending) | fix: handle red + empty flags case in buildUserMessage, bump PROMPT_VERSION to 9 |
+| `a7fb831` | fix: handle red + empty flags case in buildUserMessage, bump PROMPT_VERSION to 9 |
 
 ---
 
