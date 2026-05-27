@@ -108,7 +108,9 @@ export function buildUserMessage(verdict, flags, productName, ingredients, userL
 
   const flagsSection = categoryLines
     ? `Flagged categories:\n${categoryLines}`
-    : 'No concerning ingredients found — product passed all checks.';
+    : verdict === 'red'
+      ? 'No specific ingredients were flagged, but this product did not meet Level 2 certification standards — no USDA Organic or Non-GMO Project Verified certification was found. At Level 2, uncertified conventional products default to red. Explain this clearly and honestly to the user without being alarmist — acknowledge the ingredients look clean but note that without certification, pesticide and GE exposure cannot be ruled out for conventional crops.'
+      : 'No concerning ingredients found — product passed all checks.';
 
   const levelContext = userLevel === 1
     ? '\nUser context: This is a Level 1 (building awareness) user. For any "awareness item" flags, use encouraging language that builds confidence rather than alarm — frame them as "something to be aware of as you build better habits" rather than urgent warnings.'

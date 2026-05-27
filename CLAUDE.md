@@ -473,6 +473,7 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 - VerdictScreen never calls this endpoint directly — explanation is always returned inline in the POST /api/scan response.
 - **System prompt voice**: Sina McCullough (PhD Nutrition, autoimmune healing journey, science-first, rhetorical questions, inflammation/gut/gene-expression framing) + Joel Salatin (Polyface Farm, story-and-analogy thinker, farming-system angle). Together: empowering, not alarmist, skeptical of GRAS and industry-funded science.
 - **Level-aware tone**: Level 1 users get encouragement and awareness-building framing; Level 2 users get direct, graduate-level honesty. Controlled by `[Level 1 awareness item]` note injected per flagged category in `buildUserMessage()`.
+- **`flagsSection` in `buildUserMessage()` has three conditions**: (1) flags present → "Flagged categories: …" list; (2) no flags + verdict is `'red'` → certification-standards explanation (L2 uncertified conventional product — no USDA Organic or Non-GMO cert found; instruct Claude to be honest but not alarmist); (3) no flags + any other verdict → "No concerning ingredients found — product passed all checks." The third condition prevents Claude from writing a contradictory affirming summary when the verdict is red but the flags array is empty (L2 non-organic path default).
 - See Scan Cache Pattern section for current PROMPT_VERSION.
 
 ### Explanation Prompt Voice Assignment (v6+)
@@ -496,10 +497,10 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 8.**
+**Current PROMPT_VERSION is 9.**
 
 ### Cache Invalidation
-When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 8. All v7 rows must be purged before users will see the new prompt behavior.
+When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 9. All v8 rows must be purged before users will see the new prompt behavior.
 
 ---
 
@@ -681,6 +682,11 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 |------|-------------|
 | `c9a46dc` | feat: fix olive_oil_adulteration ConcernCard, inject fortified_vitamins and natural_colorants flags on L2 organic path, bump PROMPT_VERSION to 7 |
 | `5eb9e78` | fix: restore Sina/Joel self-introduction in details JSON template, bump PROMPT_VERSION to 8 |
+
+### Session — PROMPT_VERSION 9: handle red + empty flags in buildUserMessage
+| Hash | Description |
+|------|-------------|
+| (pending) | fix: handle red + empty flags case in buildUserMessage, bump PROMPT_VERSION to 9 |
 
 ---
 
