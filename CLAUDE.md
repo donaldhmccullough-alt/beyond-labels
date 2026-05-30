@@ -724,7 +724,7 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 ### Session — Universal L2 decision tree
 | Hash | Description |
 |------|-------------|
-| TBD | feat: replace L2 waterfall with universal 14-node decision tree — ALWAYS_IGNORE_INGREDIENTS masking, MILK_DERIVED_INGREDIENTS, EGG_DERIVED_INGREDIENTS, conventional_dairy flag, seafood/game-meat nodes, oliveCaveat, 50 new tests |
+| `846af6c` | feat: replace L2 waterfall with universal 14-node decision tree — ALWAYS_IGNORE_INGREDIENTS masking, MILK_DERIVED_INGREDIENTS, EGG_DERIVED_INGREDIENTS, conventional_dairy flag, seafood/game-meat nodes, oliveCaveat, 50 new tests |
 
 ---
 
