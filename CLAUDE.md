@@ -62,8 +62,8 @@ components/
 
 lib/
   rulesEngine.js          — deterministic ingredient analysis engine (core logic)
-  rulesEngine.test.js     — Jest tests for rules engine (30 describe blocks; 811 tests total; block 20 = SYNTHETIC_ADDITIVES bucket-1 expansion (91 tests); block 21 = FD&C "No." normalization (19 tests); block 22 = mechanically separated meat (3 tests); block 23 = interesterified variants, lake forms, dye synonyms, new E-numbers, stearyl emulsifiers, cyclamate (78 tests); block 24 = synonym/E-number expansion: nitrates, BVO, bleaching agents, BHA/BHT names, SLS, E-numbers e320/e321/e924/e950–e955 (50 tests); block 25 = gluten grains expansion: ancient grains, botanical names, asafoetida/hing, smoke flavoring, brown rice syrup (34 tests); block 26 = H2: artifact phrases and red list additions — polysorbates, synthetic phosphates, red 3/#-normalizer (17 tests); block 27 = I: Sina gluten expansion — 65 new GLUTEN_GRAINS entries across corn derivatives, wheat flour varieties, barley/rye/oat forms, processed ingredients (22 tests); block 28 = FORTIFIED_VITAMINS group — synthetic vitamin fortification detection (61 tests); block 29 = NATURAL_COLORANTS group — plant-derived colorant detection (12 tests))
-  __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (11 suites A–K; 116 tests total; suite H = L2 verdict waterfall coverage: cert gate, organic path, non-organic path, meat logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 13 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests; suite J = L1 explicit overrides — gluten suppression, conventional meat caution injection (8 tests); suite K = L2 flags array cleanup — gluten suppression and organic conventional_crops strip (5 tests))
+  rulesEngine.test.js     — Jest tests for rules engine (32 describe blocks; 862 tests total; block 20 = SYNTHETIC_ADDITIVES bucket-1 expansion (91 tests); block 21 = FD&C "No." normalization (19 tests); block 22 = mechanically separated meat (3 tests); block 23 = interesterified variants, lake forms, dye synonyms, new E-numbers, stearyl emulsifiers, cyclamate (78 tests); block 24 = synonym/E-number expansion: nitrates, BVO, bleaching agents, BHA/BHT names, SLS, E-numbers e320/e321/e924/e950–e955 (50 tests); block 25 = gluten grains expansion: ancient grains, botanical names, asafoetida/hing, smoke flavoring, brown rice syrup (34 tests); block 26 = H2: artifact phrases and red list additions — polysorbates, synthetic phosphates, red 3/#-normalizer (17 tests); block 27 = I: Sina gluten expansion — 65 new GLUTEN_GRAINS entries across corn derivatives, wheat flour varieties, barley/rye/oat forms, processed ingredients (22 tests); block 28 = FORTIFIED_VITAMINS group — synthetic vitamin fortification detection (61 tests); block 29 = NATURAL_COLORANTS group — plant-derived colorant detection (12 tests); block 32 = containsMilkDerived, containsEggDerived, ALWAYS_IGNORE_INGREDIENTS — new helper functions and ignore-list constant (32 tests))
+  __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (12 suites A–L; 135 tests total; suite H = L2 decision tree coverage: cert gate, organic path, non-organic path, seafood/meat/dairy logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 16 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests; suite J = L1 explicit overrides — gluten suppression, conventional meat caution injection (8 tests); suite K = L2 flags array cleanup — gluten suppression and organic conventional_crops strip (5 tests); suite L = universal L2 decision tree — 15 integration scenarios covering all 14 nodes)
   onboardingData.js       — QUESTIONS array (13 Qs), STAGES array (5 stages), getStageFromScore()
   userProfile.js          — localStorage profile read/write/clear helpers
   userLevel.js            — getUserLevel(), setUserLevel(), hasUserLevel() — localStorage bl_user_level
@@ -264,62 +264,82 @@ Before any trigger matching the raw ingredient string is normalized in two steps
 - Nothing → `'green'`
 - Empty/null ingredients → `'unverified'`
 
-### Level 2 verdict overlay (inline in scan.js)
+### Level 2 universal decision tree (inline in scan.js)
 
-For `userLevel === 2`, `scan.js` applies a certification overlay **after** `analyzeIngredients()`. The logic is inline in the handler, not a separate helper:
+For `userLevel === 2`, `scan.js` applies a universal 14-node decision tree **after** `analyzeIngredients()` runs. Applies to all 10 product categories. First matching node wins. Does not run for `unverified` or `inconclusive` verdicts.
 
-| Condition | L2 verdict | `clearedBy` |
-|-----------|-----------|-------------|
-| Any L1 flag (reject or caution) | `red` | from L1 analysis |
-| No L1 flags + USDA organic label | `green` | `'usda-organic'` |
-| No L1 flags + Non-GMO label | `yellow` | `'non-gmo-project'` |
-| No L1 flags + no certification | `red` | `null` (conventional = assumed risk) |
+**Pre-processing before the tree runs:**
+1. Gluten_grains flags are stripped (paywall feature — invisible at both levels)
+2. `maskedText` is built: `maskIgnoredIngredients(ingredientsText.toLowerCase())` — replaces `ALWAYS_IGNORE_INGREDIENTS` terms (salt, water, calcium carbonate, magnesium oxide, yeast, cultures, enzymes) with same-length spaces to prevent false positives in ingredient-level helper functions.
 
-Certification checks use `labelsDetected.includes('usda-organic')` and `labelsDetected.includes('non-gmo-project-verified')`. `labelsDetected` is the normalised OFF `labels_tags` array produced by `normalizeLabelTags()` in `scan.js`.
+**Decision tree:**
+| Node | Condition | Verdict | `clearedBy` |
+|------|-----------|---------|-------------|
+| 1 | `additives` flag present | RED | null |
+| 2 | `seed_oils` flag present | RED | null |
+| 3 | `trans_fats` flag present | RED | null |
+| 3b | `natural_flavors` flag present | RED | null |
+| 4 | `usda-organic` label | → organic sub-tree | `'organic'` |
+| 5 | Seafood + `wild-caught` label | GREEN | `'wild-caught'` |
+| 5b | Seafood + no wild-caught label | RED (inject `conventional_meat` flag) | null |
+| 6 | Game meat category (`en:game-meats`) | GREEN | null |
+| 7 | `non-gmo-project-verified` label | YELLOW | `'non-gmo-project-verified'` |
+| 8 | `isMeat` (non-seafood, non-game) OR `containsEggDerived(maskedText)` | RED (inject `conventional_meat` flag) | null |
+| 9 | `containsMilkDerived(maskedText)` | RED (inject `conventional_dairy` flag) | null |
+| 10 | `conventional_crops` flag present | RED | null |
+| 11 | `bioengineering` flag present | RED | null |
+| 12 | `glyphosate-free` label | YELLOW | `'glyphosate-free'` |
+| 13 | `glyphosate-heavy` label | RED | null |
+| 14 | Default | YELLOW | null |
 
-**Limitations**:
-- OFF labels are user-contributed; coverage is good but not authoritative.
-- Non-GMO Project check is live using OFF label data. Direct Non-GMO Project data partnership pending.
-- USDA OData API confirmed retired May 2026; replacement REST API returns empty results — not accessible at current api.data.gov key tier.
+**Organic sub-tree (entered at node 4):**
+| Check | Verdict |
+|-------|---------|
+| `containsFortifiedVitamins(maskedText)` | YELLOW + inject `fortified_vitamins` caution flag |
+| `containsNaturalColorants(maskedText)` | YELLOW + inject `natural_colorants` caution flag |
+| `maskedText.includes('olive oil')` | YELLOW + inject `olive_oil_adulteration` flag, set `oliveCaveat: true` |
+| None of the above | GREEN |
 
-### L2 meat check (inline in scan.js)
+**Key behaviour changes from the previous cert-gate waterfall:**
+- Products with no cert AND no conventional ingredient signals now default to **YELLOW** (node 14), not RED. "Pistachios, salt" is yellow not red.
+- Seafood and game meat have dedicated nodes — no conventional_meat flag for wild-caught fish or venison.
+- Conventional dairy (`conventional_dairy` flag) is now a distinct tree node separate from conventional meat.
+- Egg-derived ingredients (whole eggs, egg whites, albumin, etc.) are checked at node 8 via `containsEggDerived(maskedText)` — a product with egg ingredients and no organic cert triggers the conventional_meat node even if it has no meat category tags.
+- `oliveCaveat: true` is set on the response object when the organic path hits the olive oil branch. Not yet persisted to `scan_cache` (no `olive_caveat` column); `TODO` comment left in upsert.
 
-A separate post-engine check runs for `userLevel === 2` on any product whose OFF `categories_tags` matches the `MEAT_CATEGORIES` set:
-
+**New helper sets in scan.js:**
 ```js
-const MEAT_CATEGORIES = new Set([
-  'en:meats', 'en:meat', 'en:beef', 'en:ground-beef', 'en:pork', 'en:chicken',
-  'en:turkey', 'en:lamb', 'en:veal', 'en:poultry', 'en:game-meats',
+// Subset of MEAT_CATEGORIES for seafood-specific detection
+const SEAFOOD_CATEGORIES = new Set([
   'en:fish', 'en:seafood', 'en:shellfish', 'en:crustaceans', 'en:molluscs',
   'en:salmon', 'en:tuna', 'en:cod', 'en:tilapia', 'en:shrimp',
-  'en:deli-meats', 'en:cold-cuts', 'en:sausages', 'en:hot-dogs',
-  'en:charcuterie', 'en:bacon', 'en:ham', 'en:salami', 'en:pepperoni',
-  'en:smoked-meats', 'en:cured-meats',
-  'en:broths', 'en:stocks', 'en:bone-broth', 'en:chicken-broth', 'en:beef-broth',
-  'en:eggs', 'en:egg-products', 'en:poultry-eggs',
 ]);
+const GAME_MEAT_CATEGORIES = new Set(['en:game-meats', 'en:game', 'en:wild-game']);
 ```
 
-`isMeatProduct(categoriesTags)` returns `true` if any tag is in this set. At Level 2, if `isMeat && !labelsDetected.includes('usda-organic')`, a `conventional_meat` flag is injected as the first flag:
-
+**New OFF_LABEL_MAP entries** (wild-caught, farmed, glyphosate-heavy):
 ```js
-{
-  category:          'conventional_meat',
-  severity:          'reject',
-  matchedIngredient: '',
-  summary:           'Meat product without USDA Organic certification',
-}
+'en:wild-caught':          'wild-caught',
+'en:wild-caught-fish':     'wild-caught',
+'en:wild-caught-seafood':  'wild-caught',
+'en:wild-fish':            'wild-caught',
+'en:farmed':               'farmed',
+'en:farm-raised':          'farmed',
+'en:glyphosate-heavy':     'glyphosate-heavy',
 ```
 
-**`matchedIngredient: ''` convention** — the `conventional_meat` flag uses an empty string, not `null`. `ConcernCard` asserts `typeof matchedIngredient === 'string'`; do not change this to `null`.
-
-This forces `verdict = 'red'` and `clearedBy = null` regardless of ingredients. Level 1 users never receive this flag — ingredient-level screening only.
+**`matchedIngredient: ''` convention** — injected flags (`conventional_meat`, `conventional_dairy`) always use an empty string, not `null`. `ConcernCard` asserts `typeof matchedIngredient === 'string'`; do not change this to `null`.
 
 **Custom unverified messaging for meat products** (keyed on `isMeat` + `unverifiedReason` in VerdictScreen):
 - L1 + `no_ingredients` + `isMeat`: "Flip the package over and read the label before buying — skip it if you see any synthetic chemicals, artificial additives, artificial flavors, or preservatives."
 - L2 + `no_ingredients` + `isMeat`: "Look for the USDA Organic seal before buying, and use your best judgment on quality — grass-fed, pasture-raised, or sourced from a farm you trust is always the better choice."
 
 `isMeat` is included in the scan response and written to the `scan_cache` table (`is_meat` boolean column, default false). The `isMeat: false` default is also included in the 404 not-found response for shape consistency.
+
+**Limitations**:
+- OFF labels are user-contributed; coverage is good but not authoritative.
+- Non-GMO Project check is live using OFF label data. Direct Non-GMO Project data partnership pending.
+- USDA OData API confirmed retired May 2026; replacement REST API returns empty results — not accessible at current api.data.gov key tier.
 
 ---
 
@@ -453,7 +473,8 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 ### POST /api/scan
 - Body: `{ barcode: string, userLevel?: 1 | 2 }`
 - Flow: validate → sanitize barcode → check `scan_cache` (return immediately on hit) → fetch Open Food Facts → normalize labels → map `categories_tags` → run `analyzeIngredients(text, labels, userLevel)` → call Claude for explanation (skipped when `verdict === 'unverified'`) → upsert `scan_cache` → return result
-- Returns: `{ verdict, flags, clearedBy, productName, ingredients, barcode, source, found, labelsDetected, unverifiedIngredients, explanation, productCategory, unverifiedReason, isMeat }`
+- Returns: `{ verdict, flags, clearedBy, productName, ingredients, barcode, source, found, labelsDetected, unverifiedIngredients, explanation, productCategory, unverifiedReason, isMeat, oliveCaveat }`
+- `oliveCaveat`: boolean, `true` when the L2 organic path hits the olive oil adulteration branch. Not yet persisted to `scan_cache` (no column); cache hits always return `false` until the column is added.
 - `productCategory`: one of the 9 swap categories or `null` if no OFF tag matched
 - `unverifiedReason`: distinguishes why a scan returned `verdict: 'unverified'`:
   - `'not_found'` — barcode not in the Open Food Facts database (`found: false`)
@@ -461,7 +482,7 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
   - `null` — verdict is red / yellow / green (not unverified)
 - Claude is never called when `verdict === 'unverified'` — no ingredients to explain
 - VerdictScreen renders a human-readable message card for unverified results (keyed on `unverifiedReason` + `isMeat`) instead of the AI summary, and shows a "Scan Again" button instead of "See Cleaner Swaps"
-- At Level 2, `isMeatProduct()` is checked after `analyzeIngredients()` — if the product is meat and has no `usda-organic` label, a `conventional_meat` reject flag is injected and `verdict` is forced to `'red'` (see L2 meat check section above)
+- At Level 2, the universal decision tree runs after `analyzeIngredients()` — see "Level 2 universal decision tree" in the Rules Engine section for the full 14-node spec
 - `isMeat: false` is included in the 404 not-found response for consistent response shape
 - Uses `supabaseServer` (service role key) for all Supabase writes
 
@@ -561,15 +582,27 @@ disabled={true}
 
 ### ConcernCard CATEGORY_INFO contract
 
-`ConcernCard.jsx` maintains a `CATEGORY_INFO` map keyed on engine category strings. Current keys: `seed_oils`, `conventional_crops`, `bioengineering`, `natural_flavors`, `synthetic_additives`, `trans_fats`, `gluten_grains`, `conventional_meat`, `fortified_vitamins`, `natural_colorants`. If a new engine category is added without a matching key, the card silently falls back to a generic label and renders the raw category string. **Always update `CATEGORY_INFO` in `ConcernCard.jsx` when adding a new flag category to the rules engine.**
+`ConcernCard.jsx` maintains a `CATEGORY_INFO` map keyed on engine category strings. Current keys: `seed_oils`, `conventional_crops`, `bioengineering`, `natural_flavors`, `synthetic_additives`, `trans_fats`, `gluten_grains`, `conventional_meat`, `conventional_dairy`, `fortified_vitamins`, `natural_colorants`, `olive_oil_adulteration`. If a new engine category is added without a matching key, the card silently falls back to a generic label and renders the raw category string. **Always update `CATEGORY_INFO` in `ConcernCard.jsx` when adding a new flag category to the rules engine.**
 
-### L2 Verdict Waterfall (scan.js)
+### L2 Universal Decision Tree (scan.js)
 
-Level 2 users get a waterfall applied AFTER the rules engine runs. Order: (1) instant-red on any `'additives'`, `'natural_flavors'`, `'seed_oils'`, `'trans_fats'`, or `'conventional_meat'` flag → RED; (2) cert gate — USDA organic → organic path, else non-organic path; (3) organic path: fortified vitamins → inject `fortified_vitamins` caution flag + YELLOW, natural colorants → inject `natural_colorants` caution flag + YELLOW, olive oil → YELLOW with `olive_oil_adulteration` caution flag, else → GREEN; (4) non-organic path: non-gmo-project-verified → YELLOW, glyphosate-free → YELLOW, else → RED. Gluten grains flags are explicitly excluded from the waterfall (paywall feature). Inconclusive verdict fires before the waterfall.
+Level 2 users get a 14-node decision tree applied AFTER the rules engine runs. See "Level 2 universal decision tree" in the Rules Engine section for the full spec. Key points:
 
-**FORTIFIED_VITAMINS** (56 ingredients): Detected by `containsFortifiedVitamins()` in the L2 organic path — if matched, verdict is YELLOW rather than GREEN. A `fortified_vitamins` caution flag is injected into the flags array before `verdict = 'yellow'` is set, so ConcernCard renders and the AI receives flag context. Contains synthetic B vitamins (niacin, niacinamide, riboflavin, thiamine variants, folic acid, pyridoxine hydrochloride, B6, B12, pantothenic acid, biotin, choline salts, inositol), fat-soluble vitamins (A palmitate/acetate, D2/D3, tocopherol forms, vitamin E, phytonadione, menaquinone, vitamin K), minerals (reduced iron, ferrous sulfate, zinc oxide/gluconate/sulfate, calcium carbonate/phosphate/citrate, magnesium forms, potassium iodide/phosphate, sodium iodide, copper salts, manganese sulfate, chromium picolinate, selenium forms, molybdenum), and amino acids/conditionally essential nutrients (taurine, l-carnitine, l-tryptophan, l-theanine, lysine). These ingredients were previously in SYNTHETIC_ADDITIVES and have been moved here — they are not synthetic additive red flags and do not trigger the instant-red path.
+- Gluten_grains flags are stripped before the tree runs (paywall feature — same as L1)
+- `ALWAYS_IGNORE_INGREDIENTS` terms are masked before ingredient-level helper checks run
+- Products with no cert and no conventional ingredient signals default to **YELLOW** (node 14) — not RED
+- Seafood (node 5) and game meat (node 6) have dedicated tree paths
+- `conventional_dairy` (node 9) is a new injected flag category for milk-derived ingredients without organic cert
+- `oliveCaveat: true` is set on the response when the organic path hits the olive oil node
+- Conventional crops flags are stripped post-tree when `clearedBy === 'organic'`
 
-Gluten grains flags are stripped from the L2 flags array entirely before the waterfall runs (same as L1) — this also fixes organic-path verdict inflation where a gluten-only product with organic cert was incorrectly returning yellow instead of green. Conventional crops flags are stripped post-waterfall when clearedBy === 'organic'.
+**ALWAYS_IGNORE_INGREDIENTS** (exported from `lib/rulesEngine.js`): salt forms, water forms, calcium carbonate, magnesium oxide, yeast forms, live cultures, enzymes. Applied via `maskIgnoredIngredients()` in `scan.js` before calling `containsFortifiedVitamins`, `containsMilkDerived`, `containsEggDerived`. Sorted longest-first so specific forms are masked before shorter sub-strings.
+
+**MILK_DERIVED_INGREDIENTS** (exported from `lib/rulesEngine.js`): compound dairy forms only — no bare `milk`, `cream`, or `butter` to prevent almond milk, cream of tartar, peanut butter false positives. Uses `matchesWholePhrase()` for word-boundary-aware matching. Includes: whole/skim/nonfat milk, milk powder/solids/protein concentrate, milkfat, heavy/sour/whipping cream, unsalted/salted/cultured butter, cheese, cheddar, mozzarella, parmesan, cream cheese, cottage cheese, whey (all forms), caseinate, casein, lactose, lactalbumin, lactoglobulin, yogurt, kefir, buttermilk, evaporated/condensed milk.
+
+**EGG_DERIVED_INGREDIENTS** (exported from `lib/rulesEngine.js`): egg whites, egg yolk, dried/powdered/liquid egg, albumin, whole egg, eggs, egg. Uses `matchesWholePhrase()` — `eggplant` correctly returns false.
+
+**FORTIFIED_VITAMINS** (56 ingredients): Detected by `containsFortifiedVitamins(maskedText)` in the L2 organic path. Contains synthetic B vitamins (niacin, niacinamide, riboflavin, thiamine variants, folic acid, pyridoxine hydrochloride, B6, B12, pantothenic acid, biotin, choline salts, inositol), fat-soluble vitamins (A palmitate/acetate, D2/D3, tocopherol forms, vitamin E, phytonadione, menaquinone, vitamin K), minerals (reduced iron, ferrous sulfate, zinc oxide/gluconate/sulfate, calcium carbonate/phosphate/citrate, magnesium forms, potassium iodide/phosphate, sodium iodide, copper salts, manganese sulfate, chromium picolinate, selenium forms, molybdenum), and amino acids/conditionally essential nutrients (taurine, l-carnitine, l-tryptophan, l-theanine, lysine). Note: `calcium carbonate` is in FORTIFIED_VITAMINS but also in ALWAYS_IGNORE_INGREDIENTS — masking prevents it from triggering YELLOW in the organic path for products that use it as a harmless mined mineral.
 
 ### Known Limitations
 - ZBAR and similar products with organic asterisks in ingredient lists but no usda-organic label in Open Food Facts will not receive organic cert detection. Fix requires updating the OFF database for those barcodes, not a code change.
@@ -687,6 +720,11 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 | Hash | Description |
 |------|-------------|
 | `a7fb831` | fix: handle red + empty flags case in buildUserMessage, bump PROMPT_VERSION to 9 |
+
+### Session — Universal L2 decision tree
+| Hash | Description |
+|------|-------------|
+| TBD | feat: replace L2 waterfall with universal 14-node decision tree — ALWAYS_IGNORE_INGREDIENTS masking, MILK_DERIVED_INGREDIENTS, EGG_DERIVED_INGREDIENTS, conventional_dairy flag, seafood/game-meat nodes, oliveCaveat, 50 new tests |
 
 ---
 

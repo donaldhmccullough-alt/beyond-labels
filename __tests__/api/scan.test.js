@@ -1064,12 +1064,14 @@ describe('K. Level 2 flags cleanup', () => {
     expect(res.body.flags).toHaveLength(0);
   });
 
-  test('K2: L2 + no cert + only gluten → verdict RED with empty flags array (non-organic path)', async () => {
-    // gluten stripped before waterfall; no cert → non-organic path → RED
+  test('K2: L2 + no cert + only gluten → verdict YELLOW with empty flags array (default node)', async () => {
+    // gluten stripped before tree; no cert, no conventional crops/meat/dairy/bio triggers
+    // → falls through to default node (step 14) → YELLOW (not RED; clean products
+    // without cert default to yellow rather than red in the new universal decision tree)
     mockFetchOnce(l2CleanupOffResp({ ingredientsText: 'rye, water, salt' }));
     const res = makeRes();
     await handler(makeReq('POST', { barcode: '000000000202', userLevel: 2 }), res);
-    expect(res.body.verdict).toBe('red');
+    expect(res.body.verdict).toBe('yellow');
     expect(res.body.flags.filter(f => f.category === 'gluten_grains')).toHaveLength(0);
     expect(res.body.flags).toHaveLength(0);
   });
@@ -1105,5 +1107,247 @@ describe('K. Level 2 flags cleanup', () => {
     await handler(makeReq('POST', { barcode: '000000000205', userLevel: 2 }), res);
     expect(res.body.verdict).toBe('red');
     expect(res.body.flags.some(f => f.category === 'conventional_crops')).toBe(true);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// L. Universal L2 decision tree — 15 integration scenarios
+//    Tests each node of the new decision tree independently.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('L. Universal L2 decision tree', () => {
+  /** Minimal OFF response builder for Suite L tests. */
+  function l2TreeOffResp({
+    ingredientsText = 'water, salt',
+    labelsTags      = [],
+    categoriesTags  = [],
+    productName     = 'Test Product',
+  } = {}) {
+    return {
+      status: 1,
+      product: {
+        product_name:     productName,
+        ingredients_text: ingredientsText,
+        labels_tags:      labelsTags,
+        categories_tags:  categoriesTags,
+      },
+    };
+  }
+
+  // ── L1: pistachios + salt → YELLOW (default node) ─────────────────────────
+
+  test('L1: pistachios + salt → YELLOW (default node — no cert, no conventional trigger)', async () => {
+    // Pistachios are not in CONVENTIONAL_CROPS; salt is in the ignore list.
+    // No cert, no meat/dairy/egg/bio triggers → falls to default node → YELLOW.
+    mockFetchOnce(l2TreeOffResp({ ingredientsText: 'pistachios, salt' }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000301', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('yellow');
+    expect(res.body.flags).toHaveLength(0);
+  });
+
+  // ── L2: conventional sausage → RED at conventional meat node ──────────────
+
+  test('L2: conventional sausage (no organic) → RED with conventional_meat reject flag', async () => {
+    mockFetchOnce(l2TreeOffResp({
+      ingredientsText: 'beef, pork, water, salt, spices',
+      categoriesTags:  ['en:sausages'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000302', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    const flag = res.body.flags.find(f => f.category === 'conventional_meat');
+    expect(flag).toBeDefined();
+    expect(flag.severity).toBe('reject');
+  });
+
+  // ── L3: conventional milk → RED at conventional dairy node ───────────────
+
+  test('L3: "whole milk" (no organic cert) → RED with conventional_dairy flag', async () => {
+    mockFetchOnce(l2TreeOffResp({
+      ingredientsText: 'whole milk, vitamin d',
+      categoriesTags:  [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000303', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    const flag = res.body.flags.find(f => f.category === 'conventional_dairy');
+    expect(flag).toBeDefined();
+    expect(flag.severity).toBe('reject');
+  });
+
+  // ── L4: non-organic cheese → RED at conventional dairy node ──────────────
+
+  test('L4: "cheese, salt" (no organic cert) → RED with conventional_dairy flag', async () => {
+    mockFetchOnce(l2TreeOffResp({
+      ingredientsText: 'cheese, salt',
+      categoriesTags:  [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000304', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'conventional_dairy')).toBe(true);
+  });
+
+  // ── L5: non-organic eggs → RED at conventional meat node (egg-derived) ─────
+
+  test('L5: "eggs, salt" (no organic cert, no meat category tag) → RED with conventional_meat flag via egg-derived check', async () => {
+    // Product has egg ingredients but no en:eggs category tag — egg-derived
+    // ingredient check (containsEggDerived) fires at node 8.
+    mockFetchOnce(l2TreeOffResp({
+      ingredientsText: 'eggs, salt',
+      categoriesTags:  [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000305', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(true);
+  });
+
+  // ── L6: organic beef → GREEN (organic path, no fortification/colorant/olive oil) ─
+
+  test('L6: organic beef (usda-organic, no other concerns) → GREEN', async () => {
+    mockFetchOnce(l2TreeOffResp({
+      ingredientsText: 'organic beef, water, sea salt',
+      labelsTags:      ['en:usda-organic'],
+      categoriesTags:  ['en:beef'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000306', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.flags).toHaveLength(0);
+    expect(res.body.clearedBy).toBe('organic');
+  });
+
+  // ── L7: organic + olive oil → YELLOW with oliveCaveat: true ──────────────
+
+  test('L7: organic product with olive oil → YELLOW with oliveCaveat: true', async () => {
+    mockFetchOnce(l2TreeOffResp({
+      ingredientsText: 'organic olive oil, water',
+      labelsTags:      ['en:usda-organic'],
+      categoriesTags:  [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000307', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('yellow');
+    expect(res.body.oliveCaveat).toBe(true);
+    expect(res.body.flags.some(f => f.category === 'olive_oil_adulteration')).toBe(true);
+  });
+
+  // ── L8: organic + fortified vitamins → YELLOW ────────────────────────────
+
+  test('L8: organic product with riboflavin (fortified) → YELLOW with fortified_vitamins flag', async () => {
+    mockFetchOnce(l2TreeOffResp({
+      ingredientsText: 'organic wheat flour, riboflavin, folic acid',
+      labelsTags:      ['en:usda-organic'],
+      categoriesTags:  [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000308', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('yellow');
+    expect(res.body.flags.some(f => f.category === 'fortified_vitamins')).toBe(true);
+  });
+
+  // ── L9: wild-caught seafood → GREEN ──────────────────────────────────────
+
+  test('L9: wild-caught salmon (en:wild-caught label, en:salmon category) → GREEN', async () => {
+    mockFetchOnce(l2TreeOffResp({
+      ingredientsText: 'wild-caught salmon, water, salt',
+      labelsTags:      ['en:wild-caught'],
+      categoriesTags:  ['en:salmon'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000309', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.clearedBy).toBe('wild-caught');
+  });
+
+  // ── L10: farmed seafood → RED ─────────────────────────────────────────────
+
+  test('L10: salmon with no wild-caught label → RED with conventional_meat flag', async () => {
+    mockFetchOnce(l2TreeOffResp({
+      ingredientsText: 'salmon, water, salt',
+      labelsTags:      [],
+      categoriesTags:  ['en:salmon'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000310', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(true);
+  });
+
+  // ── L11: bioengineered disclosure → RED at bioengineering node ────────────
+
+  test('L11: bioengineered disclosure (no cert, no conventional crops) → RED at bioengineering node', async () => {
+    // Only a bioengineering disclosure — no conventional_crops flags — so the tree
+    // reaches step 11 rather than step 10.
+    mockFetchOnce(l2TreeOffResp({
+      ingredientsText: 'contains bioengineered food ingredients',
+      labelsTags:      [],
+      categoriesTags:  [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000311', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'bioengineering')).toBe(true);
+  });
+
+  // ── L12: glyphosate-free certified → YELLOW ──────────────────────────────
+
+  test('L12: glyphosate-free certified (pistachios, no other cert) → YELLOW at glyphosate-free node', async () => {
+    // Pistachios not in CONVENTIONAL_CROPS, so the tree reaches step 12.
+    mockFetchOnce(l2TreeOffResp({
+      ingredientsText: 'pistachios, sea salt',
+      labelsTags:      ['en:glyphosate-free'],
+      categoriesTags:  [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000312', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('yellow');
+    expect(res.body.clearedBy).toBe('glyphosate-free');
+  });
+
+  // ── L13: non-GMO certified → YELLOW ──────────────────────────────────────
+
+  test('L13: non-GMO certified (corn starch) → YELLOW at non-GMO node (step 7 fires before conventional_crops step 10)', async () => {
+    mockFetchOnce(l2TreeOffResp({
+      ingredientsText: 'corn starch, water, salt',
+      labelsTags:      ['en:non-gmo-project-verified'],
+      categoriesTags:  [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000313', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('yellow');
+    expect(res.body.clearedBy).toBe('non-gmo-project-verified');
+  });
+
+  // ── L14: game meat → GREEN ────────────────────────────────────────────────
+
+  test('L14: game meat (en:game-meats, no cert) → GREEN (wild-harvested by nature)', async () => {
+    mockFetchOnce(l2TreeOffResp({
+      ingredientsText: 'venison, water, salt',
+      labelsTags:      [],
+      categoriesTags:  ['en:game-meats'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000314', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+  });
+
+  // ── L15: salt + water only → YELLOW (ignore list working, default node) ───
+
+  test('L15: "salt, water" (no cert, no triggers) → YELLOW with empty flags (ignore list prevents false positives)', async () => {
+    // Salt and water are both in ALWAYS_IGNORE_INGREDIENTS; after masking there
+    // are no ingredient signals and no cert → default node → YELLOW, not RED.
+    mockFetchOnce(l2TreeOffResp({
+      ingredientsText: 'salt, water',
+      labelsTags:      [],
+      categoriesTags:  [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000315', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('yellow');
+    expect(res.body.flags).toHaveLength(0);
   });
 });

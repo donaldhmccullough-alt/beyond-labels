@@ -47,7 +47,14 @@
  */
 
 import rulesEngine from '../../lib/rulesEngine';
-const { analyzeIngredients, containsFortifiedVitamins, containsNaturalColorants } = rulesEngine;
+const {
+  analyzeIngredients,
+  containsFortifiedVitamins,
+  containsNaturalColorants,
+  ALWAYS_IGNORE_INGREDIENTS,
+  containsMilkDerived,
+  containsEggDerived,
+} = rulesEngine;
 
 import { supabaseServer as sb } from '../../lib/supabaseServer';
 import Anthropic from '@anthropic-ai/sdk';
@@ -70,6 +77,13 @@ const OFF_LABEL_MAP = {
   'en:non-gmo-project-verified':  'non-gmo-project-verified',
   'en:glyphosate-free':           'glyphosate-free',
   'en:glyphosate-residue-free':   'glyphosate-free',
+  'en:wild-caught':               'wild-caught',
+  'en:wild-fish':                 'wild-caught',
+  'en:wild-caught-fish':          'wild-caught',
+  'en:wild-caught-seafood':       'wild-caught',
+  'en:farmed':                    'farmed',
+  'en:farm-raised':               'farmed',
+  'en:glyphosate-heavy':          'glyphosate-heavy',
   // "en:no-gmos" is a self-declared claim, not a third-party certification;
   // we do NOT map it to non-gmo-project-verified to avoid false clearance.
 };
@@ -120,6 +134,74 @@ const MEAT_CATEGORIES = new Set([
 function isMeatProduct(categoriesTags) {
   if (!Array.isArray(categoriesTags) || categoriesTags.length === 0) return false;
   return categoriesTags.some(t => MEAT_CATEGORIES.has(String(t).toLowerCase()));
+}
+
+// ── Seafood category detection ────────────────────────────────────────────
+// Subset of MEAT_CATEGORIES — used to identify products where wild-caught
+// vs. farmed is the key safety distinction.
+const SEAFOOD_CATEGORIES = new Set([
+  'en:fish',
+  'en:seafood',
+  'en:shellfish',
+  'en:crustaceans',
+  'en:molluscs',
+  'en:salmon',
+  'en:tuna',
+  'en:cod',
+  'en:tilapia',
+  'en:shrimp',
+]);
+
+/**
+ * Returns true if the product is a seafood/fish product.
+ * @param {string[]} categoriesTags
+ * @returns {boolean}
+ */
+function isSeafoodProduct(categoriesTags) {
+  if (!Array.isArray(categoriesTags) || categoriesTags.length === 0) return false;
+  return categoriesTags.some(t => SEAFOOD_CATEGORIES.has(String(t).toLowerCase()));
+}
+
+// ── Game meat category detection ──────────────────────────────────────────
+// Game meats are wild-harvested by nature — no certification required.
+const GAME_MEAT_CATEGORIES = new Set([
+  'en:game-meats',
+  'en:game',
+  'en:wild-game',
+]);
+
+/**
+ * Returns true if the product is a game meat product.
+ * @param {string[]} categoriesTags
+ * @returns {boolean}
+ */
+function isGameMeatProduct(categoriesTags) {
+  if (!Array.isArray(categoriesTags) || categoriesTags.length === 0) return false;
+  return categoriesTags.some(t => GAME_MEAT_CATEGORIES.has(String(t).toLowerCase()));
+}
+
+/**
+ * Replace each ALWAYS_IGNORE_INGREDIENTS term in the already-lowercased
+ * `text` with same-length spaces. Prevents false positives in ingredient-
+ * level helper functions (e.g. 'calcium carbonate' matching FORTIFIED_VITAMINS,
+ * or 'cultures' being confused with dairy). The longest-first ordering in
+ * ALWAYS_IGNORE_INGREDIENTS ensures 'himalayan pink salt' is masked before
+ * the shorter 'salt' sub-string match would fire.
+ *
+ * @param {string} text — already lowercased ingredient string
+ * @returns {string}
+ */
+function maskIgnoredIngredients(text) {
+  let masked = text;
+  for (const term of ALWAYS_IGNORE_INGREDIENTS) {
+    const replacement = ' '.repeat(term.length);
+    let idx = masked.indexOf(term);
+    while (idx !== -1) {
+      masked = masked.slice(0, idx) + replacement + masked.slice(idx + term.length);
+      idx = masked.indexOf(term, idx + replacement.length);
+    }
+  }
+  return masked;
 }
 
 // ── Product category mapping ──────────────────────────────────────────────
@@ -413,6 +495,8 @@ export default async function handler(req, res) {
           productCategory:       cached.product_category ?? null,
           unverifiedReason:      cached.unverified_reason ?? null,
           isMeat:                cached.is_meat ?? false,
+          // TODO: persist olive_caveat to scan_cache then replace false with cached value
+          oliveCaveat:           false,
         });
       }
     } catch {
@@ -466,6 +550,7 @@ export default async function handler(req, res) {
       productCategory:       null,
       unverifiedReason:      'not_found',
       isMeat:                false,
+      oliveCaveat:           false,
     });
   }
 
@@ -492,6 +577,10 @@ export default async function handler(req, res) {
   // ── Run the rules engine ──────────────────────────────────────────────────
   const engineResult = analyzeIngredients(ingredientsText, labelsDetected, userLevel);
   let { verdict, flags, clearedBy, unverifiedIngredients } = engineResult;
+
+  // oliveCaveat: true when the L2 organic path hits the olive oil adulteration
+  // branch. Available on the response for future messaging; not yet persisted to DB.
+  let oliveCaveat = false;
 
   // ── Level 1 explicit overrides ───────────────────────────────────────────────
   // Two post-engine adjustments for L1 users only. L2 has its own waterfall below.
@@ -543,19 +632,18 @@ export default async function handler(req, res) {
     verdict = 'inconclusive';
   }
 
-  // ── Level 2 verdict waterfall ─────────────────────────────────────────────
-  // Overrides the engine verdict for Level 2 users only. First match wins.
+  // ── Level 2 universal decision tree ──────────────────────────────────────
+  // Replaces the previous cert-gate waterfall with a single decision tree that
+  // applies to all 10 product categories. First matching node wins.
   // Does not run for unverified or inconclusive results — no ingredients to gate.
   // Level 1 users are completely unaffected.
   //
   // Category name note: the engine emits 'additives' for all of
   // SYNTHETIC_ADDITIVES (artificial dyes, MSG, sweeteners, preservatives, etc.).
-  // There are no separate 'artificial_dyes', 'flavor_enhancers', or
-  // 'artificial_sweeteners' categories in the engine output.
   if (userLevel === 2 && verdict !== 'unverified' && verdict !== 'inconclusive') {
-    // Strip gluten_grains flags before the waterfall evaluates verdict and flags.
+    // ── Strip gluten_grains before the tree runs ──────────────────────────────
     // Gluten is a future paywall feature — invisible at both levels. Without this
-    // strip the engine's caution verdict (from gluten) would enter the cert gate
+    // strip the engine's caution verdict (from gluten) would enter the tree
     // inflated, and gluten ConcernCards would render in the UI.
     const nonGlutenL2 = flags.filter(f => f.category !== 'gluten_grains');
     if (nonGlutenL2.length !== flags.length) {
@@ -565,42 +653,49 @@ export default async function handler(req, res) {
       else                                                 verdict = 'green';
     }
 
-    const hasOrganic = labelsDetected.includes('usda-organic');
+    // ── Build masked ingredient text for helper checks ─────────────────────
+    // Masks ALWAYS_IGNORE_INGREDIENTS (salt, water, mined minerals, yeast,
+    // cultures, enzymes) to prevent false positives in containsFortifiedVitamins,
+    // containsMilkDerived, containsEggDerived, etc.
+    const maskedText = ingredientsText
+      ? maskIgnoredIngredients(ingredientsText.toLowerCase())
+      : '';
 
-    // ── INSTANT RED categories (nodes 1–7) ───────────────────────────────────
-    // Any flag in these categories stops evaluation immediately → RED.
+    // ── Pre-compute certification and product-type booleans ─────────────────
+    const hasOrganic         = labelsDetected.includes('usda-organic');
+    const hasNonGmo          = labelsDetected.includes('non-gmo-project-verified');
+    const hasWildCaught      = labelsDetected.includes('wild-caught');
+    const hasGlyphosateFree  = labelsDetected.includes('glyphosate-free');
+    const hasGlyphosateHeavy = labelsDetected.includes('glyphosate-heavy');
+    const isSeafood          = isSeafoodProduct(categoriesTags);
+    const isGameMeat         = isGameMeatProduct(categoriesTags);
+    // Conventional meat = any MEAT_CATEGORIES product that is NOT seafood and
+    // NOT game meat (seafood/game have their own dedicated tree nodes).
+    const isConventionalMeat = isMeat && !isSeafood && !isGameMeat;
+
+    // ── Nodes 1–3: Instant RED categories ─────────────────────────────────
+    // Any flag in these categories → RED immediately, no further checks.
     const INSTANT_RED_CATEGORIES = new Set([
-      'additives',       // covers all SYNTHETIC_ADDITIVES: dyes, MSG, sweeteners, preservatives
+      'additives',       // SYNTHETIC_ADDITIVES: dyes, MSG, sweeteners, preservatives
       'natural_flavors',
       'seed_oils',
       'trans_fats',
     ]);
-
     const hasInstantRedFlag = flags.some(f => INSTANT_RED_CATEGORIES.has(f.category));
 
-    // Node 8: meat/fish/egg product without USDA Organic certification.
-    const needsMeatFlag = isMeat && !hasOrganic;
-
-    if (hasInstantRedFlag || needsMeatFlag) {
-      // Inject conventional_meat flag first (node 8) when applicable.
-      if (needsMeatFlag) {
-        flags = [{
-          category:          'conventional_meat',
-          severity:          'reject',
-          matchedIngredient: '',
-          summary:           'Meat product without USDA Organic certification',
-        }, ...flags];
-      }
+    if (hasInstantRedFlag) {
+      // Nodes 1–3 hit — synthetic / seed-oil / trans-fat contamination.
       verdict   = 'red';
       clearedBy = null;
 
     } else if (hasOrganic) {
-      // ── ORGANIC PATH (nodes 10–13) ─────────────────────────────────────────
-      // Product passed all instant-red nodes and carries USDA Organic cert.
-      // Minor concerns can still downgrade the verdict to yellow.
-      // clearedBy is preserved from the engine ('organic') in all organic-path branches.
-      if (ingredientsText && containsFortifiedVitamins(ingredientsText)) {
-        // Node 10: synthetic vitamin fortification present.
+      // ── Node 4: ORGANIC PATH ──────────────────────────────────────────────
+      // Product passed nodes 1–3 and carries USDA Organic cert.
+      // Minor concerns can still downgrade verdict to yellow.
+      // clearedBy is set to 'organic' for all organic-path branches.
+      clearedBy = 'organic';
+      if (maskedText && containsFortifiedVitamins(maskedText)) {
+        // Synthetic vitamin fortification.
         flags = [...flags, {
           category:          'fortified_vitamins',
           severity:          'caution',
@@ -608,8 +703,8 @@ export default async function handler(req, res) {
           summary:           'Organic product with synthetic vitamin fortification',
         }];
         verdict = 'yellow';
-      } else if (ingredientsText && containsNaturalColorants(ingredientsText)) {
-        // Node 11: plant-derived colorants indicate processing-related color correction.
+      } else if (maskedText && containsNaturalColorants(maskedText)) {
+        // Plant-derived colorants signal processing-related color correction.
         flags = [...flags, {
           category:          'natural_colorants',
           severity:          'caution',
@@ -617,8 +712,11 @@ export default async function handler(req, res) {
           summary:           'Organic product with natural plant-derived colorants',
         }];
         verdict = 'yellow';
-      } else if (ingredientsText && ingredientsText.toLowerCase().includes('olive oil')) {
-        // Node 12: olive oil adulteration risk — even organic labels are not immune.
+      } else if (maskedText && maskedText.includes('olive oil')) {
+        // Olive oil adulteration risk — even organic labels are not immune.
+        // oliveCaveat is available on the response for future messaging.
+        // TODO: persist olive_caveat to scan_cache once the column is added.
+        oliveCaveat = true;
         verdict = 'yellow';
         flags = [...flags, {
           category:          'olive_oil_adulteration',
@@ -627,38 +725,95 @@ export default async function handler(req, res) {
           summary:           'Olive oil adulteration is common — even organic olive oil may be cut with cheaper oils.',
         }];
       } else {
-        // Node 13: no concerns found → fully clean.
+        // No concerns found → fully clean.
         verdict = 'green';
       }
 
     } else {
-      // ── NON-ORGANIC PATH (nodes 14–16) ────────────────────────────────────
-      // Product passed all instant-red nodes but has no USDA Organic cert.
-      const hasNonGmo = labelsDetected.includes('non-gmo-project-verified');
-      const hasGlyphosateFree = labelsDetected.some(
-        l => l === 'glyphosate-free' || l === 'glyphosate free'
-      );
+      // ── NON-ORGANIC PATH (Nodes 5–14) ────────────────────────────────────
 
-      if (hasNonGmo) {
-        // Node 14: Non-GMO Project Verified → caution yellow.
+      if (isSeafood) {
+        // Node 5: Seafood — wild-caught is clean; unlabeled/farmed is not.
+        if (hasWildCaught) {
+          verdict   = 'green';
+          clearedBy = 'wild-caught';
+        } else {
+          verdict   = 'red';
+          clearedBy = null;
+          flags = [{
+            category:          'conventional_meat',
+            severity:          'reject',
+            matchedIngredient: '',
+            summary:           'Farmed or unlabeled seafood — wild-caught certification not found',
+          }, ...flags];
+        }
+
+      } else if (isGameMeat) {
+        // Node 6: Game meat — wild-harvested by nature, no certification needed.
+        verdict   = 'green';
+        clearedBy = null;
+
+      } else if (hasNonGmo) {
+        // Node 7: Non-GMO Project Verified → caution yellow.
         verdict   = 'yellow';
         clearedBy = 'non-gmo-project-verified';
+
+      } else if (isConventionalMeat || (maskedText && containsEggDerived(maskedText))) {
+        // Node 8: Conventional meat or egg-derived ingredients without organic cert.
+        verdict   = 'red';
+        clearedBy = null;
+        flags = [{
+          category:          'conventional_meat',
+          severity:          'reject',
+          matchedIngredient: '',
+          summary:           'Conventional meat or egg product without USDA Organic certification',
+        }, ...flags];
+
+      } else if (maskedText && containsMilkDerived(maskedText)) {
+        // Node 9: Conventional dairy without organic cert.
+        verdict   = 'red';
+        clearedBy = null;
+        flags = [{
+          category:          'conventional_dairy',
+          severity:          'reject',
+          matchedIngredient: '',
+          summary:           'Conventional dairy product without USDA Organic certification',
+        }, ...flags];
+
+      } else if (flags.some(f => f.category === 'conventional_crops')) {
+        // Node 10: Conventional crops without cert — flags kept so user understands verdict.
+        verdict   = 'red';
+        clearedBy = null;
+
+      } else if (flags.some(f => f.category === 'bioengineering')) {
+        // Node 11: Bioengineered product without cert.
+        verdict   = 'red';
+        clearedBy = null;
+
       } else if (hasGlyphosateFree) {
-        // Node 15: Glyphosate Free certification → caution yellow.
+        // Node 12: Glyphosate Free certification → caution yellow.
         verdict   = 'yellow';
         clearedBy = 'glyphosate-free';
-      } else {
-        // Node 16: no certification → conventional product → RED.
+
+      } else if (hasGlyphosateHeavy) {
+        // Node 13: Glyphosate heavy → Red.
         verdict   = 'red';
+        clearedBy = null;
+
+      } else {
+        // Node 14: Default — no cert, but no specific concern triggered.
+        // Yellow rather than red: clean-looking products like "pistachios, salt"
+        // should not default to red just because they lack a certification.
+        verdict   = 'yellow';
         clearedBy = null;
       }
     }
   }
 
   // ── L2 post-waterfall: strip conventional_crops for organic products ──────
-  // The cert gate already used conventional_crops flags to route the waterfall.
-  // Displaying them alongside an organic verdict would mislead the user —
-  // the organic certification supersedes the conventional-crop concern.
+  // The tree used conventional_crops flags in node 10 but on the organic path
+  // the cert supersedes the conventional-crop concern — strip to avoid confusing
+  // the user with a "conventional crops" card on an organic verdict.
   if (userLevel === 2 && clearedBy === 'organic') {
     flags = flags.filter(f => f.category !== 'conventional_crops');
   }
@@ -726,5 +881,6 @@ export default async function handler(req, res) {
     productCategory,
     unverifiedReason,
     isMeat,
+    oliveCaveat,
   });
 }
