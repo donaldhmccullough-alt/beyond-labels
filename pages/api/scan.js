@@ -410,7 +410,7 @@ async function fetchExplanation(verdict, flags, productName, ingredientsText, us
       system:     SYSTEM_PROMPT,
       messages: [{
         role:    'user',
-        content: buildUserMessage(verdict, flags, productName, ingredientsText, userLevel),
+        content: buildUserMessage(verdict, flags, productName, ingredientsText, userLevel, clearedBy),
       }],
     });
 

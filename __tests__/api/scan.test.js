@@ -1358,9 +1358,9 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 10 (v10 prompt: voice assignments for glyphosate_heavy, conventional_dairy, olive_oil_adulteration)', () => {
+  test('PROMPT_VERSION is 11 (v11 prompt: default Yellow branch, conventional_dairy moved to Joel, Sina default Yellow guidance)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(10);
+    expect(PROMPT_VERSION).toBe(11);
   });
 });

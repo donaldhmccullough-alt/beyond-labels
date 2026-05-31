@@ -37,8 +37,8 @@ When explaining flagged ingredients, each voice leads on what it knows best:
 - Joel leads on the farming and food system angle: how the ingredient got into the food supply, what it signals about how the product was made, what a better alternative looks like.
 Each flagged category is explained by ONE voice only — the voice that knows it best. Do not use both Sina and Joel in the same category explanation. Each explanation should open with the speaker's name — "Sina here —" or "Joel here —" — and then deliver their perspective in 2-3 sentences. The voices are assigned by category:
 
-- Sina owns: trans_fats, seed_oils, additives, natural_flavors, fortified_vitamins, natural_colorants, conventional_dairy, olive_oil_adulteration
-- Joel owns: conventional_crops, conventional_meat, bioengineering, glyphosate_heavy
+- Sina owns: trans_fats, seed_oils, additives, natural_flavors, fortified_vitamins, natural_colorants, olive_oil_adulteration, default_yellow
+- Joel owns: conventional_crops, conventional_meat, bioengineering, glyphosate_heavy, conventional_dairy
 
 Sina's explanations focus on what the ingredient does in the body — the biochemistry, the inflammation pathway, the regulatory failure, the missing long-term research.
 
@@ -46,9 +46,11 @@ Joel's explanations focus on what the ingredient signals about how the food was 
 
 For glyphosate_heavy: Joel explains pre-harvest desiccation — farmers spray glyphosate directly on crops like oats, wheat, and barley to dry them down evenly before harvest, which results in higher residue levels in the final food than typical field applications. He frames this as a farming system choice, not an accident — someone decided to prioritize yield consistency over residue minimization. He mentions the glyphosate-free certification as the clearest signal that a farmer chose differently. Tone: matter-of-fact, not alarmist. 2–3 sentences.
 
-For conventional_dairy: Sina explains the biochemistry angle — conventional dairy comes from cows fed GMO corn and soy, treated with synthetic hormones and antibiotics, which can affect the fatty acid profile, hormone content, and inflammatory load of the milk itself. She frames organic dairy as a meaningful upgrade, not just a marketing label — the feed, the hormones, and the antibiotic protocol are genuinely different. 2–3 sentences.
+For conventional_dairy: Joel explains the farming system angle — conventional dairy means cows fed GMO corn and soy, treated with synthetic hormones and antibiotics. He frames organic dairy as the signal that a farmer chose a different system — one where the feed, the hormone protocol, and the antibiotic policy are all genuinely different. Tone: matter-of-fact, not alarming. 2–3 sentences.
 
 For olive_oil_adulteration: Sina explains that olive oil — even in organic products — is one of the most frequently adulterated foods in the world, often cut with cheaper refined seed oils that are not disclosed on the label. She frames it as a supply chain integrity issue, not a condemnation of the product. The caveat is worth knowing and worth acting on — not a reason to put the product back on the shelf. 2–3 sentences.
+
+For the default yellow verdict (no flags, no certification): Sina owns this message. No serious flags were found, but this product is not organic and carries no certification — meaning there is no guarantee it wasn't exposed to pesticides, synthetic inputs, or processing we can't verify. She would not avoid it in a pinch, but it is not a product she reaches for routinely. Warm and honest, not alarmist. 2–3 sentences.
 
 Together your voice is:
 
@@ -87,7 +89,7 @@ When the user message indicates this is a Level 2 (Already Label-Conscious) user
  * @param {string|null} ingredients — raw ingredients text
  * @param {1|2}      userLevel   — 1 = beginner lenient, 2 = strict (default)
  */
-export function buildUserMessage(verdict, flags, productName, ingredients, userLevel = 2) {
+export function buildUserMessage(verdict, flags, productName, ingredients, userLevel = 2, clearedBy = null) {
   // Group flags by category so Claude sees one entry per category
   const byCategory = {};
   (flags || []).forEach(flag => {
@@ -125,7 +127,9 @@ export function buildUserMessage(verdict, flags, productName, ingredients, userL
     ? `Flagged categories:\n${categoryLines}`
     : verdict === 'red'
       ? 'No specific ingredients were flagged, but this product did not meet Level 2 certification standards — no USDA Organic or Non-GMO Project Verified certification was found. At Level 2, uncertified conventional products default to red. Explain this clearly and honestly to the user without being alarmist — acknowledge the ingredients look clean but note that without certification, pesticide and GE exposure cannot be ruled out for conventional crops.'
-      : 'No concerning ingredients found — product passed all checks.';
+      : verdict === 'yellow' && (flags || []).length === 0 && clearedBy === null
+        ? 'No specific ingredient flags were triggered, but this product is not organic and carries no certification. Sina should explain that while nothing alarming was found, the absence of organic certification means we can\'t verify what this product was exposed to during growing or processing. Honest and measured — not a condemnation, but not a clean bill of health either.'
+        : 'No concerning ingredients found — product passed all checks.';
 
   const levelContext = userLevel === 1
     ? '\nUser context: This is a Level 1 (building awareness) user. For any "awareness item" flags, use encouraging language that builds confidence rather than alarm — frame them as "something to be aware of as you build better habits" rather than urgent warnings.'
@@ -159,7 +163,7 @@ export default async function handler(req, res) {
   }
 
   // ── Input validation ──────────────────────────────────────────────────────
-  const { verdict, flags, productName, ingredients, userLevel: rawLevel } = req.body ?? {};
+  const { verdict, flags, productName, ingredients, userLevel: rawLevel, clearedBy = null } = req.body ?? {};
   const userLevel = rawLevel === 1 || rawLevel === 2 ? rawLevel : 2;
 
   if (!verdict) {
@@ -182,7 +186,7 @@ export default async function handler(req, res) {
       system:     SYSTEM_PROMPT,
       messages: [{
         role:    'user',
-        content: buildUserMessage(verdict, flags, productName, ingredients, userLevel),
+        content: buildUserMessage(verdict, flags, productName, ingredients, userLevel, clearedBy),
       }],
     });
 

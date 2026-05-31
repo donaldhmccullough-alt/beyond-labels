@@ -496,13 +496,15 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 - VerdictScreen never calls this endpoint directly — explanation is always returned inline in the POST /api/scan response.
 - **System prompt voice**: Sina McCullough (PhD Nutrition, autoimmune healing journey, science-first, rhetorical questions, inflammation/gut/gene-expression framing) + Joel Salatin (Polyface Farm, story-and-analogy thinker, farming-system angle). Together: empowering, not alarmist, skeptical of GRAS and industry-funded science.
 - **Level-aware tone**: Level 1 users get encouragement and awareness-building framing; Level 2 users get direct, graduate-level honesty. Controlled by `[Level 1 awareness item]` note injected per flagged category in `buildUserMessage()`.
-- **`flagsSection` in `buildUserMessage()` has three conditions**: (1) flags present → "Flagged categories: …" list; (2) no flags + verdict is `'red'` → certification-standards explanation (L2 uncertified conventional product — no USDA Organic or Non-GMO cert found; instruct Claude to be honest but not alarmist); (3) no flags + any other verdict → "No concerning ingredients found — product passed all checks." The third condition prevents Claude from writing a contradictory affirming summary when the verdict is red but the flags array is empty (L2 non-organic path default).
+- **`flagsSection` in `buildUserMessage()` has four conditions**: (1) flags present → "Flagged categories: …" list; (2) no flags + verdict is `'red'` → certification-standards explanation (L2 uncertified conventional product — no USDA Organic or Non-GMO cert found; instruct Claude to be honest but not alarmist); (3) no flags + `verdict === 'yellow'` + `clearedBy === null` → default Yellow branch (Sina explains no flags found but no organic cert, can't verify growing/processing exposure); (4) no flags + any other verdict → "No concerning ingredients found — product passed all checks." Branch 3 is checked before branch 4 so node-14 default Yellow products get Sina's honest-but-measured framing instead of an affirming clean-bill-of-health. `clearedBy` is the sixth parameter of `buildUserMessage()` (default `null`); Yellow verdicts with `clearedBy` set (non-gmo-project-verified, glyphosate-free) fall through to branch 4.
 - See Scan Cache Pattern section for current PROMPT_VERSION.
 
-### Explanation Prompt Voice Assignment (v6+, updated v10)
-Each flagged category is explained by ONE voice only. Sina owns: trans_fats, seed_oils, additives, natural_flavors, fortified_vitamins, natural_colorants, conventional_dairy, olive_oil_adulteration. Joel owns: conventional_crops, conventional_meat, bioengineering, glyphosate_heavy. Sina focuses on biochemistry and regulatory failure. Joel focuses on farming systems and food philosophy. Do not reassign voices without bumping PROMPT_VERSION.
+### Explanation Prompt Voice Assignment (v6+, updated v11)
+Each flagged category is explained by ONE voice only. Sina owns: trans_fats, seed_oils, additives, natural_flavors, fortified_vitamins, natural_colorants, olive_oil_adulteration, default_yellow. Joel owns: conventional_crops, conventional_meat, bioengineering, glyphosate_heavy, conventional_dairy. Sina focuses on biochemistry and regulatory failure. Joel focuses on farming systems and food philosophy. Do not reassign voices without bumping PROMPT_VERSION.
 
 **v10 additions**: glyphosate_heavy (Joel — pre-harvest desiccation angle, farming system choice, glyphosate-free cert signal), conventional_dairy (Sina — GMO feed/hormones/antibiotics biochemistry, organic as meaningful upgrade), olive_oil_adulteration (Sina — supply chain adulteration reality, caveat not condemnation). Inline `buildUserMessage()` annotations added for all three categories.
+
+**v11 changes**: conventional_dairy moved from Sina to Joel (farming system angle — GMO feed, hormones, antibiotics; organic as signal that farmer chose differently). Sina owns new `default_yellow` case — no flags, no cert, warm honest caveat that absence of organic certification means growing/processing exposure can't be verified. `buildUserMessage()` gains a fourth `flagsSection` branch triggered on `verdict === 'yellow' && flags.length === 0 && clearedBy === null` (checked before the existing clean-bill-of-health fallback). `clearedBy` added as sixth parameter to `buildUserMessage()` (default `null`); call sites in `scan.js` and the standalone `explain.js` handler updated accordingly.
 
 ### GET /api/swaps
 - Query params: `category` (one of 9 valid values, optional), `userLevel` (1 or 2, defaults to 2)
@@ -522,10 +524,10 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 10.**
+**Current PROMPT_VERSION is 11.**
 
 ### Cache Invalidation
-When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 10. All v9 rows must be purged before users will see the new prompt behavior.
+When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 11. Run `DELETE FROM scan_cache WHERE prompt_version < 11` in Supabase to purge all stale rows before deploying.
 
 ---
 
@@ -744,6 +746,11 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 | Hash | Description |
 |------|-------------|
 | `7593769` | fix: hide See Cleaner Swaps button on green verdicts — red/yellow → swaps, unverified/inconclusive → Scan Again, green → nothing |
+
+### Session — PROMPT_VERSION 11: default Yellow branch + conventional_dairy to Joel
+| Hash | Description |
+|------|-------------|
+| TBD | feat: v11 prompt — default Yellow branch (Sina, no-cert caveat); move conventional_dairy to Joel (farming system voice); add clearedBy param to buildUserMessage(); 2181 total |
 
 ---
 
