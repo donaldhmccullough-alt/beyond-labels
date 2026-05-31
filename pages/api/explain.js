@@ -123,6 +123,16 @@ export function buildUserMessage(verdict, flags, productName, ingredients, userL
     ? `\nIngredients list: ${ingredients.substring(0, 600)}`
     : '';
 
+  // TEMP DEBUG — remove after diagnosis
+  const _debugBranch = categoryLines
+    ? 'flags-present'
+    : verdict === 'red'
+      ? 'red-no-flags'
+      : verdict === 'yellow' && (flags || []).length === 0 && clearedBy === null
+        ? 'default-yellow'
+        : 'clean-bill';
+  console.log('[buildUserMessage]', { verdict, flagsLength: (flags || []).length, clearedBy, branch: _debugBranch });
+
   const flagsSection = categoryLines
     ? `Flagged categories:\n${categoryLines}`
     : verdict === 'red'
