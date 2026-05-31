@@ -738,7 +738,7 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 ### Session — PROMPT_VERSION 10: voice assignments for glyphosate_heavy, conventional_dairy, olive_oil_adulteration
 | Hash | Description |
 |------|-------------|
-| TBD | feat: v10 prompt — add Joel voice for glyphosate_heavy (pre-harvest desiccation), Sina voice for conventional_dairy (GMO feed/hormones) and olive_oil_adulteration (supply chain); bump PROMPT_VERSION to 10; suite M (1 test); 2625 total |
+| `c5e1d8d` | feat: v10 prompt — add Joel voice for glyphosate_heavy (pre-harvest desiccation), Sina voice for conventional_dairy (GMO feed/hormones) and olive_oil_adulteration (supply chain); bump PROMPT_VERSION to 10; suite M (1 test); 2181 total |
 
 ---
 
