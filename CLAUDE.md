@@ -740,6 +740,11 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 |------|-------------|
 | `c5e1d8d` | feat: v10 prompt — add Joel voice for glyphosate_heavy (pre-harvest desiccation), Sina voice for conventional_dairy (GMO feed/hormones) and olive_oil_adulteration (supply chain); bump PROMPT_VERSION to 10; suite M (1 test); 2181 total |
 
+### Session — VerdictScreen swap button verdict gate
+| Hash | Description |
+|------|-------------|
+| TBD | fix: hide See Cleaner Swaps button on green verdicts — red/yellow → swaps, unverified/inconclusive → Scan Again, green → nothing |
+
 ---
 
 ## What NOT to Do

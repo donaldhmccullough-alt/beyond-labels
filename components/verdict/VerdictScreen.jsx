@@ -253,11 +253,11 @@ export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, o
         <button onClick={onBack} style={{ margin: '20px 16px 0', width: 'calc(100% - 32px)', padding: 16, background: 'linear-gradient(135deg, #3A5A40, #4D7B55)', color: 'white', fontFamily: 'var(--font-inter), system-ui, sans-serif', fontSize: 15, fontWeight: 700, border: 'none', borderRadius: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: '0 4px 16px rgba(58,90,64,0.3)' }}>
           Scan Again →
         </button>
-      ) : (
+      ) : (verdict === 'red' || verdict === 'yellow') ? (
         <button onClick={onSeeSwaps} style={{ margin: '20px 16px 0', width: 'calc(100% - 32px)', padding: 16, background: 'linear-gradient(135deg, #3A5A40, #4D7B55)', color: 'white', fontFamily: 'var(--font-inter), system-ui, sans-serif', fontSize: 15, fontWeight: 700, border: 'none', borderRadius: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: '0 4px 16px rgba(58,90,64,0.3)' }}>
           See Cleaner Swaps →
         </button>
-      )}
+      ) : null}
 
       {/* MVP_MODE: onboarding nudge banner hidden.
           To restore: remove the MVP_MODE check in the useEffect above and
