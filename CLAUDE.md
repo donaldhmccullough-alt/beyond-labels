@@ -752,7 +752,7 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 |------|-------------|
 | `2ccd6cd` | feat: v11 prompt — default Yellow branch (Sina, no-cert caveat); move conventional_dairy to Joel (farming system voice); add clearedBy param to buildUserMessage(); 2181 total |
 | `4026bf8` | fix: add clearedBy param to fetchExplanation() — was undefined at buildUserMessage call site (fetchExplanation is a module-level helper, not the handler; clearedBy was in handler scope but never passed in) |
-| TBD | fix: default_yellow branch drives summary directly, not details key — remove default_yellow from voice assignment and SYSTEM_PROMPT guidance; instruct Claude to return details:{} for node-14 Yellow products; no PROMPT_VERSION bump, clear v11 cache manually |
+| `b146d44` | fix: default_yellow branch drives summary directly, not details key — remove default_yellow from voice assignment and SYSTEM_PROMPT guidance; instruct Claude to return details:{} for node-14 Yellow products; no PROMPT_VERSION bump, clear v11 cache manually |
 
 ---
 
