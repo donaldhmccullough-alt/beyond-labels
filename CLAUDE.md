@@ -750,7 +750,7 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 ### Session — PROMPT_VERSION 11: default Yellow branch + conventional_dairy to Joel
 | Hash | Description |
 |------|-------------|
-| TBD | feat: v11 prompt — default Yellow branch (Sina, no-cert caveat); move conventional_dairy to Joel (farming system voice); add clearedBy param to buildUserMessage(); 2181 total |
+| `2ccd6cd` | feat: v11 prompt — default Yellow branch (Sina, no-cert caveat); move conventional_dairy to Joel (farming system voice); add clearedBy param to buildUserMessage(); 2181 total |
 
 ---
 
