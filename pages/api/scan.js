@@ -397,7 +397,7 @@ async function captureUnverifiedIngredients(ingredients, productName, barcode) {
  * @param {1|2}      userLevel
  * @returns {Promise<{summary: string, details: object} | null>}
  */
-async function fetchExplanation(verdict, flags, productName, ingredientsText, userLevel) {
+async function fetchExplanation(verdict, flags, productName, ingredientsText, userLevel, clearedBy = null) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
 
@@ -833,7 +833,7 @@ export default async function handler(req, res) {
   // Skip for unverified and inconclusive results — no screened ingredients to
   // explain. Fail silently otherwise — null degrades gracefully on the frontend.
   const explanation = (verdict !== 'unverified' && verdict !== 'inconclusive')
-    ? await fetchExplanation(verdict, flags, productName, ingredientsText, userLevel)
+    ? await fetchExplanation(verdict, flags, productName, ingredientsText, userLevel, clearedBy)
     : null;
 
   // ── Write to scan cache ───────────────────────────────────────────────────
