@@ -743,7 +743,7 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 ### Session — VerdictScreen swap button verdict gate
 | Hash | Description |
 |------|-------------|
-| TBD | fix: hide See Cleaner Swaps button on green verdicts — red/yellow → swaps, unverified/inconclusive → Scan Again, green → nothing |
+| `7593769` | fix: hide See Cleaner Swaps button on green verdicts — red/yellow → swaps, unverified/inconclusive → Scan Again, green → nothing |
 
 ---
 
