@@ -10,6 +10,7 @@ const CATEGORY_INFO = {
   additives:           { icon: '🧪', label: 'Additives' },
   synthetic_additives: { icon: '🧪', label: 'Additives' },
   gluten_grains:       { icon: '🌾', label: 'Gluten Grains' },
+  glyphosate_heavy:    { icon: '☠️', label: 'High Glyphosate Risk' },
   conventional_meat:   { icon: '🥩', label: 'Conventional Meat' },
   conventional_dairy:  { icon: '🥛', label: 'Conventional Dairy' },
   fortified_vitamins:  { icon: '💊', label: 'Synthetic Fortification', description: 'Synthetic vitamins and minerals added back after industrial processing strips naturally occurring nutrients — a sign of heavily refined ingredients.' },

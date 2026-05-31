@@ -273,10 +273,10 @@ describe('C. Barcode 021000025350 — Kraft Mac & Cheese', () => {
     expect(flag.severity).toBe('reject');
   });
 
-  // ── Category 2: Conventional crops ──
-  test('flags wheat flour as conventional_crops / reject', () => {
+  // ── Category 2: Glyphosate-heavy crops (wheat flour moved from conventional_crops) ──
+  test('flags wheat flour as glyphosate_heavy / reject', () => {
     const flag = res.body.flags.find(
-      f => f.category === 'conventional_crops' && f.matchedIngredient === 'wheat flour'
+      f => f.category === 'glyphosate_heavy' && f.matchedIngredient === 'wheat flour'
     );
     expect(flag).toBeDefined();
     expect(flag.severity).toBe('reject');
@@ -944,8 +944,8 @@ describe('J. Level 1 explicit overrides', () => {
   // ── Override 1: gluten suppression ────────────────────────────────────────
 
   test('L1: product with only a gluten flag → verdict is green (gluten suppressed)', async () => {
-    // rye triggers gluten_grains only (not conventional_crops) — clean isolation for this test
-    mockFetchOnce(l1OffResp({ ingredientsText: 'rye, water, salt' }));
+    // rice flour triggers gluten_grains only — rye now also fires GLYPHOSATE_HEAVY so can't be used here
+    mockFetchOnce(l1OffResp({ ingredientsText: 'rice flour, water, salt' }));
     const res = makeRes();
     await handler(makeReq('POST', { barcode: '000000000101', userLevel: 1 }), res);
     expect(res.body.verdict).toBe('green');
@@ -1052,7 +1052,8 @@ describe('K. Level 2 flags cleanup', () => {
   // ── Fix 1: gluten strip at L2 ─────────────────────────────────────────────
 
   test('K1: L2 + organic cert + only gluten → verdict GREEN with empty flags array', async () => {
-    // rye triggers gluten_grains only; organic cert clears conventional_crops (none here anyway)
+    // rye triggers GLUTEN_GRAINS (stripped at L2) + GLYPHOSATE_HEAVY (cleared by usda-organic)
+    // → no flags remain → organic sub-tree → GREEN
     mockFetchOnce(l2CleanupOffResp({
       ingredientsText: 'rye, water, salt',
       labelsTags:      ['en:usda-organic'],
@@ -1065,10 +1066,10 @@ describe('K. Level 2 flags cleanup', () => {
   });
 
   test('K2: L2 + no cert + only gluten → verdict YELLOW with empty flags array (default node)', async () => {
-    // gluten stripped before tree; no cert, no conventional crops/meat/dairy/bio triggers
-    // → falls through to default node (step 14) → YELLOW (not RED; clean products
-    // without cert default to yellow rather than red in the new universal decision tree)
-    mockFetchOnce(l2CleanupOffResp({ ingredientsText: 'rye, water, salt' }));
+    // rice flour triggers gluten_grains only — rye also fires GLYPHOSATE_HEAVY; use rice flour
+    // for clean isolation. Gluten stripped before tree; no cert, no other triggers
+    // → falls through to default node (step 14) → YELLOW with empty flags
+    mockFetchOnce(l2CleanupOffResp({ ingredientsText: 'rice flour, water, salt' }));
     const res = makeRes();
     await handler(makeReq('POST', { barcode: '000000000202', userLevel: 2 }), res);
     expect(res.body.verdict).toBe('yellow');
