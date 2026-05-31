@@ -731,7 +731,7 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 ### Session — GLYPHOSATE_HEAVY category + CONVENTIONAL_CROPS expansion
 | Hash | Description |
 |------|-------------|
-| TBD | feat: add GLYPHOSATE_HEAVY category — oats/wheat/barley/rye/legumes/flax/buckwheat/millet; expand CONVENTIONAL_CROPS with full corn/soy/potato/papaya/alfalfa/squash/cottonseed/sugarbeet lists; detection loop with organic clearance and glyphosate-free escape hatch; update ConcernCard; 11 new tests; 2045 rulesEngine + 135 scan = 2180 total |
+| `5863e86` | feat: add GLYPHOSATE_HEAVY category — oats/wheat/barley/rye/legumes/flax/buckwheat/millet; expand CONVENTIONAL_CROPS with full corn/soy/potato/papaya/alfalfa/squash/cottonseed/sugarbeet lists; detection loop with organic clearance and glyphosate-free escape hatch; update ConcernCard; 11 new tests; 2045 rulesEngine + 135 scan = 2180 total |
 
 ---
 
