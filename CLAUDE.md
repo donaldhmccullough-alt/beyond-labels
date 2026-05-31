@@ -63,8 +63,8 @@ components/
 lib/
   rulesEngine.js          — deterministic ingredient analysis engine (core logic)
   rulesEngine.test.js     — Jest tests for rules engine (33 describe blocks; 2045 tests total; block 20 = SYNTHETIC_ADDITIVES bucket-1 expansion (91 tests); block 21 = FD&C "No." normalization (19 tests); block 22 = mechanically separated meat (3 tests); block 23 = interesterified variants, lake forms, dye synonyms, new E-numbers, stearyl emulsifiers, cyclamate (78 tests); block 24 = synonym/E-number expansion: nitrates, BVO, bleaching agents, BHA/BHT names, SLS, E-numbers e320/e321/e924/e950–e955 (50 tests); block 25 = gluten grains expansion: ancient grains, botanical names, asafoetida/hing, smoke flavoring, brown rice syrup (34 tests); block 26 = H2: artifact phrases and red list additions — polysorbates, synthetic phosphates, red 3/#-normalizer (17 tests); block 27 = I: Sina gluten expansion — 65 new GLUTEN_GRAINS entries across corn derivatives, wheat flour varieties, barley/rye/oat forms, processed ingredients (22 tests); block 28 = FORTIFIED_VITAMINS group — synthetic vitamin fortification detection (61 tests); block 29 = NATURAL_COLORANTS group — plant-derived colorant detection (12 tests); block 32 = containsMilkDerived, containsEggDerived, ALWAYS_IGNORE_INGREDIENTS — new helper functions and ignore-list constant (32 tests); block 33 = GLYPHOSATE_HEAVY — high-glyphosate-risk crops: pea protein, oat milk, buckwheat, ascorbic acid, lecithin, potato starch, papaya, glyphosate-free escape hatch for oats/wheat, GLYPHOSATE_HEAVY export (11 tests))
-  __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (12 suites A–L; 135 tests total; suite H = L2 decision tree coverage: cert gate, organic path, non-organic path, seafood/meat/dairy logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 16 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests; suite J = L1 explicit overrides — gluten suppression, conventional meat caution injection (8 tests); suite K = L2 flags array cleanup — gluten suppression and organic conventional_crops strip (5 tests); suite L = universal L2 decision tree — 15 integration scenarios covering all 14 nodes)
-  ── Combined test total: 2180 tests (2045 rulesEngine + 135 scan) ──
+  __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (13 suites A–M; 136 tests total; suite H = L2 decision tree coverage: cert gate, organic path, non-organic path, seafood/meat/dairy logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 16 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests; suite J = L1 explicit overrides — gluten suppression, conventional meat caution injection (8 tests); suite K = L2 flags array cleanup — gluten suppression and organic conventional_crops strip (5 tests); suite L = universal L2 decision tree — 15 integration scenarios covering all 14 nodes; suite M = PROMPT_VERSION contract — 1 test)
+  ── Combined test total: 2181 tests (2045 rulesEngine + 136 scan) ──
   onboardingData.js       — QUESTIONS array (13 Qs), STAGES array (5 stages), getStageFromScore()
   userProfile.js          — localStorage profile read/write/clear helpers
   userLevel.js            — getUserLevel(), setUserLevel(), hasUserLevel() — localStorage bl_user_level
@@ -499,8 +499,10 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 - **`flagsSection` in `buildUserMessage()` has three conditions**: (1) flags present → "Flagged categories: …" list; (2) no flags + verdict is `'red'` → certification-standards explanation (L2 uncertified conventional product — no USDA Organic or Non-GMO cert found; instruct Claude to be honest but not alarmist); (3) no flags + any other verdict → "No concerning ingredients found — product passed all checks." The third condition prevents Claude from writing a contradictory affirming summary when the verdict is red but the flags array is empty (L2 non-organic path default).
 - See Scan Cache Pattern section for current PROMPT_VERSION.
 
-### Explanation Prompt Voice Assignment (v6+)
-Each flagged category is explained by ONE voice only. Sina owns: trans_fats, seed_oils, additives, natural_flavors, fortified_vitamins, natural_colorants. Joel owns: conventional_crops, conventional_meat, bioengineering. Sina focuses on biochemistry and regulatory failure. Joel focuses on farming systems and food philosophy. Do not reassign voices without bumping PROMPT_VERSION.
+### Explanation Prompt Voice Assignment (v6+, updated v10)
+Each flagged category is explained by ONE voice only. Sina owns: trans_fats, seed_oils, additives, natural_flavors, fortified_vitamins, natural_colorants, conventional_dairy, olive_oil_adulteration. Joel owns: conventional_crops, conventional_meat, bioengineering, glyphosate_heavy. Sina focuses on biochemistry and regulatory failure. Joel focuses on farming systems and food philosophy. Do not reassign voices without bumping PROMPT_VERSION.
+
+**v10 additions**: glyphosate_heavy (Joel — pre-harvest desiccation angle, farming system choice, glyphosate-free cert signal), conventional_dairy (Sina — GMO feed/hormones/antibiotics biochemistry, organic as meaningful upgrade), olive_oil_adulteration (Sina — supply chain adulteration reality, caveat not condemnation). Inline `buildUserMessage()` annotations added for all three categories.
 
 ### GET /api/swaps
 - Query params: `category` (one of 9 valid values, optional), `userLevel` (1 or 2, defaults to 2)
@@ -520,10 +522,10 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 9.**
+**Current PROMPT_VERSION is 10.**
 
 ### Cache Invalidation
-When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 9. All v8 rows must be purged before users will see the new prompt behavior.
+When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 10. All v9 rows must be purged before users will see the new prompt behavior.
 
 ---
 
@@ -732,6 +734,11 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 | Hash | Description |
 |------|-------------|
 | `5863e86` | feat: add GLYPHOSATE_HEAVY category — oats/wheat/barley/rye/legumes/flax/buckwheat/millet; expand CONVENTIONAL_CROPS with full corn/soy/potato/papaya/alfalfa/squash/cottonseed/sugarbeet lists; detection loop with organic clearance and glyphosate-free escape hatch; update ConcernCard; 11 new tests; 2045 rulesEngine + 135 scan = 2180 total |
+
+### Session — PROMPT_VERSION 10: voice assignments for glyphosate_heavy, conventional_dairy, olive_oil_adulteration
+| Hash | Description |
+|------|-------------|
+| TBD | feat: v10 prompt — add Joel voice for glyphosate_heavy (pre-harvest desiccation), Sina voice for conventional_dairy (GMO feed/hormones) and olive_oil_adulteration (supply chain); bump PROMPT_VERSION to 10; suite M (1 test); 2625 total |
 
 ---
 

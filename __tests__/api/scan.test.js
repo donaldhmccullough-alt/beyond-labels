@@ -1352,3 +1352,15 @@ describe('L. Universal L2 decision tree', () => {
     expect(res.body.flags).toHaveLength(0);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// M. Cache version — PROMPT_VERSION contract
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('M. PROMPT_VERSION', () => {
+  test('PROMPT_VERSION is 10 (v10 prompt: voice assignments for glyphosate_heavy, conventional_dairy, olive_oil_adulteration)', () => {
+    // Import from lib/cacheVersion — never from pages/api/explain.js
+    const { PROMPT_VERSION } = require('../../lib/cacheVersion');
+    expect(PROMPT_VERSION).toBe(10);
+  });
+});
