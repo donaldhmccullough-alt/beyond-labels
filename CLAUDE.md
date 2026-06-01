@@ -757,7 +757,7 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 ### Session — REVIEWED_CLEAN_INGREDIENTS display filter
 | Hash | Description |
 |------|-------------|
-| `TBD` | feat: add REVIEWED_CLEAN_INGREDIENTS — display-only Set filter suppressing known-clean whole foods from unverifiedIngredients output; export from rulesEngine; 5 new tests (block 35); 2186 total |
+| `15f7e19` | feat: add REVIEWED_CLEAN_INGREDIENTS — display-only Set filter suppressing known-clean whole foods from unverifiedIngredients output; export from rulesEngine; 5 new tests (block 35); 2186 total |
 
 ---
 
