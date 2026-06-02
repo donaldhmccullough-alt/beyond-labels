@@ -63,8 +63,8 @@ components/
 lib/
   rulesEngine.js          — deterministic ingredient analysis engine (core logic)
   rulesEngine.test.js     — Jest tests for rules engine (35 describe blocks; 2050 tests total; block 20 = SYNTHETIC_ADDITIVES bucket-1 expansion (91 tests); block 21 = FD&C "No." normalization (19 tests); block 22 = mechanically separated meat (3 tests); block 23 = interesterified variants, lake forms, dye synonyms, new E-numbers, stearyl emulsifiers, cyclamate (78 tests); block 24 = synonym/E-number expansion: nitrates, BVO, bleaching agents, BHA/BHT names, SLS, E-numbers e320/e321/e924/e950–e955 (50 tests); block 25 = gluten grains expansion: ancient grains, botanical names, asafoetida/hing, smoke flavoring, brown rice syrup (34 tests); block 26 = H2: artifact phrases and red list additions — polysorbates, synthetic phosphates, red 3/#-normalizer (17 tests); block 27 = I: Sina gluten expansion — 65 new GLUTEN_GRAINS entries across corn derivatives, wheat flour varieties, barley/rye/oat forms, processed ingredients (22 tests); block 28 = FORTIFIED_VITAMINS group — synthetic vitamin fortification detection (61 tests); block 29 = NATURAL_COLORANTS group — plant-derived colorant detection (12 tests); block 32 = containsMilkDerived, containsEggDerived, ALWAYS_IGNORE_INGREDIENTS — new helper functions and ignore-list constant (32 tests); block 33 = GLYPHOSATE_HEAVY — high-glyphosate-risk crops: pea protein, oat milk, buckwheat, ascorbic acid, lecithin, potato starch, papaya, glyphosate-free escape hatch for oats/wheat, GLYPHOSATE_HEAVY export (11 tests); block 34 = CONVENTIONAL_CROPS_NO_FLAG — sunflower lecithin range-claim without flag (5 tests); block 35 = REVIEWED_CLEAN_INGREDIENTS — display-only suppression filter, Set export, almond flour/arrowroot suppressed, unknown ingredient still surfaces, engine flags/verdict unaffected (5 tests))
-  __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (13 suites A–M; 136 tests total; suite H = L2 decision tree coverage: cert gate, organic path, non-organic path, seafood/meat/dairy logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 16 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests; suite J = L1 explicit overrides — gluten suppression, conventional meat caution injection (8 tests); suite K = L2 flags array cleanup — gluten suppression and organic conventional_crops strip (5 tests); suite L = universal L2 decision tree — 15 integration scenarios covering all 14 nodes; suite M = PROMPT_VERSION contract — 1 test)
-  ── Combined test total: 2186 tests (2050 rulesEngine + 136 scan) ──
+  __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (14 suites A–N; 140 tests total; suite H = L2 decision tree coverage: cert gate, organic path, non-organic path, seafood/meat/dairy logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 16 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests; suite J = L1 explicit overrides — gluten suppression, conventional meat caution injection (8 tests); suite K = L2 flags array cleanup — gluten suppression and organic conventional_crops strip (5 tests); suite L = universal L2 decision tree — 15 integration scenarios covering all 14 nodes; suite M = PROMPT_VERSION contract — 1 test; suite N = wild-caught detection — product name signals, farmed exclusions, seed oil short-circuit (4 tests))
+  ── Combined test total: 2190 tests (2050 rulesEngine + 140 scan) ──
   onboardingData.js       — QUESTIONS array (13 Qs), STAGES array (5 stages), getStageFromScore()
   userProfile.js          — localStorage profile read/write/clear helpers
   userLevel.js            — getUserLevel(), setUserLevel(), hasUserLevel() — localStorage bl_user_level
@@ -282,8 +282,8 @@ For `userLevel === 2`, `scan.js` applies a universal 14-node decision tree **aft
 | 3 | `trans_fats` flag present | RED | null |
 | 3b | `natural_flavors` flag present | RED | null |
 | 4 | `usda-organic` label | → organic sub-tree | `'organic'` |
-| 5 | Seafood + `wild-caught` label | GREEN | `'wild-caught'` |
-| 5b | Seafood + no wild-caught label | RED (inject `conventional_meat` flag) | null |
+| 5 | `detectWildCaught()` returns true (OFF label OR product name contains wild-caught signal, no farmed exclusions) | GREEN | `'wild-caught'` |
+| 5b | `isSeafood` + no wild-caught signal detected | RED (inject `conventional_meat` flag) | null |
 | 6 | Game meat category (`en:game-meats`) | GREEN | null |
 | 7 | `non-gmo-project-verified` label | YELLOW | `'non-gmo-project-verified'` |
 | 8 | `isMeat` (non-seafood, non-game) OR `containsEggDerived(maskedText)` | RED (inject `conventional_meat` flag) | null |
@@ -329,6 +329,11 @@ const GAME_MEAT_CATEGORIES = new Set(['en:game-meats', 'en:game', 'en:wild-game'
 'en:farm-raised':          'farmed',
 'en:glyphosate-heavy':     'glyphosate-heavy',
 ```
+
+**`detectWildCaught(productName, labelsDetected, ingredientsText)` helper** (added v12):
+- Combines two positive signals: (1) `labelsDetected.includes('wild-caught')` and (2) product name contains `'wild-caught'` or `'wild caught'` (case-insensitive).
+- Farmed exclusions take precedence: product name contains `'farm-raised'`, `'farmed'`, or `'atlantic salmon'` → returns false. Ingredients contain `'astaxanthin'` (synthetic farmed-salmon color additive) → returns false.
+- Used at Node 5 of the L2 tree. Node 5b (`isSeafood` + no wild-caught signal) still applies for seafood that is definitively not wild-caught.
 
 **`matchedIngredient: ''` convention** — injected flags (`conventional_meat`, `conventional_dairy`) always use an empty string, not `null`. `ConcernCard` asserts `typeof matchedIngredient === 'string'`; do not change this to `null`.
 
@@ -524,10 +529,10 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 11.**
+**Current PROMPT_VERSION is 12.**
 
 ### Cache Invalidation
-When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 11. Run `DELETE FROM scan_cache WHERE prompt_version < 11` in Supabase to purge all stale rows before deploying.
+When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 12. Run `DELETE FROM scan_cache WHERE prompt_version < 12` in Supabase to purge all stale rows before deploying.
 
 ---
 
@@ -758,6 +763,11 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 | Hash | Description |
 |------|-------------|
 | `15f7e19` | feat: add REVIEWED_CLEAN_INGREDIENTS — display-only Set filter suppressing known-clean whole foods from unverifiedIngredients output; export from rulesEngine; 5 new tests (block 35); 2186 total |
+
+### Session — wild-caught detection via product name + PROMPT_VERSION 12
+| Hash | Description |
+|------|-------------|
+| `TBD` | feat: add detectWildCaught() — wild-caught detection via OFF label OR product name; farmed exclusions (farm-raised/atlantic salmon/astaxanthin); replace Node 5 in L2 tree; bump PROMPT_VERSION to 12; 4 new tests (suite N); 2190 total |
 
 ---
 

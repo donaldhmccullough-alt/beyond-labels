@@ -1358,9 +1358,104 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 11 (v11 prompt: default Yellow branch, conventional_dairy moved to Joel, Sina default Yellow guidance)', () => {
+  test('PROMPT_VERSION is 12 (v12: wild-caught detection via product name + farmed exclusions)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(11);
+    expect(PROMPT_VERSION).toBe(12);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// N. Wild-caught detection — product name signals + farmed exclusions
+//    Tests the detectWildCaught() helper wired into Node 5 of the L2 tree.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('N. Wild-caught detection', () => {
+  /** Minimal OFF response builder for Suite N tests. */
+  function wildCaughtOffResp({
+    productName     = 'Test Fish Product',
+    ingredientsText = 'fish, water, salt',
+    labelsTags      = [],
+    categoriesTags  = [],
+  } = {}) {
+    return {
+      status: 1,
+      product: {
+        product_name:     productName,
+        ingredients_text: ingredientsText,
+        labels_tags:      labelsTags,
+        categories_tags:  categoriesTags,
+      },
+    };
+  }
+
+  // ── N1: product name detection (no OFF label) ─────────────────────────────
+
+  test('N1: "Wild-Caught Pacific Cod" (name signal only, no OFF label) → GREEN, clearedBy "wild-caught"', async () => {
+    mockFetchOnce(wildCaughtOffResp({
+      productName:     'Wild-Caught Pacific Cod Fillets',
+      ingredientsText: 'cod, water, salt',
+      categoriesTags:  ['en:cod'],
+      labelsTags:      [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000401', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.clearedBy).toBe('wild-caught');
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+  });
+
+  // ── N2: name detection when OFF has no seafood category tag ──────────────
+
+  test('N2: "Wild Caught Alaskan Salmon" (name signal, no OFF seafood category) → GREEN', async () => {
+    // Product has no en:salmon/en:seafood category in OFF — wild-caught is
+    // detected purely from the product name, not from the category or label.
+    mockFetchOnce(wildCaughtOffResp({
+      productName:     'Wild Caught Alaskan Salmon',
+      ingredientsText: 'salmon, water, salt',
+      categoriesTags:  [],  // deliberately no seafood category
+      labelsTags:      [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000402', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.clearedBy).toBe('wild-caught');
+  });
+
+  // ── N3: farmed exclusion — "farm-raised" in product name → RED ───────────
+
+  test('N3: "Farm-Raised Atlantic Salmon" → RED with conventional_meat flag (farmed exclusion fires)', async () => {
+    // "farm-raised" in product name causes detectWildCaught to return false.
+    // isSeafood = true (en:salmon) → Node 5b → RED with conventional_meat.
+    mockFetchOnce(wildCaughtOffResp({
+      productName:     'Farm-Raised Atlantic Salmon',
+      ingredientsText: 'atlantic salmon, water, salt',
+      categoriesTags:  ['en:salmon'],
+      labelsTags:      [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000403', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    const flag = res.body.flags.find(f => f.category === 'conventional_meat');
+    expect(flag).toBeDefined();
+    expect(flag.severity).toBe('reject');
+  });
+
+  // ── N4: seed oil short-circuits the tree before wild-caught node ──────────
+
+  test('N4: wild-caught salmon WITH canola oil → RED for seed_oils, no conventional_meat flag', async () => {
+    // Nodes 1–3 (seed_oils instant-red) fire before Node 5.
+    // The product would be wild-caught, but the seed oil catches it first.
+    mockFetchOnce(wildCaughtOffResp({
+      productName:     'Wild-Caught Salmon in Canola Oil',
+      ingredientsText: 'salmon, canola oil, salt',
+      categoriesTags:  ['en:salmon'],
+      labelsTags:      [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000404', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'seed_oils')).toBe(true);
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
   });
 });

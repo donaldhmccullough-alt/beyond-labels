@@ -180,6 +180,49 @@ function isGameMeatProduct(categoriesTags) {
   return categoriesTags.some(t => GAME_MEAT_CATEGORIES.has(String(t).toLowerCase()));
 }
 
+// ── Wild-caught detection ─────────────────────────────────────────────────
+
+/**
+ * Returns true if the product is reliably identified as wild-caught fish.
+ * Combines OFF label data with product name signals, then applies exclusion
+ * guards for known farmed indicators.
+ *
+ * Positive signals (checked in order):
+ *   (1) OFF label 'wild-caught' (normalised from labels_tags via normalizeLabelTags)
+ *   (2) Product name contains "wild-caught" or "wild caught" (case-insensitive)
+ *
+ * Farmed exclusions (take precedence over all positive signals):
+ *   - Product name contains "farm-raised", "farmed", or "atlantic salmon"
+ *     ('atlantic salmon' is an aquaculture proxy — virtually all atlantic salmon
+ *     sold commercially is farmed)
+ *   - Ingredients text contains "astaxanthin" (a synthetic color additive used in
+ *     farmed salmon to simulate the pink pigment of wild fish)
+ *
+ * @param {string}      productName    — product name from OFF
+ * @param {string[]}    labelsDetected — normalised labels from normalizeLabelTags()
+ * @param {string|null} ingredientsText — raw ingredients text
+ * @returns {boolean}
+ */
+function detectWildCaught(productName, labelsDetected, ingredientsText) {
+  const nameLower = (productName || '').toLowerCase();
+  const ingLower  = (ingredientsText || '').toLowerCase();
+
+  // ── Farmed exclusions take precedence over all positive signals ───────────
+  const FARMED_NAME_SIGNALS = ['farm-raised', 'farmed', 'atlantic salmon'];
+  if (FARMED_NAME_SIGNALS.some(s => nameLower.includes(s))) return false;
+  if (ingLower.includes('astaxanthin')) return false;
+
+  // ── Positive wild-caught signals ──────────────────────────────────────────
+  // Signal 1: OFF label (already normalised from labels_tags)
+  if (labelsDetected.includes('wild-caught')) return true;
+
+  // Signal 2: Product name
+  const WILD_NAME_SIGNALS = ['wild-caught', 'wild caught'];
+  if (WILD_NAME_SIGNALS.some(s => nameLower.includes(s))) return true;
+
+  return false;
+}
+
 /**
  * Replace each ALWAYS_IGNORE_INGREDIENTS term in the already-lowercased
  * `text` with same-length spaces. Prevents false positives in ingredient-
@@ -664,7 +707,6 @@ export default async function handler(req, res) {
     // ── Pre-compute certification and product-type booleans ─────────────────
     const hasOrganic         = labelsDetected.includes('usda-organic');
     const hasNonGmo          = labelsDetected.includes('non-gmo-project-verified');
-    const hasWildCaught      = labelsDetected.includes('wild-caught');
     const hasGlyphosateFree  = labelsDetected.includes('glyphosate-free');
     const hasGlyphosateHeavy = labelsDetected.includes('glyphosate-heavy');
     const isSeafood          = isSeafoodProduct(categoriesTags);
@@ -732,21 +774,24 @@ export default async function handler(req, res) {
     } else {
       // ── NON-ORGANIC PATH (Nodes 5–14) ────────────────────────────────────
 
-      if (isSeafood) {
-        // Node 5: Seafood — wild-caught is clean; unlabeled/farmed is not.
-        if (hasWildCaught) {
-          verdict   = 'green';
-          clearedBy = 'wild-caught';
-        } else {
-          verdict   = 'red';
-          clearedBy = null;
-          flags = [{
-            category:          'conventional_meat',
-            severity:          'reject',
-            matchedIngredient: '',
-            summary:           'Farmed or unlabeled seafood — wild-caught certification not found',
-          }, ...flags];
-        }
+      if (detectWildCaught(productName, labelsDetected, ingredientsText)) {
+        // Node 5: Wild-caught fish — clean regardless of how the product is
+        // categorised in OFF. Detected via OFF label OR product name; farmed
+        // signals (name contains "farm-raised"/"farmed"/"atlantic salmon", or
+        // ingredients contain "astaxanthin") take precedence and skip this node.
+        verdict   = 'green';
+        clearedBy = 'wild-caught';
+
+      } else if (isSeafood) {
+        // Node 5b: Seafood without a wild-caught signal — farmed or unlabeled.
+        verdict   = 'red';
+        clearedBy = null;
+        flags = [{
+          category:          'conventional_meat',
+          severity:          'reject',
+          matchedIngredient: '',
+          summary:           'Farmed or unlabeled seafood — wild-caught certification not found',
+        }, ...flags];
 
       } else if (isGameMeat) {
         // Node 6: Game meat — wild-harvested by nature, no certification needed.
