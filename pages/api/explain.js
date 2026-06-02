@@ -87,7 +87,7 @@ When the user message indicates this is a Level 2 (Already Label-Conscious) user
  * @param {string|null} ingredients — raw ingredients text
  * @param {1|2}      userLevel   — 1 = beginner lenient, 2 = strict (default)
  */
-export function buildUserMessage(verdict, flags, productName, ingredients, userLevel = 2, clearedBy = null) {
+export function buildUserMessage(verdict, flags, productName, ingredients, userLevel = 2, clearedBy = null, unverifiedReason = null) {
   // Group flags by category so Claude sees one entry per category
   const byCategory = {};
   (flags || []).forEach(flag => {
@@ -125,9 +125,11 @@ export function buildUserMessage(verdict, flags, productName, ingredients, userL
     ? `Flagged categories:\n${categoryLines}`
     : verdict === 'red'
       ? 'No specific ingredients were flagged, but this product did not meet Level 2 certification standards — no USDA Organic or Non-GMO Project Verified certification was found. At Level 2, uncertified conventional products default to red. Explain this clearly and honestly to the user without being alarmist — acknowledge the ingredients look clean but note that without certification, pesticide and GE exposure cannot be ruled out for conventional crops.'
-      : verdict === 'yellow' && (flags || []).length === 0 && clearedBy === null
-        ? 'No specific ingredient flags were triggered, but this product carries no organic certification. Write the summary as Sina — honest and measured: nothing alarming was found, but the absence of organic certification means we cannot verify what this product was exposed to during growing or processing. Not a product she would avoid in a pinch, but not one she reaches for routinely. Return "details": {} — empty, no flagged categories to detail.'
-        : 'No concerning ingredients found — product passed all checks.';
+      : verdict === 'yellow' && (flags || []).length === 0 && clearedBy === null && unverifiedReason === 'cert_unconfirmed'
+        ? 'All ingredients in this product appear to be organically labeled, but we could not confirm USDA organic certification from our product database. Do not describe this product as certified organic. Instead, tell the user honestly that the ingredients all look organic, but you couldn\'t verify the seal, and encourage them to flip the package over and look for the USDA organic seal — if it\'s there, this product is a green. Return "details": {} — empty, no flagged categories to detail.'
+        : verdict === 'yellow' && (flags || []).length === 0 && clearedBy === null
+          ? 'No specific ingredient flags were triggered, but this product carries no organic certification. Write the summary as Sina — honest and measured: nothing alarming was found, but the absence of organic certification means we cannot verify what this product was exposed to during growing or processing. Not a product she would avoid in a pinch, but not one she reaches for routinely. Return "details": {} — empty, no flagged categories to detail.'
+          : 'No concerning ingredients found — product passed all checks.';
 
   const levelContext = userLevel === 1
     ? '\nUser context: This is a Level 1 (building awareness) user. For any "awareness item" flags, use encouraging language that builds confidence rather than alarm — frame them as "something to be aware of as you build better habits" rather than urgent warnings.'
@@ -161,7 +163,7 @@ export default async function handler(req, res) {
   }
 
   // ── Input validation ──────────────────────────────────────────────────────
-  const { verdict, flags, productName, ingredients, userLevel: rawLevel, clearedBy = null } = req.body ?? {};
+  const { verdict, flags, productName, ingredients, userLevel: rawLevel, clearedBy = null, unverifiedReason = null } = req.body ?? {};
   const userLevel = rawLevel === 1 || rawLevel === 2 ? rawLevel : 2;
 
   if (!verdict) {
@@ -184,7 +186,7 @@ export default async function handler(req, res) {
       system:     SYSTEM_PROMPT,
       messages: [{
         role:    'user',
-        content: buildUserMessage(verdict, flags, productName, ingredients, userLevel, clearedBy),
+        content: buildUserMessage(verdict, flags, productName, ingredients, userLevel, clearedBy, unverifiedReason),
       }],
     });
 

@@ -223,6 +223,62 @@ function detectWildCaught(productName, labelsDetected, ingredientsText) {
   return false;
 }
 
+// ── Cert-unconfirmed detection ────────────────────────────────────────────
+
+/**
+ * Trivial ingredients that do not require organic certification and should
+ * not block the all-organic-prefix determination. These are simple processing
+ * necessities: water variants and salt variants.
+ */
+const CERT_UNCONFIRMED_TRIVIAL = new Set([
+  'water', 'filtered water', 'purified water', 'spring water',
+  'sea salt', 'salt', 'himalayan salt', 'himalayan pink salt',
+  'pink himalayan salt',
+]);
+
+/**
+ * Returns true when every non-trivial ingredient token in the ingredient text
+ * is prefixed with "organic" (case-insensitive). Used to detect products that
+ * appear fully organic from their ingredient list even though no USDA cert tag
+ * was found in the Open Food Facts database.
+ *
+ * Trivial ingredients (water and salt variants) are excluded from the check —
+ * they are never organically certified and their presence should not block
+ * the detection.
+ *
+ * Returns false when:
+ *   - ingredientsText is empty/null
+ *   - only trivial ingredients exist (e.g., "water, sea salt")
+ *   - any non-trivial ingredient is NOT prefixed with "organic"
+ *
+ * @param {string|null} ingredientsText — raw ingredient string from OFF
+ * @returns {boolean}
+ */
+function allIngredientsPrefixedOrganic(ingredientsText) {
+  if (!ingredientsText) return false;
+
+  // Strip parenthetical sub-ingredient lists so nested ingredients inside
+  // a compound entry don't produce spurious tokens.
+  // e.g. "Organic broth (organic carrots, water)" → "Organic broth "
+  const stripped = ingredientsText.replace(/\([^)]*\)/g, '');
+
+  // Split on commas; normalise each token (strip trailing punctuation/symbols)
+  const tokens = stripped
+    .split(',')
+    .map(t => t.trim().replace(/[.*†‡]/g, '').trim().toLowerCase())
+    .filter(t => t.length > 0);
+
+  if (tokens.length === 0) return false;
+
+  // Remove trivial ingredients before the organic-prefix check
+  const nonTrivial = tokens.filter(t => !CERT_UNCONFIRMED_TRIVIAL.has(t));
+
+  // No non-trivial ingredients (e.g., "water, sea salt") — never flag
+  if (nonTrivial.length === 0) return false;
+
+  return nonTrivial.every(t => t.startsWith('organic'));
+}
+
 /**
  * Replace each ALWAYS_IGNORE_INGREDIENTS term in the already-lowercased
  * `text` with same-length spaces. Prevents false positives in ingredient-
@@ -440,7 +496,7 @@ async function captureUnverifiedIngredients(ingredients, productName, barcode) {
  * @param {1|2}      userLevel
  * @returns {Promise<{summary: string, details: object} | null>}
  */
-async function fetchExplanation(verdict, flags, productName, ingredientsText, userLevel, clearedBy = null) {
+async function fetchExplanation(verdict, flags, productName, ingredientsText, userLevel, clearedBy = null, unverifiedReason = null) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
 
@@ -453,7 +509,7 @@ async function fetchExplanation(verdict, flags, productName, ingredientsText, us
       system:     SYSTEM_PROMPT,
       messages: [{
         role:    'user',
-        content: buildUserMessage(verdict, flags, productName, ingredientsText, userLevel, clearedBy),
+        content: buildUserMessage(verdict, flags, productName, ingredientsText, userLevel, clearedBy, unverifiedReason),
       }],
     });
 
@@ -615,7 +671,7 @@ export default async function handler(req, res) {
   const categoriesTags   = product.categories_tags ?? [];
   const productCategory  = mapProductCategory(categoriesTags);
   const isMeat           = isMeatProduct(categoriesTags);
-  const unverifiedReason = !ingredientsText ? 'no_ingredients' : null;
+  let unverifiedReason = !ingredientsText ? 'no_ingredients' : null;
 
   // ── Run the rules engine ──────────────────────────────────────────────────
   const engineResult = analyzeIngredients(ingredientsText, labelsDetected, userLevel);
@@ -863,6 +919,24 @@ export default async function handler(req, res) {
     flags = flags.filter(f => f.category !== 'conventional_crops');
   }
 
+  // ── Cert-unconfirmed detection ────────────────────────────────────────────
+  // When the verdict is default-Yellow (no flags, no clearedBy) and every
+  // non-trivial ingredient in the text is prefixed "Organic", the product
+  // looks fully organic but no USDA cert tag was found in OFF. Signal this
+  // to the explanation layer so Claude gives the user the right message:
+  // "the label looks organic — flip the package and check for the seal."
+  // This runs for both user levels; in practice it only fires at L2 because
+  // L1 organic-prefix products return green from the engine.
+  if (
+    verdict === 'yellow' &&
+    flags.length === 0 &&
+    clearedBy === null &&
+    ingredientsText &&
+    allIngredientsPrefixedOrganic(ingredientsText)
+  ) {
+    unverifiedReason = 'cert_unconfirmed';
+  }
+
   // ── Capture unverified ingredients ───────────────────────────────────────
   // Awaited so Vercel doesn't terminate the function before the write lands.
   // A failed write is logged and skipped — it never blocks the response.
@@ -878,7 +952,7 @@ export default async function handler(req, res) {
   // Skip for unverified and inconclusive results — no screened ingredients to
   // explain. Fail silently otherwise — null degrades gracefully on the frontend.
   const explanation = (verdict !== 'unverified' && verdict !== 'inconclusive')
-    ? await fetchExplanation(verdict, flags, productName, ingredientsText, userLevel, clearedBy)
+    ? await fetchExplanation(verdict, flags, productName, ingredientsText, userLevel, clearedBy, unverifiedReason)
     : null;
 
   // ── Write to scan cache ───────────────────────────────────────────────────

@@ -1358,10 +1358,10 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 12 (v12: wild-caught detection via product name + farmed exclusions)', () => {
+  test('PROMPT_VERSION is 13 (v13: cert_unconfirmed branch — all-organic ingredient prefix detection)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(12);
+    expect(PROMPT_VERSION).toBe(13);
   });
 });
 
@@ -1457,5 +1457,92 @@ describe('N. Wild-caught detection', () => {
     expect(res.body.verdict).toBe('red');
     expect(res.body.flags.some(f => f.category === 'seed_oils')).toBe(true);
     expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// O. cert_unconfirmed — all-organic ingredient prefix detection
+//    Tests the allIngredientsPrefixedOrganic() check that sets
+//    unverifiedReason = 'cert_unconfirmed' for YELLOW products where every
+//    non-trivial ingredient starts with "organic" but no USDA cert tag is
+//    present in the OFF database.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('O. cert_unconfirmed', () => {
+  /** Minimal OFF response builder for Suite O tests. */
+  function certOffResp({
+    productName     = 'Test Product',
+    ingredientsText = '',
+    labelsTags      = [],
+    categoriesTags  = [],
+  } = {}) {
+    return {
+      status: 1,
+      product: {
+        product_name:     productName,
+        ingredients_text: ingredientsText,
+        labels_tags:      labelsTags,
+        categories_tags:  categoriesTags,
+      },
+    };
+  }
+
+  // ── O1: single-ingredient organic product, no cert tag → cert_unconfirmed ──
+
+  test('O1: "Organic pumpkin." no cert tag → verdict yellow, unverified_reason cert_unconfirmed', async () => {
+    mockFetchOnce(certOffResp({
+      productName:     'Organic Pumpkin',
+      ingredientsText: 'Organic pumpkin.',
+      labelsTags:      [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000501', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('yellow');
+    expect(res.body.unverifiedReason).toBe('cert_unconfirmed');
+    expect(res.body.clearedBy).toBeNull();
+  });
+
+  // ── O2: multi-ingredient all-organic with trivial water, no cert → cert_unconfirmed
+
+  test('O2: "Organic sweet corn, water." no cert → cert_unconfirmed (water is trivial, excluded)', async () => {
+    mockFetchOnce(certOffResp({
+      productName:     'Organic Sweet Corn',
+      ingredientsText: 'Organic sweet corn, water.',
+      labelsTags:      [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000502', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('yellow');
+    expect(res.body.unverifiedReason).toBe('cert_unconfirmed');
+  });
+
+  // ── O3: mixed organic / non-organic ingredients → NOT cert_unconfirmed ─────
+
+  test('O3: "Organic carrots, cashews" — cashews not prefixed → NOT cert_unconfirmed', async () => {
+    mockFetchOnce(certOffResp({
+      productName:     'Organic Carrot Snack',
+      ingredientsText: 'Organic carrots, cashews.',
+      labelsTags:      [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000503', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('yellow');
+    // unverifiedReason should be null — not every ingredient is "organic"-prefixed
+    expect(res.body.unverifiedReason).toBeNull();
+  });
+
+  // ── O4: all-organic ingredients WITH usda-organic label → NOT cert_unconfirmed
+
+  test('O4: "Organic pumpkin." WITH usda-organic label → green, NOT cert_unconfirmed', async () => {
+    mockFetchOnce(certOffResp({
+      productName:     'Organic Pumpkin',
+      ingredientsText: 'Organic pumpkin.',
+      labelsTags:      ['en:usda-organic'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000504', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.clearedBy).toBe('organic');
+    expect(res.body.unverifiedReason).toBeNull();
   });
 });

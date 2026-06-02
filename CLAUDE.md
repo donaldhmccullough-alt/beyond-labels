@@ -63,8 +63,8 @@ components/
 lib/
   rulesEngine.js          — deterministic ingredient analysis engine (core logic)
   rulesEngine.test.js     — Jest tests for rules engine (35 describe blocks; 2050 tests total; block 20 = SYNTHETIC_ADDITIVES bucket-1 expansion (91 tests); block 21 = FD&C "No." normalization (19 tests); block 22 = mechanically separated meat (3 tests); block 23 = interesterified variants, lake forms, dye synonyms, new E-numbers, stearyl emulsifiers, cyclamate (78 tests); block 24 = synonym/E-number expansion: nitrates, BVO, bleaching agents, BHA/BHT names, SLS, E-numbers e320/e321/e924/e950–e955 (50 tests); block 25 = gluten grains expansion: ancient grains, botanical names, asafoetida/hing, smoke flavoring, brown rice syrup (34 tests); block 26 = H2: artifact phrases and red list additions — polysorbates, synthetic phosphates, red 3/#-normalizer (17 tests); block 27 = I: Sina gluten expansion — 65 new GLUTEN_GRAINS entries across corn derivatives, wheat flour varieties, barley/rye/oat forms, processed ingredients (22 tests); block 28 = FORTIFIED_VITAMINS group — synthetic vitamin fortification detection (61 tests); block 29 = NATURAL_COLORANTS group — plant-derived colorant detection (12 tests); block 32 = containsMilkDerived, containsEggDerived, ALWAYS_IGNORE_INGREDIENTS — new helper functions and ignore-list constant (32 tests); block 33 = GLYPHOSATE_HEAVY — high-glyphosate-risk crops: pea protein, oat milk, buckwheat, ascorbic acid, lecithin, potato starch, papaya, glyphosate-free escape hatch for oats/wheat, GLYPHOSATE_HEAVY export (11 tests); block 34 = CONVENTIONAL_CROPS_NO_FLAG — sunflower lecithin range-claim without flag (5 tests); block 35 = REVIEWED_CLEAN_INGREDIENTS — display-only suppression filter, Set export, almond flour/arrowroot suppressed, unknown ingredient still surfaces, engine flags/verdict unaffected (5 tests))
-  __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (14 suites A–N; 140 tests total; suite H = L2 decision tree coverage: cert gate, organic path, non-organic path, seafood/meat/dairy logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 16 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests; suite J = L1 explicit overrides — gluten suppression, conventional meat caution injection (8 tests); suite K = L2 flags array cleanup — gluten suppression and organic conventional_crops strip (5 tests); suite L = universal L2 decision tree — 15 integration scenarios covering all 14 nodes; suite M = PROMPT_VERSION contract — 1 test; suite N = wild-caught detection — product name signals, farmed exclusions, seed oil short-circuit (4 tests))
-  ── Combined test total: 2190 tests (2050 rulesEngine + 140 scan) ──
+  __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (15 suites A–O; 144 tests total; suite H = L2 decision tree coverage: cert gate, organic path, non-organic path, seafood/meat/dairy logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 16 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests; suite J = L1 explicit overrides — gluten suppression, conventional meat caution injection (8 tests); suite K = L2 flags array cleanup — gluten suppression and organic conventional_crops strip (5 tests); suite L = universal L2 decision tree — 15 integration scenarios covering all 14 nodes; suite M = PROMPT_VERSION contract — 1 test; suite N = wild-caught detection — product name signals, farmed exclusions, seed oil short-circuit (4 tests); suite O = cert_unconfirmed — all-organic ingredient prefix detection, trivial ingredient exclusion, non-organic partial mix, usda-organic cert bypass (4 tests))
+  ── Combined test total: 2194 tests (2050 rulesEngine + 144 scan) ──
   onboardingData.js       — QUESTIONS array (13 Qs), STAGES array (5 stages), getStageFromScore()
   userProfile.js          — localStorage profile read/write/clear helpers
   userLevel.js            — getUserLevel(), setUserLevel(), hasUserLevel() — localStorage bl_user_level
@@ -483,10 +483,11 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 - Returns: `{ verdict, flags, clearedBy, productName, ingredients, barcode, source, found, labelsDetected, unverifiedIngredients, explanation, productCategory, unverifiedReason, isMeat, oliveCaveat }`
 - `oliveCaveat`: boolean, `true` when the L2 organic path hits the olive oil adulteration branch. Not yet persisted to `scan_cache` (no column); cache hits always return `false` until the column is added.
 - `productCategory`: one of the 9 swap categories or `null` if no OFF tag matched
-- `unverifiedReason`: distinguishes why a scan returned `verdict: 'unverified'`:
+- `unverifiedReason`: carries additional context for YELLOW and UNVERIFIED verdicts:
   - `'not_found'` — barcode not in the Open Food Facts database (`found: false`)
   - `'no_ingredients'` — product record exists in OFF but has no ingredient text (`found: true`)
-  - `null` — verdict is red / yellow / green (not unverified)
+  - `'cert_unconfirmed'` — verdict is YELLOW with no flags and no clearedBy, and every non-trivial ingredient is prefixed "organic" — product looks organic from the label text but USDA cert tag is missing from OFF. Signals VerdictScreen / Claude to use the "verify the seal" framing rather than the generic no-cert caveat.
+  - `null` — verdict is red / yellow / green with no special context needed
 - Claude is never called when `verdict === 'unverified'` — no ingredients to explain
 - VerdictScreen renders a human-readable message card for unverified results (keyed on `unverifiedReason` + `isMeat`) instead of the AI summary, and shows a "Scan Again" button instead of "See Cleaner Swaps"
 - At Level 2, the universal decision tree runs after `analyzeIngredients()` — see "Level 2 universal decision tree" in the Rules Engine section for the full 14-node spec
@@ -494,14 +495,14 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 - Uses `supabaseServer` (service role key) for all Supabase writes
 
 ### POST /api/explain
-- Body: `{ verdict, flags, productName, ingredients, userLevel?: 1 | 2 }`
+- Body: `{ verdict, flags, productName, ingredients, userLevel?: 1 | 2, clearedBy?: string | null, unverifiedReason?: string | null }`
 - Calls Claude Sonnet with Sina-Joel voice system prompt
 - Returns: `{ summary: string, details: { [category]: string } }`
 - Exports `SYSTEM_PROMPT`, `buildUserMessage`, `PROMPT_VERSION` for use by `scan.js`
 - VerdictScreen never calls this endpoint directly — explanation is always returned inline in the POST /api/scan response.
 - **System prompt voice**: Sina McCullough (PhD Nutrition, autoimmune healing journey, science-first, rhetorical questions, inflammation/gut/gene-expression framing) + Joel Salatin (Polyface Farm, story-and-analogy thinker, farming-system angle). Together: empowering, not alarmist, skeptical of GRAS and industry-funded science.
 - **Level-aware tone**: Level 1 users get encouragement and awareness-building framing; Level 2 users get direct, graduate-level honesty. Controlled by `[Level 1 awareness item]` note injected per flagged category in `buildUserMessage()`.
-- **`flagsSection` in `buildUserMessage()` has four conditions**: (1) flags present → "Flagged categories: …" list; (2) no flags + verdict is `'red'` → certification-standards explanation (L2 uncertified conventional product — no USDA Organic or Non-GMO cert found; instruct Claude to be honest but not alarmist); (3) no flags + `verdict === 'yellow'` + `clearedBy === null` → default Yellow branch: instructs Claude to write Sina's honest no-cert framing into the `summary` field and return `"details": {}` (empty — no flag categories to render); (4) no flags + any other verdict → "No concerning ingredients found — product passed all checks." Branch 3 fires before branch 4 so node-14 products get Sina's framing. Yellow verdicts with `clearedBy` set (non-gmo-project-verified, glyphosate-free) fall through to branch 4. `default_yellow` is NOT a voice-assignment category and must never appear as a `details` key — the guidance is inline in the branch text only. `clearedBy` is the sixth parameter of both `buildUserMessage()` and `fetchExplanation()` (default `null`).
+- **`flagsSection` in `buildUserMessage()` has five conditions** (checked in order; first match wins): (1) flags present → "Flagged categories: …" list; (2) no flags + verdict is `'red'` → certification-standards explanation (L2 uncertified conventional product — no USDA Organic or Non-GMO cert found; instruct Claude to be honest but not alarmist); (3) no flags + `verdict === 'yellow'` + `clearedBy === null` + `unverifiedReason === 'cert_unconfirmed'` → cert_unconfirmed branch: tells Claude the ingredients all look organic but the seal couldn't be confirmed in the database, and to encourage the user to flip the package and look for the USDA seal; return `"details": {}` (empty); (4) no flags + `verdict === 'yellow'` + `clearedBy === null` → default Yellow branch: instructs Claude to write Sina's honest no-cert framing into the `summary` field and return `"details": {}` (empty — no flag categories to render); (5) no flags + any other verdict → "No concerning ingredients found — product passed all checks." Branch 3 fires before branch 4 to prevent cert_unconfirmed products from falling into the generic no-cert framing. Yellow verdicts with `clearedBy` set (non-gmo-project-verified, glyphosate-free) fall through to branch 5. `default_yellow` is NOT a voice-assignment category and must never appear as a `details` key. `clearedBy` is the sixth parameter and `unverifiedReason` is the seventh parameter of both `buildUserMessage()` and `fetchExplanation()` (both default `null`).
 - See Scan Cache Pattern section for current PROMPT_VERSION.
 
 ### Explanation Prompt Voice Assignment (v6+, updated v11)
@@ -510,6 +511,8 @@ Each flagged category is explained by ONE voice only. Sina owns: trans_fats, see
 **v10 additions**: glyphosate_heavy (Joel — pre-harvest desiccation angle, farming system choice, glyphosate-free cert signal), conventional_dairy (Sina — GMO feed/hormones/antibiotics biochemistry, organic as meaningful upgrade), olive_oil_adulteration (Sina — supply chain adulteration reality, caveat not condemnation). Inline `buildUserMessage()` annotations added for all three categories.
 
 **v11 changes**: conventional_dairy moved from Sina to Joel (farming system angle — GMO feed, hormones, antibiotics; organic as signal that farmer chose differently). Fourth `flagsSection` branch added: `verdict === 'yellow' && flags.length === 0 && clearedBy === null` (default-Yellow node-14 products) — instructs Claude to write Sina's honest no-cert framing into the `summary` field and return `"details": {}` (empty). `default_yellow` is NOT a voice-assignment category and does NOT appear as a details key — the guidance is inline in the branch instruction only. `clearedBy` added as sixth parameter to `buildUserMessage()` and `fetchExplanation()` (default `null`); call sites in `scan.js` and the standalone `explain.js` handler updated accordingly.
+
+**v13 changes**: cert_unconfirmed branch inserted before the default-Yellow branch in `flagsSection`. When `unverifiedReason === 'cert_unconfirmed'`, Claude is told the ingredients look organic but the seal couldn't be confirmed — frame as "verify the seal" rather than "no cert, can't rule out pesticides." `unverifiedReason` added as seventh parameter to `buildUserMessage()` and `fetchExplanation()` (default `null`); standalone `explain.js` handler updated to destructure and pass it from `req.body`. `allIngredientsPrefixedOrganic()` helper and `CERT_UNCONFIRMED_TRIVIAL` Set added to `scan.js` to detect products where every non-trivial ingredient starts with "organic" but USDA cert tag is absent from OFF.
 
 ### GET /api/swaps
 - Query params: `category` (one of 9 valid values, optional), `userLevel` (1 or 2, defaults to 2)
@@ -529,10 +532,10 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 12.**
+**Current PROMPT_VERSION is 13.**
 
 ### Cache Invalidation
-When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 12. Run `DELETE FROM scan_cache WHERE prompt_version < 12` in Supabase to purge all stale rows before deploying.
+When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 13. Run `DELETE FROM scan_cache WHERE prompt_version < 13` in Supabase to purge all stale rows before deploying.
 
 ---
 
@@ -768,6 +771,11 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 | Hash | Description |
 |------|-------------|
 | `b5c6be0` | feat: add detectWildCaught() — wild-caught detection via OFF label OR product name; farmed exclusions (farm-raised/atlantic salmon/astaxanthin); replace Node 5 in L2 tree; bump PROMPT_VERSION to 12; 4 new tests (suite N); 2190 total |
+
+### Session — cert_unconfirmed + PROMPT_VERSION 13
+| Hash | Description |
+|------|-------------|
+| *(pending)* | feat: cert_unconfirmed detection — allIngredientsPrefixedOrganic() helper; new unverifiedReason value; cert_unconfirmed branch in buildUserMessage(); 7th param threading through fetchExplanation() and explain.js handler; bump PROMPT_VERSION to 13; 4 new tests (suite O); 2194 total |
 
 ---
 
