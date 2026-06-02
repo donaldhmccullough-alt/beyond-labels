@@ -1359,10 +1359,10 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 16 (v16: conventional_eggs as own category, Joel voice, removed from conventional_meat node)', () => {
+  test('PROMPT_VERSION is 17 (v17: palm fruit oil added to SEED_OILS trigger list)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(16);
+    expect(PROMPT_VERSION).toBe(17);
   });
 });
 

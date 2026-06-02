@@ -64,7 +64,7 @@ lib/
   rulesEngine.js          — deterministic ingredient analysis engine (core logic)
   rulesEngine.test.js     — Jest tests for rules engine (35 describe blocks; 2050 tests total; block 20 = SYNTHETIC_ADDITIVES bucket-1 expansion (91 tests); block 21 = FD&C "No." normalization (19 tests); block 22 = mechanically separated meat (3 tests); block 23 = interesterified variants, lake forms, dye synonyms, new E-numbers, stearyl emulsifiers, cyclamate (78 tests); block 24 = synonym/E-number expansion: nitrates, BVO, bleaching agents, BHA/BHT names, SLS, E-numbers e320/e321/e924/e950–e955 (50 tests); block 25 = gluten grains expansion: ancient grains, botanical names, asafoetida/hing, smoke flavoring, brown rice syrup (34 tests); block 26 = H2: artifact phrases and red list additions — polysorbates, synthetic phosphates, red 3/#-normalizer (17 tests); block 27 = I: Sina gluten expansion — 65 new GLUTEN_GRAINS entries across corn derivatives, wheat flour varieties, barley/rye/oat forms, processed ingredients (22 tests); block 28 = FORTIFIED_VITAMINS group — synthetic vitamin fortification detection (61 tests); block 29 = NATURAL_COLORANTS group — plant-derived colorant detection (12 tests); block 32 = containsMilkDerived, containsEggDerived, ALWAYS_IGNORE_INGREDIENTS — new helper functions and ignore-list constant (32 tests); block 33 = GLYPHOSATE_HEAVY — high-glyphosate-risk crops: pea protein, oat milk, buckwheat, ascorbic acid, lecithin, potato starch, papaya, glyphosate-free escape hatch for oats/wheat, GLYPHOSATE_HEAVY export (11 tests); block 34 = CONVENTIONAL_CROPS_NO_FLAG — sunflower lecithin range-claim without flag (5 tests); block 35 = REVIEWED_CLEAN_INGREDIENTS — display-only suppression filter, Set export, almond flour/arrowroot suppressed, unknown ingredient still surfaces, engine flags/verdict unaffected (5 tests))
   __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (16 suites A–P; 148 tests total; suite H = L2 decision tree coverage: cert gate, organic path, non-organic path, seafood/meat/dairy logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 16 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests; suite J = L1 explicit overrides — gluten suppression, conventional meat caution injection (8 tests); suite K = L2 flags array cleanup — gluten suppression and organic conventional_crops strip (5 tests); suite L = universal L2 decision tree — 15 integration scenarios covering all 14 nodes (L5 updated: eggs now produce conventional_eggs not conventional_meat); suite M = PROMPT_VERSION contract — 1 test; suite N = wild-caught detection — product name signals, farmed exclusions, seed oil short-circuit (4 tests); suite O = cert_unconfirmed — all-organic ingredient prefix detection, trivial ingredient exclusion, non-organic partial mix, usda-organic cert bypass (4 tests); suite P = conventional_eggs — non-meat product with eggs, organic prefix clearance, meat+eggs both flags, dairy-only no-interference (4 tests))
-  ── Combined test total: 2198 tests (2050 rulesEngine + 148 scan) ──
+  ── Combined test total: 2201 tests (2053 rulesEngine + 148 scan) ──
   onboardingData.js       — QUESTIONS array (13 Qs), STAGES array (5 stages), getStageFromScore()
   userProfile.js          — localStorage profile read/write/clear helpers
   userLevel.js            — getUserLevel(), setUserLevel(), hasUserLevel() — localStorage bl_user_level
@@ -191,7 +191,7 @@ New users choose Level 1 (lenient) or Level 2 (strict) during onboarding. The ru
 high oleic sunflower/canola/safflower oil, high oleic soybean oil, high oleic soybean,
 canola, canola oil, soybean oil, corn oil, sunflower oil, safflower oil,
 cottonseed, cottonseed oil, grapeseed oil, rice bran oil, vegetable oil, palm oil,
-rapeseed oil, peanut oil, mustard seed oil, palm kernel oil, palm olein,
+palm fruit oil, rapeseed oil, peanut oil, mustard seed oil, palm kernel oil, palm olein,
 fractionated palm oil, fractionated palm
 
 **All conventional crops** (CONVENTIONAL_CROPS array; organic/Non-GMO clearance still applies; recent additions: enriched long grain white rice, enriched macaroni product, dried potatoes, malt syrup, malt extract, malt flavor, soybean [bare crop form — soybean oil remains in SEED_OILS only])
@@ -536,10 +536,10 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 16.**
+**Current PROMPT_VERSION is 17.**
 
 ### Cache Invalidation
-When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 16. Run `DELETE FROM scan_cache WHERE prompt_version < 16` in Supabase to purge all stale rows before deploying.
+When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 17. Run `DELETE FROM scan_cache WHERE prompt_version < 17` in Supabase to purge all stale rows before deploying.
 
 ---
 
@@ -785,6 +785,11 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 | Hash | Description |
 |------|-------------|
 | `9058727` | feat: add conventional_eggs category — CONVENTIONAL_EGGS trigger array in rulesEngine.js with isPrecededByOrganic() and word-boundary guard; LEVEL_1_YELLOW_CATEGORIES and ALL_TRIGGERS updated; Node 8b in L2 tree; remove egg detection from Node 8; ConcernCard 🥚 entry; Joel voice in explain.js; bump PROMPT_VERSION to 16; 4 new tests (suite P); L5 updated; 2198 total |
+
+### Session — palm fruit oil added to SEED_OILS + PROMPT_VERSION 17
+| Hash | Description |
+|------|-------------|
+| *(pending)* | fix: add "palm fruit oil" to SEED_OILS trigger list — "palm oil" does not match "palm fruit oil" as a substring; placed near existing palm entries; bump PROMPT_VERSION to 17; 3 new rulesEngine tests; 2201 total |
 
 ---
 
