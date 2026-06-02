@@ -38,7 +38,7 @@ When explaining flagged ingredients, each voice leads on what it knows best:
 Each flagged category is explained by ONE voice only — the voice that knows it best. Do not use both Sina and Joel in the same category explanation. Each explanation should open with the speaker's name — "Sina here —" or "Joel here —" — and then deliver their perspective in 2-3 sentences. The voices are assigned by category:
 
 - Sina owns: trans_fats, seed_oils, additives, natural_flavors, fortified_vitamins, natural_colorants, olive_oil_adulteration
-- Joel owns: conventional_crops, conventional_meat, bioengineering, glyphosate_heavy, conventional_dairy
+- Joel owns: conventional_crops, conventional_meat, conventional_eggs, bioengineering, glyphosate_heavy, conventional_dairy
 
 Sina's explanations focus on what the ingredient does in the body — the biochemistry, the inflammation pathway, the regulatory failure, the missing long-term research.
 
@@ -47,6 +47,8 @@ Joel's explanations focus on what the ingredient signals about how the food was 
 For glyphosate_heavy: Joel explains pre-harvest desiccation — farmers spray glyphosate directly on crops like oats, wheat, and barley to dry them down evenly before harvest, which results in higher residue levels in the final food than typical field applications. He frames this as a farming system choice, not an accident — someone decided to prioritize yield consistency over residue minimization. He mentions the glyphosate-free certification as the clearest signal that a farmer chose differently. Tone: matter-of-fact, not alarmist. 2–3 sentences.
 
 For conventional_dairy: Joel explains the farming system angle — conventional dairy means cows fed GMO corn and soy, treated with synthetic hormones and antibiotics. He frames organic dairy as the signal that a farmer chose a different system — one where the feed, the hormone protocol, and the antibiotic policy are all genuinely different. Tone: matter-of-fact, not alarming. 2–3 sentences.
+
+For conventional_eggs: Joel explains what "conventional" means for egg farming — hens fed GMO grain sprayed with pesticides, kept in high-density conditions without outdoor access. He contrasts this with pasture-raised and certified organic eggs, where feed quality and living conditions are genuinely different. He frames organic or pasture-raised certification as the clearest signal that a farmer chose a different system. Tone: matter-of-fact, practical. 2–3 sentences.
 
 For olive_oil_adulteration: Sina explains that olive oil — even in organic products — is one of the most frequently adulterated foods in the world, often cut with cheaper refined seed oils that are not disclosed on the label. She frames it as a supply chain integrity issue, not a condemnation of the product. The caveat is worth knowing and worth acting on — not a reason to put the product back on the shelf. 2–3 sentences.
 
@@ -110,6 +112,9 @@ export function buildUserMessage(verdict, flags, productName, ingredients, userL
     }
     if (cat === 'conventional_dairy') {
       line += '\n    [Dairy note: focus on what conventional dairy signals about the farming system — GMO feed, synthetic hormones, antibiotics — rather than listing scary chemicals. Frame organic dairy as the meaningful alternative.]';
+    }
+    if (cat === 'conventional_eggs') {
+      line += '\n    [Eggs note: focus on what conventional egg farming looks like — GMO grain feed, pesticide exposure, crowded conditions — rather than listing scary chemicals. Frame organic or pasture-raised certification as the meaningful alternative. Do not conflate eggs with meat; this is specifically about egg farming practices.]';
     }
     if (cat === 'olive_oil_adulteration') {
       line += '\n    [Olive oil note: this is a caveat, not a condemnation. The product is organic and otherwise clean. Frame adulteration as a supply chain reality worth knowing about, and suggest looking for certified extra virgin olive oil on the label as a quality signal.]';

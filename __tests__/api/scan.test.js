@@ -1192,9 +1192,9 @@ describe('L. Universal L2 decision tree', () => {
 
   // ── L5: non-organic eggs → RED at conventional meat node (egg-derived) ─────
 
-  test('L5: "eggs, salt" (no organic cert, no meat category tag) → RED with conventional_meat flag via egg-derived check', async () => {
-    // Product has egg ingredients but no en:eggs category tag — egg-derived
-    // ingredient check (containsEggDerived) fires at node 8.
+  test('L5: "eggs, salt" (no organic cert, no meat category tag) → RED with conventional_eggs flag via engine detection (Node 8b)', async () => {
+    // Product has egg ingredients but no en:eggs category tag — the engine detects
+    // conventional_eggs and Node 8b fires. conventional_meat should NOT be present.
     mockFetchOnce(l2TreeOffResp({
       ingredientsText: 'eggs, salt',
       categoriesTags:  [],
@@ -1202,7 +1202,8 @@ describe('L. Universal L2 decision tree', () => {
     const res = makeRes();
     await handler(makeReq('POST', { barcode: '000000000305', userLevel: 2 }), res);
     expect(res.body.verdict).toBe('red');
-    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(true);
+    expect(res.body.flags.some(f => f.category === 'conventional_eggs')).toBe(true);
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
   });
 
   // ── L6: organic beef → GREEN (organic path, no fortification/colorant/olive oil) ─
@@ -1358,10 +1359,10 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 13 (v13: cert_unconfirmed branch — all-organic ingredient prefix detection)', () => {
+  test('PROMPT_VERSION is 16 (v16: conventional_eggs as own category, Joel voice, removed from conventional_meat node)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(13);
+    expect(PROMPT_VERSION).toBe(16);
   });
 });
 
@@ -1544,5 +1545,106 @@ describe('O. cert_unconfirmed', () => {
     expect(res.body.verdict).toBe('green');
     expect(res.body.clearedBy).toBe('organic');
     expect(res.body.unverifiedReason).toBeNull();
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// P. conventional_eggs — own category, separate from conventional_meat
+//    Tests that egg ingredients in non-meat products produce a conventional_eggs
+//    flag (not conventional_meat), organic prefix clears the flag, a product
+//    with both meat and eggs gets both flags, and dairy detection is unaffected.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('P. conventional_eggs', () => {
+  /** Minimal OFF response builder for Suite P tests. */
+  function eggsOffResp({
+    productName     = 'Test Product',
+    ingredientsText = '',
+    labelsTags      = [],
+    categoriesTags  = [],
+  } = {}) {
+    return {
+      status: 1,
+      product: {
+        product_name:     productName,
+        ingredients_text: ingredientsText,
+        labels_tags:      labelsTags,
+        categories_tags:  categoriesTags,
+      },
+    };
+  }
+
+  // ── P1: non-meat product with eggs + no cert → conventional_eggs, no conventional_meat
+
+  test('P1: pasta with eggs, no cert, no meat category → conventional_eggs RED, no conventional_meat flag', async () => {
+    // Ravioli / pasta-type product: egg ingredient present, no USDA organic cert,
+    // not in a MEAT_CATEGORIES tag. Should get conventional_eggs, NOT conventional_meat.
+    mockFetchOnce(eggsOffResp({
+      productName:     'Fresh Pasta Ravioli',
+      ingredientsText: 'semolina flour, eggs, water, salt',
+      labelsTags:      [],
+      categoriesTags:  ['en:pasta', 'en:fresh-pasta'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000601', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'conventional_eggs')).toBe(true);
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+  });
+
+  // ── P2: "organic eggs" in ingredient text → no conventional_eggs flag ─────
+
+  test('P2: "organic eggs" as ingredient (no cert tag) → no conventional_eggs flag', async () => {
+    // The isPrecededByOrganic() guard in the engine should clear egg terms
+    // that appear with an "organic" prefix in the ingredient text.
+    mockFetchOnce(eggsOffResp({
+      productName:     'Organic Egg Noodles',
+      ingredientsText: 'organic wheat flour, organic eggs, water',
+      labelsTags:      [],
+      categoriesTags:  ['en:pasta'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000602', userLevel: 2 }), res);
+    expect(res.body.flags.some(f => f.category === 'conventional_eggs')).toBe(false);
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+  });
+
+  // ── P3: product with both eggs and meat (isMeat=true) → both flags present ─
+
+  test('P3: chicken broth product with eggs → both conventional_meat (injected) and conventional_eggs (engine) in flags', async () => {
+    // Product has a meat OFF category (en:broths) AND egg in ingredients.
+    // Node 8 fires first (isConventionalMeat=true) and injects conventional_meat.
+    // The engine's conventional_eggs flag should still be present in the array.
+    mockFetchOnce(eggsOffResp({
+      productName:     'Chicken Noodle Soup',
+      ingredientsText: 'chicken broth, egg noodles, eggs, chicken, salt',
+      labelsTags:      [],
+      categoriesTags:  ['en:broths', 'en:soups'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000603', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(true);
+    expect(res.body.flags.some(f => f.category === 'conventional_eggs')).toBe(true);
+  });
+
+  // ── P4: product with dairy ingredients but no eggs → conventional_dairy fires, conventional_eggs does not
+
+  test('P4: product with dairy but no eggs → conventional_dairy fires, conventional_eggs does NOT fire', async () => {
+    // Node 8b (conventional_eggs) is skipped — no egg flags from engine.
+    // Node 9 (conventional_dairy via containsMilkDerived) fires correctly.
+    // Note: bare "milk" is not in MILK_DERIVED_INGREDIENTS (avoids false positives
+    // like "almond milk") — use "whole milk" which IS a compound dairy trigger.
+    mockFetchOnce(eggsOffResp({
+      productName:     'Cream of Mushroom Soup',
+      ingredientsText: 'water, mushrooms, whole milk, heavy cream, salt',
+      labelsTags:      [],
+      categoriesTags:  ['en:soups'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000604', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'conventional_dairy')).toBe(true);
+    expect(res.body.flags.some(f => f.category === 'conventional_eggs')).toBe(false);
   });
 });

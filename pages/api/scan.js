@@ -53,7 +53,6 @@ const {
   containsNaturalColorants,
   ALWAYS_IGNORE_INGREDIENTS,
   containsMilkDerived,
-  containsEggDerived,
 } = rulesEngine;
 
 import { supabaseServer as sb } from '../../lib/supabaseServer';
@@ -859,16 +858,23 @@ export default async function handler(req, res) {
         verdict   = 'yellow';
         clearedBy = 'non-gmo-project-verified';
 
-      } else if (isConventionalMeat || (maskedText && containsEggDerived(maskedText))) {
-        // Node 8: Conventional meat or egg-derived ingredients without organic cert.
+      } else if (isConventionalMeat) {
+        // Node 8: Conventional meat without organic cert.
         verdict   = 'red';
         clearedBy = null;
         flags = [{
           category:          'conventional_meat',
           severity:          'reject',
           matchedIngredient: '',
-          summary:           'Conventional meat or egg product without USDA Organic certification',
+          summary:           'Conventional meat product without USDA Organic certification',
         }, ...flags];
+
+      } else if (flags.some(f => f.category === 'conventional_eggs')) {
+        // Node 8b: Conventional eggs detected by the rules engine — no organic cert.
+        // The flag (with matchedIngredient) was already emitted by the engine loop;
+        // just set the verdict here. No injection needed.
+        verdict   = 'red';
+        clearedBy = null;
 
       } else if (maskedText && containsMilkDerived(maskedText)) {
         // Node 9: Conventional dairy without organic cert.

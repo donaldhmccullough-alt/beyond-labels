@@ -63,8 +63,8 @@ components/
 lib/
   rulesEngine.js          — deterministic ingredient analysis engine (core logic)
   rulesEngine.test.js     — Jest tests for rules engine (35 describe blocks; 2050 tests total; block 20 = SYNTHETIC_ADDITIVES bucket-1 expansion (91 tests); block 21 = FD&C "No." normalization (19 tests); block 22 = mechanically separated meat (3 tests); block 23 = interesterified variants, lake forms, dye synonyms, new E-numbers, stearyl emulsifiers, cyclamate (78 tests); block 24 = synonym/E-number expansion: nitrates, BVO, bleaching agents, BHA/BHT names, SLS, E-numbers e320/e321/e924/e950–e955 (50 tests); block 25 = gluten grains expansion: ancient grains, botanical names, asafoetida/hing, smoke flavoring, brown rice syrup (34 tests); block 26 = H2: artifact phrases and red list additions — polysorbates, synthetic phosphates, red 3/#-normalizer (17 tests); block 27 = I: Sina gluten expansion — 65 new GLUTEN_GRAINS entries across corn derivatives, wheat flour varieties, barley/rye/oat forms, processed ingredients (22 tests); block 28 = FORTIFIED_VITAMINS group — synthetic vitamin fortification detection (61 tests); block 29 = NATURAL_COLORANTS group — plant-derived colorant detection (12 tests); block 32 = containsMilkDerived, containsEggDerived, ALWAYS_IGNORE_INGREDIENTS — new helper functions and ignore-list constant (32 tests); block 33 = GLYPHOSATE_HEAVY — high-glyphosate-risk crops: pea protein, oat milk, buckwheat, ascorbic acid, lecithin, potato starch, papaya, glyphosate-free escape hatch for oats/wheat, GLYPHOSATE_HEAVY export (11 tests); block 34 = CONVENTIONAL_CROPS_NO_FLAG — sunflower lecithin range-claim without flag (5 tests); block 35 = REVIEWED_CLEAN_INGREDIENTS — display-only suppression filter, Set export, almond flour/arrowroot suppressed, unknown ingredient still surfaces, engine flags/verdict unaffected (5 tests))
-  __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (15 suites A–O; 144 tests total; suite H = L2 decision tree coverage: cert gate, organic path, non-organic path, seafood/meat/dairy logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 16 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests; suite J = L1 explicit overrides — gluten suppression, conventional meat caution injection (8 tests); suite K = L2 flags array cleanup — gluten suppression and organic conventional_crops strip (5 tests); suite L = universal L2 decision tree — 15 integration scenarios covering all 14 nodes; suite M = PROMPT_VERSION contract — 1 test; suite N = wild-caught detection — product name signals, farmed exclusions, seed oil short-circuit (4 tests); suite O = cert_unconfirmed — all-organic ingredient prefix detection, trivial ingredient exclusion, non-organic partial mix, usda-organic cert bypass (4 tests))
-  ── Combined test total: 2194 tests (2050 rulesEngine + 144 scan) ──
+  __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (16 suites A–P; 148 tests total; suite H = L2 decision tree coverage: cert gate, organic path, non-organic path, seafood/meat/dairy logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 16 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests; suite J = L1 explicit overrides — gluten suppression, conventional meat caution injection (8 tests); suite K = L2 flags array cleanup — gluten suppression and organic conventional_crops strip (5 tests); suite L = universal L2 decision tree — 15 integration scenarios covering all 14 nodes (L5 updated: eggs now produce conventional_eggs not conventional_meat); suite M = PROMPT_VERSION contract — 1 test; suite N = wild-caught detection — product name signals, farmed exclusions, seed oil short-circuit (4 tests); suite O = cert_unconfirmed — all-organic ingredient prefix detection, trivial ingredient exclusion, non-organic partial mix, usda-organic cert bypass (4 tests); suite P = conventional_eggs — non-meat product with eggs, organic prefix clearance, meat+eggs both flags, dairy-only no-interference (4 tests))
+  ── Combined test total: 2198 tests (2050 rulesEngine + 148 scan) ──
   onboardingData.js       — QUESTIONS array (13 Qs), STAGES array (5 stages), getStageFromScore()
   userProfile.js          — localStorage profile read/write/clear helpers
   userLevel.js            — getUserLevel(), setUserLevel(), hasUserLevel() — localStorage bl_user_level
@@ -286,7 +286,8 @@ For `userLevel === 2`, `scan.js` applies a universal 14-node decision tree **aft
 | 5b | `isSeafood` + no wild-caught signal detected | RED (inject `conventional_meat` flag) | null |
 | 6 | Game meat category (`en:game-meats`) | GREEN | null |
 | 7 | `non-gmo-project-verified` label | YELLOW | `'non-gmo-project-verified'` |
-| 8 | `isMeat` (non-seafood, non-game) OR `containsEggDerived(maskedText)` | RED (inject `conventional_meat` flag) | null |
+| 8 | `isMeat` (non-seafood, non-game) | RED (inject `conventional_meat` flag) | null |
+| 8b | `conventional_eggs` flag present (from engine) | RED (no injection — engine already has flag with matchedIngredient) | null |
 | 9 | `containsMilkDerived(maskedText)` | RED (inject `conventional_dairy` flag) | null |
 | 10 | `conventional_crops` flag present | RED | null |
 | 11 | `bioengineering` flag present | RED | null |
@@ -306,7 +307,8 @@ For `userLevel === 2`, `scan.js` applies a universal 14-node decision tree **aft
 - Products with no cert AND no conventional ingredient signals now default to **YELLOW** (node 14), not RED. "Pistachios, salt" is yellow not red.
 - Seafood and game meat have dedicated nodes — no conventional_meat flag for wild-caught fish or venison.
 - Conventional dairy (`conventional_dairy` flag) is now a distinct tree node separate from conventional meat.
-- Egg-derived ingredients (whole eggs, egg whites, albumin, etc.) are checked at node 8 via `containsEggDerived(maskedText)` — a product with egg ingredients and no organic cert triggers the conventional_meat node even if it has no meat category tags.
+- Conventional eggs (`conventional_eggs` flag) have their own Node 8b — no longer merged into the `conventional_meat` node. Products like ravioli, pasta, and cookies with egg ingredients get `conventional_eggs` (not `conventional_meat`). The flag comes from the rules engine (not scan.js injection) and carries the actual matched ingredient string.
+- Egg ingredients are detected by the rules engine (CONVENTIONAL_EGGS loop with `isPrecededByOrganic()` guard) and handled at Node 8b — separate from conventional_meat. Products like ravioli, pasta, and cookies with egg ingredients get a `conventional_eggs` flag (not `conventional_meat`). "organic eggs" as an ingredient prefix clears the flag at engine level. `containsEggDerived()` is still exported from rulesEngine but no longer used in scan.js.
 - `oliveCaveat: true` is set on the response object when the organic path hits the olive oil branch. Not yet persisted to `scan_cache` (no `olive_caveat` column); `TODO` comment left in upsert.
 
 **New helper sets in scan.js:**
@@ -335,7 +337,7 @@ const GAME_MEAT_CATEGORIES = new Set(['en:game-meats', 'en:game', 'en:wild-game'
 - Farmed exclusions take precedence: product name contains `'farm-raised'`, `'farmed'`, or `'atlantic salmon'` → returns false. Ingredients contain `'astaxanthin'` (synthetic farmed-salmon color additive) → returns false.
 - Used at Node 5 of the L2 tree. Node 5b (`isSeafood` + no wild-caught signal) still applies for seafood that is definitively not wild-caught.
 
-**`matchedIngredient: ''` convention** — injected flags (`conventional_meat`, `conventional_dairy`) always use an empty string, not `null`. `ConcernCard` asserts `typeof matchedIngredient === 'string'`; do not change this to `null`.
+**`matchedIngredient: ''` convention** — injected flags (`conventional_meat`, `conventional_dairy`) always use an empty string, not `null`. `ConcernCard` asserts `typeof matchedIngredient === 'string'`; do not change this to `null`. `conventional_eggs` flags are engine-emitted (not injected) and carry the actual matched ingredient string (e.g. `'eggs'`, `'egg whites'`).
 
 **Custom unverified messaging for meat products** (keyed on `isMeat` + `unverifiedReason` in VerdictScreen):
 - L1 + `no_ingredients` + `isMeat`: "Flip the package over and read the label before buying — skip it if you see any synthetic chemicals, artificial additives, artificial flavors, or preservatives."
@@ -505,14 +507,16 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 - **`flagsSection` in `buildUserMessage()` has five conditions** (checked in order; first match wins): (1) flags present → "Flagged categories: …" list; (2) no flags + verdict is `'red'` → certification-standards explanation (L2 uncertified conventional product — no USDA Organic or Non-GMO cert found; instruct Claude to be honest but not alarmist); (3) no flags + `verdict === 'yellow'` + `clearedBy === null` + `unverifiedReason === 'cert_unconfirmed'` → cert_unconfirmed branch: tells Claude the ingredients all look organic but the seal couldn't be confirmed in the database, and to encourage the user to flip the package and look for the USDA seal; return `"details": {}` (empty); (4) no flags + `verdict === 'yellow'` + `clearedBy === null` → default Yellow branch: instructs Claude to write Sina's honest no-cert framing into the `summary` field and return `"details": {}` (empty — no flag categories to render); (5) no flags + any other verdict → "No concerning ingredients found — product passed all checks." Branch 3 fires before branch 4 to prevent cert_unconfirmed products from falling into the generic no-cert framing. Yellow verdicts with `clearedBy` set (non-gmo-project-verified, glyphosate-free) fall through to branch 5. `default_yellow` is NOT a voice-assignment category and must never appear as a `details` key. `clearedBy` is the sixth parameter and `unverifiedReason` is the seventh parameter of both `buildUserMessage()` and `fetchExplanation()` (both default `null`).
 - See Scan Cache Pattern section for current PROMPT_VERSION.
 
-### Explanation Prompt Voice Assignment (v6+, updated v11)
-Each flagged category is explained by ONE voice only. Sina owns: trans_fats, seed_oils, additives, natural_flavors, fortified_vitamins, natural_colorants, olive_oil_adulteration, default_yellow. Joel owns: conventional_crops, conventional_meat, bioengineering, glyphosate_heavy, conventional_dairy. Sina focuses on biochemistry and regulatory failure. Joel focuses on farming systems and food philosophy. Do not reassign voices without bumping PROMPT_VERSION.
+### Explanation Prompt Voice Assignment (v6+, updated v16)
+Each flagged category is explained by ONE voice only. Sina owns: trans_fats, seed_oils, additives, natural_flavors, fortified_vitamins, natural_colorants, olive_oil_adulteration, default_yellow. Joel owns: conventional_crops, conventional_meat, conventional_eggs, bioengineering, glyphosate_heavy, conventional_dairy. Sina focuses on biochemistry and regulatory failure. Joel focuses on farming systems and food philosophy. Do not reassign voices without bumping PROMPT_VERSION.
 
 **v10 additions**: glyphosate_heavy (Joel — pre-harvest desiccation angle, farming system choice, glyphosate-free cert signal), conventional_dairy (Sina — GMO feed/hormones/antibiotics biochemistry, organic as meaningful upgrade), olive_oil_adulteration (Sina — supply chain adulteration reality, caveat not condemnation). Inline `buildUserMessage()` annotations added for all three categories.
 
 **v11 changes**: conventional_dairy moved from Sina to Joel (farming system angle — GMO feed, hormones, antibiotics; organic as signal that farmer chose differently). Fourth `flagsSection` branch added: `verdict === 'yellow' && flags.length === 0 && clearedBy === null` (default-Yellow node-14 products) — instructs Claude to write Sina's honest no-cert framing into the `summary` field and return `"details": {}` (empty). `default_yellow` is NOT a voice-assignment category and does NOT appear as a details key — the guidance is inline in the branch instruction only. `clearedBy` added as sixth parameter to `buildUserMessage()` and `fetchExplanation()` (default `null`); call sites in `scan.js` and the standalone `explain.js` handler updated accordingly.
 
 **v13 changes**: cert_unconfirmed branch inserted before the default-Yellow branch in `flagsSection`. When `unverifiedReason === 'cert_unconfirmed'`, Claude is told the ingredients look organic but the seal couldn't be confirmed — frame as "verify the seal" rather than "no cert, can't rule out pesticides." `unverifiedReason` added as seventh parameter to `buildUserMessage()` and `fetchExplanation()` (default `null`); standalone `explain.js` handler updated to destructure and pass it from `req.body`. `allIngredientsPrefixedOrganic()` helper and `CERT_UNCONFIRMED_TRIVIAL` Set added to `scan.js` to detect products where every non-trivial ingredient starts with "organic" but USDA cert tag is absent from OFF.
+
+**v16 changes**: `conventional_eggs` added as its own flag category. Joel owns the voice. `CONVENTIONAL_EGGS` trigger array added to `lib/rulesEngine.js` with `isPrecededByOrganic()` clearance and word-boundary guard. Added to `LEVEL_1_YELLOW_CATEGORIES` (caution/yellow at L1, reject/red at L2) and `ALL_TRIGGERS` (egg terms no longer appear as unverified). `conventional_eggs` flag carries actual matched ingredient (e.g. `'eggs'`), unlike injected flags. Node 8 in L2 tree no longer includes egg detection (`containsEggDerived` removed from scan.js imports and Node 8 condition). New Node 8b handles `conventional_eggs` flags. ConcernCard `CATEGORY_INFO` updated (🥚, "Conventional Eggs"). `conventional_eggs` annotation added to `buildUserMessage()`. PROMPT_VERSION bumped 13 → 16.
 
 ### GET /api/swaps
 - Query params: `category` (one of 9 valid values, optional), `userLevel` (1 or 2, defaults to 2)
@@ -532,10 +536,10 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 13.**
+**Current PROMPT_VERSION is 16.**
 
 ### Cache Invalidation
-When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 13. Run `DELETE FROM scan_cache WHERE prompt_version < 13` in Supabase to purge all stale rows before deploying.
+When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 16. Run `DELETE FROM scan_cache WHERE prompt_version < 16` in Supabase to purge all stale rows before deploying.
 
 ---
 
@@ -596,7 +600,7 @@ disabled={true}
 
 ### ConcernCard CATEGORY_INFO contract
 
-`ConcernCard.jsx` maintains a `CATEGORY_INFO` map keyed on engine category strings. Current keys: `seed_oils`, `conventional_crops`, `glyphosate_heavy`, `bioengineering`, `natural_flavors`, `synthetic_additives`, `trans_fats`, `gluten_grains`, `conventional_meat`, `conventional_dairy`, `fortified_vitamins`, `natural_colorants`, `olive_oil_adulteration`. If a new engine category is added without a matching key, the card silently falls back to a generic label and renders the raw category string. **Always update `CATEGORY_INFO` in `ConcernCard.jsx` when adding a new flag category to the rules engine.**
+`ConcernCard.jsx` maintains a `CATEGORY_INFO` map keyed on engine category strings. Current keys: `seed_oils`, `conventional_crops`, `glyphosate_heavy`, `bioengineering`, `natural_flavors`, `synthetic_additives`, `trans_fats`, `gluten_grains`, `conventional_meat`, `conventional_dairy`, `conventional_eggs`, `fortified_vitamins`, `natural_colorants`, `olive_oil_adulteration`. If a new engine category is added without a matching key, the card silently falls back to a generic label and renders the raw category string. **Always update `CATEGORY_INFO` in `ConcernCard.jsx` when adding a new flag category to the rules engine.**
 
 ### L2 Universal Decision Tree (scan.js)
 
@@ -776,6 +780,11 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 | Hash | Description |
 |------|-------------|
 | `712baf8` | feat: cert_unconfirmed detection — allIngredientsPrefixedOrganic() helper; new unverifiedReason value; cert_unconfirmed branch in buildUserMessage(); 7th param threading through fetchExplanation() and explain.js handler; bump PROMPT_VERSION to 13; 4 new tests (suite O); 2194 total |
+
+### Session — conventional_eggs as own category + PROMPT_VERSION 16
+| Hash | Description |
+|------|-------------|
+| *(pending)* | feat: add conventional_eggs category — CONVENTIONAL_EGGS trigger array in rulesEngine.js with isPrecededByOrganic() and word-boundary guard; LEVEL_1_YELLOW_CATEGORIES and ALL_TRIGGERS updated; Node 8b in L2 tree; remove egg detection from Node 8; ConcernCard 🥚 entry; Joel voice in explain.js; bump PROMPT_VERSION to 16; 4 new tests (suite P); L5 updated; 2198 total |
 
 ---
 
