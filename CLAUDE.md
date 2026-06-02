@@ -767,7 +767,7 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 ### Session — wild-caught detection via product name + PROMPT_VERSION 12
 | Hash | Description |
 |------|-------------|
-| `TBD` | feat: add detectWildCaught() — wild-caught detection via OFF label OR product name; farmed exclusions (farm-raised/atlantic salmon/astaxanthin); replace Node 5 in L2 tree; bump PROMPT_VERSION to 12; 4 new tests (suite N); 2190 total |
+| `b5c6be0` | feat: add detectWildCaught() — wild-caught detection via OFF label OR product name; farmed exclusions (farm-raised/atlantic salmon/astaxanthin); replace Node 5 in L2 tree; bump PROMPT_VERSION to 12; 4 new tests (suite N); 2190 total |
 
 ---
 
