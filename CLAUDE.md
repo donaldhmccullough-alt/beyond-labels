@@ -789,7 +789,7 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 ### Session — palm fruit oil added to SEED_OILS + PROMPT_VERSION 17
 | Hash | Description |
 |------|-------------|
-| *(pending)* | fix: add "palm fruit oil" to SEED_OILS trigger list — "palm oil" does not match "palm fruit oil" as a substring; placed near existing palm entries; bump PROMPT_VERSION to 17; 3 new rulesEngine tests; 2201 total |
+| `0e394eb` | fix: add "palm fruit oil" to SEED_OILS trigger list — "palm oil" does not match "palm fruit oil" as a substring; placed near existing palm entries; bump PROMPT_VERSION to 17; 3 new rulesEngine tests; 2201 total |
 
 ---
 
