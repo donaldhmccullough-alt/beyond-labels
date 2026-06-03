@@ -802,7 +802,7 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 ### Session — pure-water GREEN path + PROMPT_VERSION 19
 | Hash | Description |
 |------|-------------|
-| (pending) | feat: pure-water GREEN path — WATER_SAFE_INGREDIENTS Set + allIngredientsAreWaterSafe() helper in scan.js; post-waterfall upgrade YELLOW→GREEN with clearedBy 'pure_water'; pure_water branch in buildUserMessage(); bump PROMPT_VERSION to 19; 4 new scan tests (suite R); 1041 total |
+| `5c71daf` | feat: pure-water GREEN path — WATER_SAFE_INGREDIENTS Set + allIngredientsAreWaterSafe() helper in scan.js; post-waterfall upgrade YELLOW→GREEN with clearedBy 'pure_water'; pure_water branch in buildUserMessage(); bump PROMPT_VERSION to 19; 4 new scan tests (suite R); 1041 total |
 
 ---
 
