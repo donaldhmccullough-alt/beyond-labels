@@ -794,7 +794,7 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 ### Session — detectWildCaught standalone wild signal + PROMPT_VERSION 18
 | Hash | Description |
 |------|-------------|
-| *(pending)* | feat: extend detectWildCaught() with standalone "wild" word signal — /\bwild\b/ in product name (signal 3) and ingredients (signal 4); farmed exclusions unchanged; bump PROMPT_VERSION to 18; 4 new scan tests (suite Q); 2205 total |
+| `bc99e2d` | feat: extend detectWildCaught() with standalone "wild" word signal — /\bwild\b/ in product name (signal 3) and ingredients (signal 4); farmed exclusions unchanged; bump PROMPT_VERSION to 18; 4 new scan tests (suite Q); 2205 total |
 
 ---
 
