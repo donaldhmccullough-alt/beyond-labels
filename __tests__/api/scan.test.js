@@ -1359,10 +1359,10 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 19 (v19: pure-water GREEN path — allIngredientsAreWaterSafe + clearedBy pure_water)', () => {
+  test('PROMPT_VERSION is 20 (v20: L1 conventional_dairy annotation — gentle awareness framing for milk-derived ingredients)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(19);
+    expect(PROMPT_VERSION).toBe(20);
   });
 });
 
@@ -1839,5 +1839,135 @@ describe('R. Pure-water GREEN path', () => {
     await handler(makeReq('POST', { barcode: '000000000804', userLevel: 2 }), res);
     expect(res.body.verdict).toBe('yellow');
     expect(res.body.clearedBy).toBeNull();
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// S. L1 seafood / game-meat / dairy overrides
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('S. L1 seafood / game-meat / dairy overrides', () => {
+  /** Minimal OFF response builder for Suite S tests. */
+  function s1OffResp({
+    productName     = 'Test Product',
+    ingredientsText = 'water, salt',
+    labelsTags      = [],
+    categoriesTags  = [],
+  } = {}) {
+    return {
+      status: 1,
+      product: {
+        product_name:     productName,
+        ingredients_text: ingredientsText,
+        labels_tags:      labelsTags,
+        categories_tags:  categoriesTags,
+      },
+    };
+  }
+
+  // ── S1: wild-caught seafood → GREEN, no conventional_meat flag ───────────
+
+  test('S1: L1 wild-caught seafood → GREEN, no conventional_meat flag injected', async () => {
+    // en:wild-caught-fish normalises to "wild-caught" in labelsDetected.
+    // detectWildCaught() returns true → mirror L2 node 5 → skip injection.
+    mockFetchOnce(s1OffResp({
+      productName:     'Wild Caught Salmon',
+      ingredientsText: 'wild salmon, sea salt',
+      labelsTags:      ['en:wild-caught-fish'],
+      categoriesTags:  ['en:fish'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000901', userLevel: 1 }), res);
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+  });
+
+  // ── S2: farmed seafood (no wild signal) → YELLOW + conventional_meat caution
+
+  test('S2: L1 farmed seafood → YELLOW, conventional_meat caution flag injected', async () => {
+    // "Atlantic Salmon Fillet" triggers the "atlantic salmon" farmed exclusion in
+    // detectWildCaught(), and there are no wild signals → returns false.
+    // Falls through to the else branch → inject conventional_meat caution.
+    mockFetchOnce(s1OffResp({
+      productName:     'Atlantic Salmon Fillet',
+      ingredientsText: 'atlantic salmon, salt',
+      labelsTags:      [],
+      categoriesTags:  ['en:fish'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000902', userLevel: 1 }), res);
+    expect(res.body.verdict).toBe('yellow');
+    const flag = res.body.flags.find(f => f.category === 'conventional_meat');
+    expect(flag).toBeDefined();
+    expect(flag.severity).toBe('caution');
+  });
+
+  // ── S3: game meat → GREEN, no conventional_meat flag ─────────────────────
+
+  test('S3: L1 game meat (en:game-meats) → GREEN, no conventional_meat flag injected', async () => {
+    // Game meat categories mirror L2 node 6 — wild-harvested by nature, no cert needed.
+    mockFetchOnce(s1OffResp({
+      productName:     'Venison Steak',
+      ingredientsText: 'venison, salt',
+      labelsTags:      [],
+      categoriesTags:  ['en:game-meats'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000903', userLevel: 1 }), res);
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+  });
+
+  // ── S4: dairy product, no usda-organic → YELLOW + conventional_dairy caution
+
+  test('S4: L1 dairy (whole milk, no cert) → GREEN upgraded to YELLOW, conventional_dairy caution flag', async () => {
+    // "whole milk, salt" — engine finds no triggers → green.
+    // Override 3 detects whole milk via containsMilkDerived() and injects caution → yellow.
+    mockFetchOnce(s1OffResp({
+      productName:     'Fresh Whole Milk',
+      ingredientsText: 'whole milk, salt',
+      labelsTags:      [],
+      categoriesTags:  ['en:dairy'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000904', userLevel: 1 }), res);
+    expect(res.body.verdict).toBe('yellow');
+    const flag = res.body.flags.find(f => f.category === 'conventional_dairy');
+    expect(flag).toBeDefined();
+    expect(flag.severity).toBe('caution');
+  });
+
+  // ── S5: dairy product, with usda-organic → no conventional_dairy flag ────
+
+  test('S5: L1 dairy + usda-organic → no conventional_dairy flag injected', async () => {
+    // USDA Organic cert is present → l1HasOrganic = true → dairy check skipped.
+    mockFetchOnce(s1OffResp({
+      productName:     'Organic Whole Milk',
+      ingredientsText: 'organic whole milk, salt',
+      labelsTags:      ['en:usda-organic'],
+      categoriesTags:  ['en:dairy'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000905', userLevel: 1 }), res);
+    expect(res.body.flags.some(f => f.category === 'conventional_dairy')).toBe(false);
+  });
+
+  // ── S6: RED product with dairy → verdict stays RED, conventional_dairy caution added
+
+  test('S6: L1 RED product with dairy → verdict stays RED, conventional_dairy caution flag present', async () => {
+    // yellow 5 → additives (reject) → RED. Dairy override injects caution on top
+    // but cannot downgrade RED — verdict must stay red.
+    mockFetchOnce(s1OffResp({
+      productName:     'Chocolate Pudding',
+      ingredientsText: 'whole milk, yellow 5, salt',
+      labelsTags:      [],
+      categoriesTags:  ['en:desserts'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000906', userLevel: 1 }), res);
+    expect(res.body.verdict).toBe('red');
+    const flag = res.body.flags.find(f => f.category === 'conventional_dairy');
+    expect(flag).toBeDefined();
+    expect(flag.severity).toBe('caution');
   });
 });

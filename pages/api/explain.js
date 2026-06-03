@@ -113,6 +113,9 @@ export function buildUserMessage(verdict, flags, productName, ingredients, userL
     if (cat === 'conventional_dairy') {
       line += '\n    [Dairy note: focus on what conventional dairy signals about the farming system — GMO feed, synthetic hormones, antibiotics — rather than listing scary chemicals. Frame organic dairy as the meaningful alternative.]';
     }
+    if (cat === 'conventional_dairy' && userLevel === 1) {
+      line += '\n    [Level 1 dairy note: this is an awareness item — organic dairy is one of the most impactful food swaps available, but conventional dairy is extremely common. Frame organic dairy as a step to take when ready, not a reason to feel bad about today\'s choices. Use especially gentle, encouraging language.]';
+    }
     if (cat === 'conventional_eggs') {
       line += '\n    [Eggs note: focus on what conventional egg farming looks like — GMO grain feed, pesticide exposure, crowded conditions — rather than listing scary chemicals. Frame organic or pasture-raised certification as the meaningful alternative. Do not conflate eggs with meat; this is specifically about egg farming practices.]';
     }

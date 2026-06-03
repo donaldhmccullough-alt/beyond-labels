@@ -752,7 +752,7 @@ export default async function handler(req, res) {
   let oliveCaveat = false;
 
   // ── Level 1 explicit overrides ───────────────────────────────────────────────
-  // Two post-engine adjustments for L1 users only. L2 has its own waterfall below.
+  // Three post-engine adjustments for L1 users only. L2 has its own waterfall below.
   if (userLevel === 1) {
     // Override 1: suppress gluten_grains flags (paywall feature — not shown at L1).
     // Recalculate verdict from remaining flags so gluten never inflates the colour.
@@ -769,15 +769,46 @@ export default async function handler(req, res) {
       }
     }
 
-    // Override 2: conventional meat caution at L1 (educational yellow, no cert check).
-    // Certification is irrelevant at L1 — the flag is always informational.
+    // Pre-compute helpers shared by Overrides 2 and 3.
+    const l1IsSeafood  = isSeafoodProduct(categoriesTags);
+    const l1IsGameMeat = isGameMeatProduct(categoriesTags);
+    const l1HasOrganic = labelsDetected.includes('usda-organic');
+    const l1MaskedText = ingredientsText
+      ? maskIgnoredIngredients(ingredientsText.toLowerCase())
+      : '';
+
+    // Override 2: meat handling at L1 — mirrors L2 nodes 5 and 6.
+    // Wild-caught seafood and game meat are left clean (no flag injected).
+    // Farmed/conventional seafood and all other meat get a caution flag.
     // Does not run for unverified products (nothing screened, no ingredients present).
     if (isMeat && verdict !== 'unverified') {
+      if (l1IsSeafood && detectWildCaught(productName, labelsDetected, ingredientsText)) {
+        // Mirror L2 node 5: wild-caught seafood → leave verdict and flags unchanged.
+      } else if (l1IsGameMeat) {
+        // Mirror L2 node 6: game meat → leave verdict and flags unchanged.
+      } else {
+        // Conventional meat or non-wild seafood: inject educational caution.
+        flags = [{
+          category:          'conventional_meat',
+          severity:          'caution',
+          matchedIngredient: '',
+          summary:           'Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed, pasture-raised, or meat from a farm you trust.',
+        }, ...flags];
+        // A caution flag can upgrade green → yellow, but cannot override red.
+        if (verdict === 'green') verdict = 'yellow';
+      }
+    }
+
+    // Override 3: conventional dairy caution at L1 — mirrors L2 node 9, softened.
+    // Injects an educational caution when milk-derived ingredients are present
+    // without USDA Organic certification. Caution severity only — does not
+    // downgrade red verdicts, and does not run for unverified products.
+    if (!l1HasOrganic && l1MaskedText && containsMilkDerived(l1MaskedText) && verdict !== 'unverified') {
       flags = [{
-        category:          'conventional_meat',
+        category:          'conventional_dairy',
         severity:          'caution',
         matchedIngredient: '',
-        summary:           'Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed, pasture-raised, or meat from a farm you trust.',
+        summary:           "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Organic dairy is a meaningful alternative when you're ready for that step.",
       }, ...flags];
       // A caution flag can upgrade green → yellow, but cannot override red.
       if (verdict === 'green') verdict = 'yellow';

@@ -632,7 +632,18 @@ Level 2 users get a 14-node decision tree applied AFTER the rules engine runs. S
 
 ### L1 Verdict Overrides (scan.js)
 
-Level 1 users get two explicit overrides applied after the engine runs, before the inconclusive check. (1) Gluten suppression: gluten_grains flags are removed from the flags array; verdict is recalculated from remaining flags (reject → red, caution → yellow, no flags → green). Gluten is a future paywall feature — do not wire it back into L1 or L2 logic. (2) Conventional meat caution: if isMeatProduct and verdict is not `'unverified'`, a `conventional_meat` caution flag is injected unconditionally — no cert check at L1, always educational yellow. The flag can upgrade green → yellow but cannot downgrade red. For everything else at L1, the engine's built-in level-aware verdict is used directly: trans_fats and additives return red; seed_oils, natural_flavors, conventional_crops, and bioengineering return yellow.
+Level 1 users get three explicit overrides applied after the engine runs, before the inconclusive check. Override helpers (`isSeafoodProduct`, `isGameMeatProduct`, `maskIgnoredIngredients`, `containsMilkDerived`) are pre-computed at the top of the L1 block.
+
+**(1) Gluten suppression**: gluten_grains flags are removed from the flags array; verdict is recalculated from remaining flags (reject → red, caution → yellow, no flags → green). Gluten is a future paywall feature — do not wire it back into L1 or L2 logic.
+
+**(2) Meat handling** (mirrors L2 nodes 5 and 6): if `isMeatProduct` and verdict is not `'unverified'` — three branches, first match wins:
+- Wild-caught seafood (`isSeafoodProduct && detectWildCaught(...)` returns true) → **skip injection** — leave verdict and flags unchanged (mirrors L2 node 5).
+- Game meat (`isGameMeatProduct`) → **skip injection** — leave verdict and flags unchanged (mirrors L2 node 6).
+- All other meat (conventional, farmed seafood) → inject `conventional_meat` caution flag; upgrade green → yellow. Cannot downgrade red.
+
+**(3) Conventional dairy caution** (mirrors L2 node 9, softened): if no `usda-organic` label AND `containsMilkDerived(maskedText)` returns true AND verdict is not `'unverified'` — inject `conventional_dairy` caution flag. Upgrade green → yellow. Does not downgrade red. Caution severity only (not reject).
+
+For everything else at L1, the engine's built-in level-aware verdict is used directly: trans_fats and additives return red; seed_oils, natural_flavors, conventional_crops, and bioengineering return yellow.
 
 ### Vercel serverless — always await Supabase writes before res.json()
 
@@ -803,6 +814,11 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 | Hash | Description |
 |------|-------------|
 | `5c71daf` | feat: pure-water GREEN path — WATER_SAFE_INGREDIENTS Set + allIngredientsAreWaterSafe() helper in scan.js; post-waterfall upgrade YELLOW→GREEN with clearedBy 'pure_water'; pure_water branch in buildUserMessage(); bump PROMPT_VERSION to 19; 4 new scan tests (suite R); 1041 total |
+
+### Session — L1 parity: wild-caught seafood, game meat, conventional dairy
+| Hash | Description |
+|------|-------------|
+| TBD | feat: L1 parity — wild-caught seafood and game meat skip conventional_meat injection (mirrors L2 nodes 5/6); new Override 3 injects conventional_dairy caution for uncertified milk-derived products (mirrors L2 node 9, softened); L1 conventional_dairy annotation in buildUserMessage(); PROMPT_VERSION NOT bumped yet (annotation change pending confirm); 6 new scan tests (suite S); 1047 total |
 
 ---
 
