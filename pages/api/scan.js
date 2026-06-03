@@ -293,6 +293,62 @@ function allIngredientsPrefixedOrganic(ingredientsText) {
   return nonTrivial.every(t => t.startsWith('organic'));
 }
 
+// ── Pure-water detection ──────────────────────────────────────────────────
+
+/**
+ * Ingredients that are safe and expected in natural water products.
+ * Covers all standard water forms and the minerals/gases that naturally
+ * occur in spring, artesian, and mineral waters.
+ *
+ * Used by allIngredientsAreWaterSafe() to upgrade default-YELLOW water
+ * products to GREEN — organic certification is inapplicable to geological
+ * water sources, so the absence of a cert label is not a concern.
+ */
+const WATER_SAFE_INGREDIENTS = new Set([
+  // Water forms
+  'water', 'spring water', 'artesian water', 'mineral water', 'sparkling water',
+  'carbonated water', 'purified water', 'distilled water', 'reverse osmosis water',
+  'deionized water', 'filtered water',
+  // Naturally occurring minerals (from geological water sources)
+  'silica', 'calcium', 'magnesium', 'bicarbonates', 'bicarbonate', 'sodium',
+  'potassium', 'fluoride', 'sulfate', 'sulfates', 'chloride', 'chlorides',
+  'iron', 'zinc', 'manganese', 'chromium', 'selenium', 'lithium', 'strontium',
+  'phosphate', 'phosphates',
+  // CO2 (carbonation)
+  'carbon dioxide', 'co2', 'natural carbon dioxide',
+]);
+
+/**
+ * Returns true when every ingredient token in the text is found in the
+ * WATER_SAFE_INGREDIENTS set. Used to identify pure natural water products
+ * (spring water, artesian water, mineral water, etc.) that should receive a
+ * GREEN verdict even though they cannot hold USDA organic certification.
+ *
+ * Strips parenthetical sub-ingredient lists before tokenising, exactly
+ * as allIngredientsPrefixedOrganic() does.
+ *
+ * Returns false when:
+ *   - ingredientsText is empty/null
+ *   - any token is NOT in WATER_SAFE_INGREDIENTS (e.g. "coconut water", "natural flavor")
+ *
+ * @param {string|null} ingredientsText — raw ingredient string from OFF
+ * @returns {boolean}
+ */
+function allIngredientsAreWaterSafe(ingredientsText) {
+  if (!ingredientsText) return false;
+
+  const stripped = ingredientsText.replace(/\([^)]*\)/g, '');
+
+  const tokens = stripped
+    .split(',')
+    .map(t => t.trim().replace(/[.*†‡]/g, '').trim().toLowerCase())
+    .filter(t => t.length > 0);
+
+  if (tokens.length === 0) return false;
+
+  return tokens.every(t => WATER_SAFE_INGREDIENTS.has(t));
+}
+
 /**
  * Replace each ALWAYS_IGNORE_INGREDIENTS term in the already-lowercased
  * `text` with same-length spaces. Prevents false positives in ingredient-
@@ -956,6 +1012,26 @@ export default async function handler(req, res) {
     allIngredientsPrefixedOrganic(ingredientsText)
   ) {
     unverifiedReason = 'cert_unconfirmed';
+  }
+
+  // ── Pure-water GREEN path ─────────────────────────────────────────────────
+  // Natural mineral water, spring water, artesian water and similar geological
+  // water products cannot hold USDA organic certification — organic cert is
+  // inapplicable to water sources. Leaving them at default YELLOW (Node 14)
+  // misleads users into thinking there is a problem. When every ingredient
+  // token is in WATER_SAFE_INGREDIENTS (water forms, naturally occurring
+  // minerals, CO2), upgrade the verdict to GREEN with clearedBy 'pure_water'.
+  //
+  // Guard: clearedBy === null ensures cert-cleared products (e.g. glyphosate-free
+  // water products — unlikely but possible) are not overwritten.
+  if (
+    verdict === 'yellow' &&
+    flags.length === 0 &&
+    clearedBy === null &&
+    allIngredientsAreWaterSafe(ingredientsText)
+  ) {
+    verdict   = 'green';
+    clearedBy = 'pure_water';
   }
 
   // ── Capture unverified ingredients ───────────────────────────────────────

@@ -1359,10 +1359,10 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 18 (v18: detectWildCaught extended with standalone "wild" word signal)', () => {
+  test('PROMPT_VERSION is 19 (v19: pure-water GREEN path — allIngredientsAreWaterSafe + clearedBy pure_water)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(18);
+    expect(PROMPT_VERSION).toBe(19);
   });
 });
 
@@ -1740,5 +1740,104 @@ describe('Q. detectWildCaught — standalone wild signal', () => {
     await handler(makeReq('POST', { barcode: '000000000704', userLevel: 2 }), res);
     expect(res.body.verdict).toBe('red');
     expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(true);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// R. Pure-water GREEN path (v19)
+//    Tests allIngredientsAreWaterSafe() + clearedBy 'pure_water' upgrade.
+//    Natural mineral water/spring water/artesian water can't hold USDA organic
+//    cert — organic cert is inapplicable to geological water sources.
+//    Default YELLOW (Node 14) is wrong for these products; they should be GREEN.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('R. Pure-water GREEN path', () => {
+  /** Minimal OFF response builder for Suite R tests. */
+  function waterOffResp({
+    productName     = 'Test Water Product',
+    ingredientsText = '',
+    labelsTags      = [],
+    categoriesTags  = [],
+  } = {}) {
+    return {
+      status: 1,
+      product: {
+        product_name:     productName,
+        ingredients_text: ingredientsText,
+        labels_tags:      labelsTags,
+        categories_tags:  categoriesTags,
+      },
+    };
+  }
+
+  // ── R1: artesian water with minerals → GREEN, clearedBy 'pure_water' ──────
+
+  test('R1: artesian water + natural minerals → GREEN, clearedBy "pure_water", flags empty', async () => {
+    // Real-world ingredient text for "Natural Artesian Water" that triggered the bug.
+    // All tokens (water, silica, calcium, magnesium, bicarbonates) are in
+    // WATER_SAFE_INGREDIENTS, so the post-waterfall check upgrades YELLOW → GREEN.
+    mockFetchOnce(waterOffResp({
+      productName:     'Natural Artesian Water',
+      ingredientsText: 'Water, silica, calcium, magnesium, bicarbonates',
+      labelsTags:      [],
+      categoriesTags:  ['en:waters'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000801', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.clearedBy).toBe('pure_water');
+    expect(res.body.flags).toHaveLength(0);
+  });
+
+  // ── R2: plain sparkling water → GREEN ────────────────────────────────────
+
+  test('R2: sparkling water + carbon dioxide → GREEN, clearedBy "pure_water"', async () => {
+    mockFetchOnce(waterOffResp({
+      productName:     'Sparkling Mineral Water',
+      ingredientsText: 'sparkling water, carbon dioxide',
+      labelsTags:      [],
+      categoriesTags:  ['en:waters'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000802', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.clearedBy).toBe('pure_water');
+  });
+
+  // ── R3: water + natural flavor → RED (instant-red fires first) ────────────
+
+  test('R3: water + natural flavor → RED (natural_flavors instant-red fires before water-safe check)', async () => {
+    // "natural flavor" triggers the natural_flavors instant-red at L2 Nodes 1–3.
+    // verdict is set to RED before the post-waterfall check ever runs.
+    // Verifies that the pure-water path does not rescue products with concerning ingredients.
+    mockFetchOnce(waterOffResp({
+      productName:     'Flavored Water',
+      ingredientsText: 'water, natural flavor',
+      labelsTags:      [],
+      categoriesTags:  ['en:waters'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000803', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'natural_flavors')).toBe(true);
+    expect(res.body.clearedBy).toBeNull();
+  });
+
+  // ── R4: coconut water → stays YELLOW (not in WATER_SAFE_INGREDIENTS) ──────
+
+  test('R4: coconut water (not in WATER_SAFE_INGREDIENTS) → YELLOW, no pure_water clearance', async () => {
+    // "coconut water" is not a geological water source and is not in the
+    // WATER_SAFE_INGREDIENTS set. The pure-water check returns false, and the
+    // product stays at default YELLOW (Node 14).
+    mockFetchOnce(waterOffResp({
+      productName:     'Pure Coconut Water',
+      ingredientsText: 'coconut water',
+      labelsTags:      [],
+      categoriesTags:  ['en:coconut-waters'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000804', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('yellow');
+    expect(res.body.clearedBy).toBeNull();
   });
 });

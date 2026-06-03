@@ -134,7 +134,9 @@ export function buildUserMessage(verdict, flags, productName, ingredients, userL
         ? 'All ingredients in this product appear to be organically labeled, but we could not confirm USDA organic certification from our product database. Do not describe this product as certified organic. Instead, tell the user honestly that the ingredients all look organic, but you couldn\'t verify the seal, and encourage them to flip the package over and look for the USDA organic seal — if it\'s there, this product is a green. Return "details": {} — empty, no flagged categories to detail.'
         : verdict === 'yellow' && (flags || []).length === 0 && clearedBy === null
           ? 'No specific ingredient flags were triggered, but this product carries no organic certification. Write the summary as Sina — honest and measured: nothing alarming was found, but the absence of organic certification means we cannot verify what this product was exposed to during growing or processing. Not a product she would avoid in a pinch, but not one she reaches for routinely. Return "details": {} — empty, no flagged categories to detail.'
-          : 'No concerning ingredients found — product passed all checks.';
+          : clearedBy === 'pure_water'
+            ? 'This is a pure water product — natural mineral water, spring water, artesian water, or similar. USDA organic certification is literally inapplicable to geological water sources, so the absence of a cert label is not a concern here and should not be mentioned. Give a clean, warm, straightforward green explanation that celebrates the simplicity of the ingredient list. Do not mention certification, organic seals, or suggest anything is missing. Return "details": {} — empty, no flagged categories.'
+            : 'No concerning ingredients found — product passed all checks.';
 
   const levelContext = userLevel === 1
     ? '\nUser context: This is a Level 1 (building awareness) user. For any "awareness item" flags, use encouraging language that builds confidence rather than alarm — frame them as "something to be aware of as you build better habits" rather than urgent warnings.'
