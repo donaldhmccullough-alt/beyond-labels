@@ -1359,10 +1359,10 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 17 (v17: palm fruit oil added to SEED_OILS trigger list)', () => {
+  test('PROMPT_VERSION is 18 (v18: detectWildCaught extended with standalone "wild" word signal)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(17);
+    expect(PROMPT_VERSION).toBe(18);
   });
 });
 
@@ -1646,5 +1646,99 @@ describe('P. conventional_eggs', () => {
     expect(res.body.verdict).toBe('red');
     expect(res.body.flags.some(f => f.category === 'conventional_dairy')).toBe(true);
     expect(res.body.flags.some(f => f.category === 'conventional_eggs')).toBe(false);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Q. detectWildCaught — standalone "wild" word signal (v18 extension)
+//    Tests the two new positive signals added to detectWildCaught():
+//    (3) standalone "wild" in product name, (4) standalone "wild" in ingredients.
+//    Farmed exclusions must still override all positive signals.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('Q. detectWildCaught — standalone wild signal', () => {
+  /** Minimal OFF response builder for Suite Q tests. */
+  function wildOffResp({
+    productName     = 'Test Fish Product',
+    ingredientsText = 'fish, water, salt',
+    labelsTags      = [],
+    categoriesTags  = [],
+  } = {}) {
+    return {
+      status: 1,
+      product: {
+        product_name:     productName,
+        ingredients_text: ingredientsText,
+        labels_tags:      labelsTags,
+        categories_tags:  categoriesTags,
+      },
+    };
+  }
+
+  // ── Q1: "ALBACORE WILD TUNA" — standalone "wild" in product name ──────────
+
+  test('Q1: "ALBACORE WILD TUNA" — standalone "wild" in product name → GREEN, clearedBy wild-caught', async () => {
+    mockFetchOnce(wildOffResp({
+      productName:     'ALBACORE WILD TUNA',
+      ingredientsText: 'albacore tuna, water, salt',
+      categoriesTags:  ['en:tuna'],
+      labelsTags:      [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000701', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.clearedBy).toBe('wild-caught');
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+  });
+
+  // ── Q2: "Wild Pink Salmon" with "Wild pink salmon" in ingredients ─────────
+
+  test('Q2: "Wild Pink Salmon" with "Wild pink salmon" in ingredients → GREEN', async () => {
+    // Signal fires via both product name (signal 3) and ingredients (signal 4).
+    mockFetchOnce(wildOffResp({
+      productName:     'Wild Pink Salmon',
+      ingredientsText: 'Wild pink salmon, salt',
+      categoriesTags:  ['en:salmon'],
+      labelsTags:      [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000702', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.clearedBy).toBe('wild-caught');
+  });
+
+  // ── Q3: "Wild Berry Jam" — "wild" in non-seafood product name → not affected
+
+  test('Q3: "Wild Berry Jam" (non-seafood, isMeat=false) → detectWildCaught irrelevant; no conventional_meat flag', async () => {
+    // detectWildCaught would return true for this product, but that only matters
+    // at Node 5 of the L2 tree which only fires when the tree hasn't already exited.
+    // A non-meat, non-seafood product with no cert and no concerning ingredients
+    // reaches Node 14 (default yellow) — not flagged as conventional_meat.
+    mockFetchOnce(wildOffResp({
+      productName:     'Wild Berry Jam',
+      ingredientsText: 'strawberries, sugar, pectin',
+      categoriesTags:  ['en:jams'],
+      labelsTags:      [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000703', userLevel: 2 }), res);
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+  });
+
+  // ── Q4: "wild" in product name but "astaxanthin" in ingredients → farmed exclusion
+
+  test('Q4: "Wild Salmon" but ingredients contain "astaxanthin" → farmed exclusion wins, RED', async () => {
+    // astaxanthin is a synthetic pigment used to colour farmed salmon;
+    // its presence takes precedence over the "wild" name signal.
+    mockFetchOnce(wildOffResp({
+      productName:     'Wild Salmon Fillet',
+      ingredientsText: 'salmon, astaxanthin, salt',
+      categoriesTags:  ['en:salmon'],
+      labelsTags:      [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000704', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(true);
   });
 });

@@ -189,6 +189,10 @@ function isGameMeatProduct(categoriesTags) {
  * Positive signals (checked in order):
  *   (1) OFF label 'wild-caught' (normalised from labels_tags via normalizeLabelTags)
  *   (2) Product name contains "wild-caught" or "wild caught" (case-insensitive)
+ *   (3) Product name contains standalone word "wild" (word-boundary safe — will not
+ *       match "wildlife" or "wilderness"; covers "ALBACORE WILD TUNA", etc.)
+ *   (4) Ingredients text contains standalone word "wild" (same constraint; covers
+ *       products like "Wild pink salmon" in the ingredient list)
  *
  * Farmed exclusions (take precedence over all positive signals):
  *   - Product name contains "farm-raised", "farmed", or "atlantic salmon"
@@ -211,13 +215,24 @@ function detectWildCaught(productName, labelsDetected, ingredientsText) {
   if (FARMED_NAME_SIGNALS.some(s => nameLower.includes(s))) return false;
   if (ingLower.includes('astaxanthin')) return false;
 
+  // Word-boundary regex for the standalone word "wild" — matches "wild" surrounded
+  // by non-letter characters (spaces, punctuation, start/end of string), but not
+  // inside compound words like "wildlife" or "wilderness".
+  const STANDALONE_WILD = /\bwild\b/;
+
   // ── Positive wild-caught signals ──────────────────────────────────────────
   // Signal 1: OFF label (already normalised from labels_tags)
   if (labelsDetected.includes('wild-caught')) return true;
 
-  // Signal 2: Product name
+  // Signal 2: Product name contains "wild-caught" or "wild caught"
   const WILD_NAME_SIGNALS = ['wild-caught', 'wild caught'];
   if (WILD_NAME_SIGNALS.some(s => nameLower.includes(s))) return true;
+
+  // Signal 3: Product name contains standalone word "wild"
+  if (STANDALONE_WILD.test(nameLower)) return true;
+
+  // Signal 4: Ingredients text contains standalone word "wild"
+  if (ingLower && STANDALONE_WILD.test(ingLower)) return true;
 
   return false;
 }
