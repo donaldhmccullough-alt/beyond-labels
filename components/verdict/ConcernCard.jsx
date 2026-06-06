@@ -47,9 +47,6 @@ export default function ConcernCard({ category, flags, explanation }) {
             ))}
           </div>
           {explanation && <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--text-mid)', paddingTop: 8 }}>{explanation}</p>}
-          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-light)', fontWeight: 500 }}>
-            <span>📚</span><span>Beyond Labels methodology</span>
-          </div>
         </div>
       )}
     </div>
