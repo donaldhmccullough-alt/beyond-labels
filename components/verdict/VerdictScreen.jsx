@@ -179,19 +179,19 @@ export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, o
 
       {/* AI summary / unverified message / inconclusive message */}
       {verdict === 'unverified' ? (
-        <div style={{ margin: '12px 16px 0', background: 'var(--cream-dark)', borderRadius: 16, padding: 16 }}>
+        <div style={{ margin: '12px 16px 0', background: 'var(--cream-dark)', borderRadius: 16, padding: 16, borderLeft: '4px solid ' + (verdictColors[verdict] || '#9A8260') }}>
           <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--text-mid)' }}>
             {unverifiedCopy}
           </p>
         </div>
       ) : verdict === 'inconclusive' ? (
-        <div style={{ margin: '12px 16px 0', background: 'var(--cream-dark)', borderRadius: 16, padding: 16 }}>
+        <div style={{ margin: '12px 16px 0', background: 'var(--cream-dark)', borderRadius: 16, padding: 16, borderLeft: '4px solid ' + (verdictColors[verdict] || '#D4872A') }}>
           <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--text-mid)' }}>
             We found this product but couldn't confidently analyze its ingredients — they may be listed in an unfamiliar format or language. Scan again for a fresh attempt, or check the label manually.
           </p>
         </div>
       ) : (
-        <div style={{ margin: '12px 16px 0', background: 'var(--cream-dark)', borderRadius: 16, padding: 16, minHeight: 72 }}>
+        <div style={{ margin: '12px 16px 0', background: 'var(--cream-dark)', borderRadius: 16, padding: 16, minHeight: 72, borderLeft: '4px solid ' + (verdictColors[verdict] || '#9A8260') }}>
           {loadingExplanation ? (
             <div>
               <div className="shimmer" style={{ height: 16, marginBottom: 8, width: '90%', borderRadius: 6 }} />
