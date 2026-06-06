@@ -150,7 +150,7 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
       )}
 
       {/* Viewfinder */}
-      <div style={{ margin: '20px 16px 0', borderRadius: 20, overflow: 'hidden', background: '#1A1A2E', height: 280, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+      <div className="viewfinder" onClick={scanning ? stopCamera : startCamera} style={{ margin: '20px 16px 0', borderRadius: 20, overflow: 'hidden', background: '#1A1A2E', height: 280, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative', cursor: 'pointer' }}>
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, #1A1A2E 0%, #16213E 50%, #0F3460 100%)' }} />
         <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(212,135,42,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(212,135,42,0.08) 1px, transparent 1px)', backgroundSize: '30px 30px' }} />
         <video ref={videoRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: scanning && !cameraError ? 'block' : 'none' }} playsInline muted />
@@ -249,7 +249,7 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
       {/* MVP_MODE: paywall modal kept in code but never triggered */}
       {!MVP_MODE && showPaywall && <PaywallModal onClose={() => setShowPaywall(false)} />}
 
-      <style dangerouslySetInnerHTML={{ __html: '@keyframes scanAnim{0%,100%{top:20%;opacity:.6;}50%{top:80%;opacity:1;}}@keyframes spin{to{transform:rotate(360deg);}}' }} />
+      <style dangerouslySetInnerHTML={{ __html: '@keyframes scanAnim{0%,100%{top:20%;opacity:.6;}50%{top:80%;opacity:1;}}@keyframes spin{to{transform:rotate(360deg);}}.viewfinder:active{opacity:0.82;transition:opacity 0.1s;}' }} />
     </div>
   );
 }
