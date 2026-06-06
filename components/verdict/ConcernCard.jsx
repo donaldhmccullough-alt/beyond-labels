@@ -37,7 +37,7 @@ export default function ConcernCard({ category, flags, explanation }) {
           <div style={{ fontSize: 12, color: 'var(--text-light)', lineHeight: 1.4 }}>{flags.length} ingredient{flags.length > 1 ? 's' : ''} flagged</div>
         </div>
         <div style={{ width: 10, height: 10, borderRadius: '50%', background: severityColors[severity], flexShrink: 0 }} />
-        <span style={{ fontSize: 14, color: 'var(--text-light)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.25s' }}>▼</span>
+        <span style={{ fontSize: 14, color: severityColors[severity], transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.25s' }}>▼</span>
       </div>
       {open && (
         <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--cream-dark)' }}>

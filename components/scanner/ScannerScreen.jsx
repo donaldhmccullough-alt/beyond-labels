@@ -137,7 +137,7 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
     <div style={{ background: 'var(--cream)', minHeight: '100dvh' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px 12px', background: 'var(--cream)', borderBottom: '1px solid var(--cream-dark)' }}>
         <span style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: 20, fontWeight: 700, color: 'var(--text-dark)' }}>Beyond Labels</span>
-        <button onClick={() => setShowManual(!showManual)} style={{ background: 'var(--cream-dark)', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--text-mid)', minHeight: 36 }}>Manual</button>
+        <button onClick={() => setShowManual(!showManual)} style={{ background: 'transparent', border: '1.5px solid #D4872A', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#D4872A', minHeight: 36 }}>Enter Barcode</button>
       </div>
 
       {showManual && (
