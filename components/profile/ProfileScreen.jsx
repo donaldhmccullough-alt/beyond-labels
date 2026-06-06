@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { getUserLevel } from '@/lib/userLevel';
 import { PROMPT_VERSION } from '@/lib/cacheVersion';
 import { formatTime, createHistoryTapHandler } from '@/lib/scanHistory';
+import DisclaimerModal from '@/components/shared/DisclaimerModal';
 
 const FREE_SCAN_LIMIT = 15;
 
@@ -20,6 +21,7 @@ export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRe
   const [scanUsage, setScanUsage] = useState({ scanCount: 0 });
   const [scanHistory, setScanHistory] = useState([]);
   const [signingOut, setSigningOut] = useState(false);
+  const [showDisclaimer, setShowDisclaimer] = useState(false);
   // Scan history tap state
   // tapInFlightRef is the authoritative guard — a ref is synchronous and survives
   // unmount/remount without React 18 concurrent mode timing issues.
@@ -341,10 +343,19 @@ export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRe
           {hasAssessment ? 'Retake assessment' : 'Take the assessment'}
         </button>
 
-        <p style={{ textAlign: 'center', marginTop: 24, fontSize: 12, color: 'var(--text-light)' }}>
+        <button
+          onClick={() => setShowDisclaimer(true)}
+          style={{ width: '100%', background: 'none', border: 'none', color: 'var(--text-light)', fontSize: 13, cursor: 'pointer', padding: '8px 0', minHeight: 44, textDecoration: 'underline' }}
+        >
+          Disclaimer
+        </button>
+
+        <p style={{ textAlign: 'center', marginTop: 8, fontSize: 12, color: 'var(--text-light)' }}>
           Beyond Labels v1.0.0-beta
         </p>
       </div>
+
+      {showDisclaimer && <DisclaimerModal onAccept={() => setShowDisclaimer(false)} />}
     </div>
   );
 }

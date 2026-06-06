@@ -25,6 +25,7 @@ import SwapsScreen from '@/components/swaps/SwapsScreen';
 import ProfileScreen from '@/components/profile/ProfileScreen';
 import BottomNav from '@/components/shared/BottomNav';
 import AuthModal from '@/components/auth/AuthModal';
+import DisclaimerModal from '@/components/shared/DisclaimerModal';
 
 export default function Home() {
   const [appScreen, setAppScreen] = useState('loading');
@@ -37,8 +38,14 @@ export default function Home() {
   // ── Auth state ────────────────────────────────────────────────────────────
   const [user, setUser] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showDisclaimer, setShowDisclaimer] = useState(false);
 
   useEffect(() => {
+    // Show disclaimer once — before any onboarding or main screen.
+    if (!localStorage.getItem('bl_disclaimer_accepted')) {
+      setShowDisclaimer(true);
+    }
+
     // Show level-select on first visit; skip straight to scanner on return visits.
     if (hasUserLevel()) {
       setUserLevelState(getUserLevel());
@@ -170,6 +177,11 @@ export default function Home() {
     setAppScreen('onboarding');
   }
 
+  function handleDisclaimerAccept() {
+    localStorage.setItem('bl_disclaimer_accepted', '1');
+    setShowDisclaimer(false);
+  }
+
   function handleAuthSuccess(signedInUser) {
     if (signedInUser) setUser(signedInUser);
     setShowAuthModal(false);
@@ -212,6 +224,7 @@ export default function Home() {
         {onboardingStep === 'launch' && (
           <LaunchScreen score={assessmentScore} onLaunch={handleLaunch} />
         )}
+        {showDisclaimer && <DisclaimerModal onAccept={handleDisclaimerAccept} />}
       </div>
     );
   }
@@ -256,6 +269,8 @@ export default function Home() {
           onSuccess={handleAuthSuccess}
         />
       )}
+
+      {showDisclaimer && <DisclaimerModal onAccept={handleDisclaimerAccept} />}
     </div>
   );
 }
