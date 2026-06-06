@@ -101,7 +101,7 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
       } else {
         incrementScan();
         setScanUsage(getScanUsage());
-        addScanToHistory({ productName: data.productName || barcode, verdict: data.verdict, timestamp: new Date().toISOString(), barcode });
+        addScanToHistory({ productName: data.productName || '', verdict: data.verdict, timestamp: new Date().toISOString(), barcode });
         setHistory(getScanHistory());
       }
       onScanResult(data);
@@ -224,7 +224,10 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
                   }}
                 >
                   <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: vc[item.verdict] || '#9A8260' }} />
-                  <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text-dark)' }}>{item.productName}</span>
+                  {item.productName
+                    ? <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--text-dark)' }}>{item.productName}</span>
+                    : <span style={{ flex: 1, fontSize: 13, fontWeight: 400, color: 'var(--text-light)', fontStyle: 'italic' }}>Product Not Found</span>
+                  }
                   {isLoading ? (
                     <span style={{ fontSize: 11, color: 'var(--text-light)' }}>…</span>
                   ) : (
