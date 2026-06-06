@@ -13,6 +13,7 @@ import { getUserLevel } from '@/lib/userLevel';
 import { PROMPT_VERSION } from '@/lib/cacheVersion';
 import { formatTime, createHistoryTapHandler } from '@/lib/scanHistory';
 import DisclaimerModal from '@/components/shared/DisclaimerModal';
+import PrivacyPromiseModal from '@/components/shared/PrivacyPromiseModal';
 
 const FREE_SCAN_LIMIT = 15;
 
@@ -22,6 +23,7 @@ export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRe
   const [scanHistory, setScanHistory] = useState([]);
   const [signingOut, setSigningOut] = useState(false);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
+  const [showPrivacyPromise, setShowPrivacyPromise] = useState(false);
   // Scan history tap state
   // tapInFlightRef is the authoritative guard — a ref is synchronous and survives
   // unmount/remount without React 18 concurrent mode timing issues.
@@ -343,12 +345,42 @@ export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRe
           {hasAssessment ? 'Retake assessment' : 'Take the assessment'}
         </button>
 
-        <button
-          onClick={() => setShowDisclaimer(true)}
-          style={{ width: '100%', background: 'none', border: 'none', color: 'var(--text-light)', fontSize: 13, cursor: 'pointer', padding: '8px 0', minHeight: 44, textDecoration: 'underline' }}
-        >
-          Disclaimer
-        </button>
+        {/* ── Legal & Privacy ───────────────────────────────────────── */}
+        <div style={{ background: 'var(--cream-dark)', borderRadius: 16, padding: '4px 0', marginBottom: 16 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '1px', padding: '12px 16px 8px' }}>
+            Legal &amp; Privacy
+          </p>
+
+          {/* Disclaimer */}
+          <button
+            onClick={() => setShowDisclaimer(true)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', borderTop: '1px solid rgba(0,0,0,0.06)', padding: '0 16px', minHeight: 48, cursor: 'pointer', textAlign: 'left' }}
+          >
+            <span style={{ fontSize: 14, color: 'var(--text-dark)', fontWeight: 500 }}>Disclaimer</span>
+            <span style={{ fontSize: 16, color: 'var(--text-light)' }}>›</span>
+          </button>
+
+          {/* Our Privacy Promise */}
+          <button
+            onClick={() => setShowPrivacyPromise(true)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', borderTop: '1px solid rgba(0,0,0,0.06)', padding: '0 16px', minHeight: 48, cursor: 'pointer', textAlign: 'left' }}
+          >
+            <span style={{ fontSize: 14, color: 'var(--text-dark)', fontWeight: 500 }}>Our Privacy Promise</span>
+            <span style={{ fontSize: 16, color: 'var(--text-light)' }}>›</span>
+          </button>
+
+          {/* Privacy Policy — Coming Soon */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgba(0,0,0,0.06)', padding: '0 16px', minHeight: 48 }}>
+            <span style={{ fontSize: 14, color: 'var(--text-light)' }}>Privacy Policy</span>
+            <span style={{ fontSize: 11, color: 'var(--text-light)', fontWeight: 600, background: 'rgba(0,0,0,0.06)', borderRadius: 6, padding: '2px 7px' }}>Coming Soon</span>
+          </div>
+
+          {/* Terms of Service — Coming Soon */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgba(0,0,0,0.06)', padding: '0 16px', minHeight: 48 }}>
+            <span style={{ fontSize: 14, color: 'var(--text-light)' }}>Terms of Service</span>
+            <span style={{ fontSize: 11, color: 'var(--text-light)', fontWeight: 600, background: 'rgba(0,0,0,0.06)', borderRadius: 6, padding: '2px 7px' }}>Coming Soon</span>
+          </div>
+        </div>
 
         <p style={{ textAlign: 'center', marginTop: 8, fontSize: 12, color: 'var(--text-light)' }}>
           Beyond Labels v1.0.0-beta
@@ -356,6 +388,7 @@ export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRe
       </div>
 
       {showDisclaimer && <DisclaimerModal onAccept={() => setShowDisclaimer(false)} />}
+      {showPrivacyPromise && <PrivacyPromiseModal onClose={() => setShowPrivacyPromise(false)} />}
     </div>
   );
 }
