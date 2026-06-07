@@ -822,6 +822,14 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 
 ---
 
+## PWA / Icons
+
+Basic PWA installability is enabled (`public/manifest.json`, `<link rel="manifest">` in `app/layout.jsx`, `apple-touch-icon`). No service worker — offline support is not implemented.
+
+**Icons are placeholders** — `public/icon-192.png` and `public/icon-512.png` were generated from a Gemini-generated concept image (`Gemini_Generated_Image_a2ibq4a2ibq4a2ib.png`). Replace both files with final brand assets before public launch. The source image is in the Downloads folder of the dev machine; the original path was `/mnt/user-data/uploads/Gemini_Generated_Image_a2ibq4a2ibq4a2ib.png`. When replacing, regenerate both sizes (192×192 and 512×512) and keep `"purpose": "any maskable"` in the manifest.
+
+---
+
 ## What NOT to Do
 - Do not install `@supabase/auth-helpers-nextjs` — it's a Pages Router package, breaks App Router builds
 - Do not use `serverExternalPackages` in next.config.js — use `experimental.serverComponentsExternalPackages` (Next.js 14 key)
