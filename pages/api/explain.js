@@ -21,6 +21,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { PROMPT_VERSION } from '../../lib/cacheVersion';
+import { ANTHROPIC_MODEL } from '../../lib/aiConfig';
 
 export { PROMPT_VERSION };
 
@@ -191,7 +192,7 @@ export default async function handler(req, res) {
     const client = new Anthropic({ apiKey });
 
     const message = await client.messages.create({
-      model:      'claude-sonnet-4-20250514',
+      model:      ANTHROPIC_MODEL,
       max_tokens: 1000,
       system:     SYSTEM_PROMPT,
       messages: [{
@@ -223,13 +224,14 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
-    // Surface auth errors distinctly to help with Vercel debugging
+    console.error('[explain] Anthropic error:', err.status, err.message, err.error);
     if (err.status === 401) {
       return res.status(500).json({ error: 'Anthropic API key is invalid or expired.' });
     }
     return res.status(502).json({
       error:  'Failed to generate explanation.',
       detail: err.message,
+      status: err.status,
     });
   }
 }
