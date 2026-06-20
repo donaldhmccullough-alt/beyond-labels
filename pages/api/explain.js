@@ -224,14 +224,12 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
-    console.error('[explain] Anthropic error:', err.status, err.message, err.error);
     if (err.status === 401) {
       return res.status(500).json({ error: 'Anthropic API key is invalid or expired.' });
     }
     return res.status(502).json({
       error:  'Failed to generate explanation.',
       detail: err.message,
-      status: err.status,
     });
   }
 }
