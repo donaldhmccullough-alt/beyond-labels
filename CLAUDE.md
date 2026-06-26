@@ -10,7 +10,7 @@ Beyond Labels is a mobile-first food ingredient scanner app. Users scan a produc
 - **React**: 18.3
 - **Database/Auth**: Supabase JS v2 (`@supabase/supabase-js`) — no auth-helpers package
 - **Barcode scanning**: `@zxing/library` 0.21.3
-- **AI explanations**: `@anthropic-ai/sdk` — Claude Sonnet, called from `/pages/api/scan.js` (inline) and `/pages/api/explain.js` (standalone endpoint)
+- **AI explanations**: `@anthropic-ai/sdk` — Claude Sonnet, called from `/pages/api/scan.js` (inline) and `/pages/api/explain.js` (standalone endpoint). Model string is centralized in `lib/aiConfig.js` (`ANTHROPIC_MODEL`) — update it there when upgrading models; do not hardcode the string in individual API files.
 - **Node**: 20.x (pinned in `.nvmrc` and `package.json` engines)
 - **Deployment**: Vercel, region `iad1`
 - **Testing**: Jest
@@ -57,6 +57,8 @@ components/
     BottomNav.jsx         — 4-tab nav: Scan / Verdict / Swaps / Profile
     Header.jsx
     LoadingSpinner.jsx
+    DisclaimerModal.jsx   — bottom-sheet disclaimer modal; checks/sets bl_disclaimer_accepted in localStorage; used on first launch (app/page.jsx) and from Profile screen
+    PrivacyPromiseModal.jsx — bottom-sheet "Our Privacy Promise" modal; same pattern as DisclaimerModal; called from Profile screen Legal & Privacy section
   auth/
     AuthModal.jsx         — sign in / sign up modal
 
@@ -64,7 +66,7 @@ lib/
   rulesEngine.js          — deterministic ingredient analysis engine (core logic)
   rulesEngine.test.js     — Jest tests for rules engine (35 describe blocks; 2050 tests total; block 20 = SYNTHETIC_ADDITIVES bucket-1 expansion (91 tests); block 21 = FD&C "No." normalization (19 tests); block 22 = mechanically separated meat (3 tests); block 23 = interesterified variants, lake forms, dye synonyms, new E-numbers, stearyl emulsifiers, cyclamate (78 tests); block 24 = synonym/E-number expansion: nitrates, BVO, bleaching agents, BHA/BHT names, SLS, E-numbers e320/e321/e924/e950–e955 (50 tests); block 25 = gluten grains expansion: ancient grains, botanical names, asafoetida/hing, smoke flavoring, brown rice syrup (34 tests); block 26 = H2: artifact phrases and red list additions — polysorbates, synthetic phosphates, red 3/#-normalizer (17 tests); block 27 = I: Sina gluten expansion — 65 new GLUTEN_GRAINS entries across corn derivatives, wheat flour varieties, barley/rye/oat forms, processed ingredients (22 tests); block 28 = FORTIFIED_VITAMINS group — synthetic vitamin fortification detection (61 tests); block 29 = NATURAL_COLORANTS group — plant-derived colorant detection (12 tests); block 32 = containsMilkDerived, containsEggDerived, ALWAYS_IGNORE_INGREDIENTS — new helper functions and ignore-list constant (32 tests); block 33 = GLYPHOSATE_HEAVY — high-glyphosate-risk crops: pea protein, oat milk, buckwheat, ascorbic acid, lecithin, potato starch, papaya, glyphosate-free escape hatch for oats/wheat, GLYPHOSATE_HEAVY export (11 tests); block 34 = CONVENTIONAL_CROPS_NO_FLAG — sunflower lecithin range-claim without flag (5 tests); block 35 = REVIEWED_CLEAN_INGREDIENTS — display-only suppression filter, Set export, almond flour/arrowroot suppressed, unknown ingredient still surfaces, engine flags/verdict unaffected (5 tests))
   __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (18 suites A–R; 156 tests total; suite H = L2 decision tree coverage: cert gate, organic path, non-organic path, seafood/meat/dairy logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 16 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests; suite J = L1 explicit overrides — gluten suppression, conventional meat caution injection (8 tests); suite K = L2 flags array cleanup — gluten suppression and organic conventional_crops strip (5 tests); suite L = universal L2 decision tree — 15 integration scenarios covering all 14 nodes (L5 updated: eggs now produce conventional_eggs not conventional_meat); suite M = PROMPT_VERSION contract — 1 test; suite N = wild-caught detection — product name signals, farmed exclusions, seed oil short-circuit (4 tests); suite O = cert_unconfirmed — all-organic ingredient prefix detection, trivial ingredient exclusion, non-organic partial mix, usda-organic cert bypass (4 tests); suite P = conventional_eggs — non-meat product with eggs, organic prefix clearance, meat+eggs both flags, dairy-only no-interference (4 tests); suite Q = detectWildCaught standalone wild signal — product name only, ingredients signal, non-seafood unaffected, astaxanthin farmed exclusion (4 tests); suite R = pure-water GREEN path — artesian water + minerals, sparkling water, water+natural-flavor regression, coconut water non-match (4 tests))
-  ── Combined test total: 1041 tests (885 rulesEngine + 156 scan) ──
+  ── Combined test total: 1048 tests (892 rulesEngine + 156 scan) ──
   onboardingData.js       — QUESTIONS array (13 Qs), STAGES array (5 stages), getStageFromScore()
   userProfile.js          — localStorage profile read/write/clear helpers
   userLevel.js            — getUserLevel(), setUserLevel(), hasUserLevel() — localStorage bl_user_level
@@ -232,7 +234,7 @@ analyzeIngredients(ingredientText, productLabels, userLevel = 2)
 // }
 
 LEVEL_1_YELLOW_CATEGORIES
-// Set<string> — {'seed_oils', 'conventional_crops', 'bioengineering', 'natural_flavors'}
+// Set<string> — {'seed_oils', 'conventional_crops', 'conventional_eggs', 'glyphosate_heavy', 'bioengineering', 'natural_flavors'}
 // Trans fats and SYNTHETIC_ADDITIVES are intentionally excluded — always red at both levels.
 // Imported by VerdictScreen and explain.js (single source of truth)
 ```
@@ -474,6 +476,7 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 | `bl_migrated` | Whether localStorage scans have been migrated to Supabase |
 | `bl_nudges` | Dismissed onboarding nudge milestones |
 | `bl_user_level` | User level (1 or 2) — set by `lib/userLevel.js` |
+| `bl_disclaimer_accepted` | Set to `'1'` when user accepts the first-launch disclaimer; checked on mount in `app/page.jsx` to suppress re-showing |
 
 ---
 
@@ -539,10 +542,10 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 19.**
+**Current PROMPT_VERSION is 21.**
 
 ### Cache Invalidation
-When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 19. Run `DELETE FROM scan_cache WHERE prompt_version < 19` in Supabase to purge all stale rows before deploying.
+When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 21. Run `DELETE FROM scan_cache WHERE prompt_version < 21` in Supabase to purge all stale rows before deploying.
 
 ---
 
@@ -815,10 +818,15 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 |------|-------------|
 | `5c71daf` | feat: pure-water GREEN path — WATER_SAFE_INGREDIENTS Set + allIngredientsAreWaterSafe() helper in scan.js; post-waterfall upgrade YELLOW→GREEN with clearedBy 'pure_water'; pure_water branch in buildUserMessage(); bump PROMPT_VERSION to 19; 4 new scan tests (suite R); 1041 total |
 
-### Session — L1 parity: wild-caught seafood, game meat, conventional dairy
+### Session — L1 parity: wild-caught seafood, game meat, conventional dairy + PROMPT_VERSION 20
 | Hash | Description |
 |------|-------------|
-| TBD | feat: L1 parity — wild-caught seafood and game meat skip conventional_meat injection (mirrors L2 nodes 5/6); new Override 3 injects conventional_dairy caution for uncertified milk-derived products (mirrors L2 node 9, softened); L1 conventional_dairy annotation in buildUserMessage(); PROMPT_VERSION NOT bumped yet (annotation change pending confirm); 6 new scan tests (suite S); 1047 total |
+| `952f5e0` | feat: L1 parity — wild-caught seafood and game meat skip conventional_meat injection (mirrors L2 nodes 5/6); new Override 3 injects conventional_dairy caution for uncertified milk-derived products (mirrors L2 node 9, softened); L1 conventional_dairy annotation in buildUserMessage(); bump PROMPT_VERSION to 20; 6 new scan tests (suite S); 1047 total |
+
+### Session — allergen advisory stripping, yogurt culture ignore list, flag deduplication + PROMPT_VERSION 21
+| Hash | Description |
+|------|-------------|
+| (pending) | fix: allergen advisory stripping in analyzeIngredients() — 5 regex patterns strip "may contain", "manufactured on a line", "produced in a facility", "contains:" phrases before trigger matching; yogurt culture strains added to ALWAYS_IGNORE_INGREDIENTS (24 new entries: Lactobacillus/Bifidobacterium/Streptococcus strain names, rennet, pectin); rawUnknownTokens filter extended to also exclude ALWAYS_IGNORE_INGREDIENTS terms (prevents inconclusive verdict on organic yogurt); flag deduplication by (category, matchedIngredient) before verdict calculation; bump PROMPT_VERSION to 21; 7 new rulesEngine tests (blocks 38–40); 1048 total |
 
 ---
 
@@ -827,6 +835,42 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 Basic PWA installability is enabled (`public/manifest.json`, `<link rel="manifest">` in `app/layout.jsx`, `apple-touch-icon`). No service worker — offline support is not implemented.
 
 **Icons are placeholders** — `public/icon-192.png` and `public/icon-512.png` were generated from a Gemini-generated concept image (`Gemini_Generated_Image_a2ibq4a2ibq4a2ib.png`). Replace both files with final brand assets before public launch. The source image is in the Downloads folder of the dev machine; the original path was `/mnt/user-data/uploads/Gemini_Generated_Image_a2ibq4a2ibq4a2ib.png`. When replacing, regenerate both sizes (192×192 and 512×512) and keep `"purpose": "any maskable"` in the manifest.
+
+---
+
+## UI / UX Decisions
+
+### Scanner screen — "Enter Barcode" button
+The manual barcode entry button in the ScannerScreen header is labeled **"Enter Barcode"** (not "Manual"). Style: `background: transparent`, `border: 1.5px solid #D4872A`, `color: #D4872A`. This gives it an amber outline appearance rather than a filled button, keeping the header uncluttered.
+
+### Scanner screen — viewfinder tappable
+The dark-blue viewfinder card is interactive — tapping it triggers the same scan/stop action as the amber button below it. `onClick={scanning ? stopCamera : startCamera}`, `cursor: pointer`. A CSS `:active` press state (opacity 0.82, 0.1s transition) is appended to the existing `<style dangerouslySetInnerHTML>` string as `.viewfinder:active{opacity:0.82;transition:opacity 0.1s;}`.
+
+### Scanner screen — "Product Not Found" fallback in history
+When a history item has no product name (empty string, null, or undefined), the Recently Scanned list displays **"Product Not Found"** in muted italic text (`color: var(--text-light), fontStyle: italic`) instead of the raw barcode number. The `addScanToHistory` call passes `data.productName || ''` — the barcode is never stored as a productName fallback.
+
+### Verdict screen — ConcernCard expand/collapse arrow color
+The expand/collapse chevron `›` on each ConcernCard is colored to match the severity dot: amber (`#D4872A`) for yellow/caution, red (`#C0392B`) for red/reject. The color updates based on the open/closed state of the card — `color: severityColors[severity]` — where `severityColors` maps `reject → #C0392B` and `caution → #D4872A`. Previously the arrow was always `var(--text-light)`.
+
+### Verdict screen — AI summary card dynamic left border
+The AI summary card on VerdictScreen has a **4px left border** whose color matches the verdict: amber for yellow, red for red, forest green for green. This provides a quick visual anchor tying the summary card to the verdict color. Implemented via `borderLeft: '4px solid ' + verdictColors[verdict]` on all three summary card render paths (normal, loading, unverified).
+
+### ConcernCard — "Beyond Labels methodology" line removed
+The non-functional `📚 Beyond Labels methodology` footer that appeared at the bottom of every expanded ConcernCard has been removed. It was a placeholder with no link or action. The expanded card body now ends after the detail text.
+
+### First-launch disclaimer modal
+`components/shared/DisclaimerModal.jsx` — a fixed bottom-sheet modal that covers the full screen on first launch. Checks `localStorage.getItem('bl_disclaimer_accepted')` on mount in `app/page.jsx`. If absent, renders the modal over both the onboarding and main-app views. Accepting sets `bl_disclaimer_accepted = '1'` in localStorage and dismisses. The modal is also accessible at any time from Profile → Legal & Privacy → Disclaimer row.
+
+Key design: `position: fixed, inset: 0, zIndex: 1000`, `background: rgba(0,0,0,0.55)` backdrop, cream bottom card, Playfair Display heading "Disclaimer", scrollable body, amber gradient "I Understand" CTA (height 52, borderRadius 12).
+
+### Profile screen — Legal & Privacy section
+ProfileScreen has a **"Legal & Privacy"** card section (cream-dark background, borderRadius 14, padding 16) containing four rows:
+1. **Disclaimer** — tappable (`›` chevron), opens `DisclaimerModal`
+2. **Our Privacy Promise** — tappable (`›` chevron), opens `PrivacyPromiseModal`
+3. **Privacy Policy** — muted, badge "Coming Soon", not tappable
+4. **Terms of Service** — muted, badge "Coming Soon", not tappable
+
+`PrivacyPromiseModal` (`components/shared/PrivacyPromiseModal.jsx`) follows the same fixed bottom-sheet pattern as `DisclaimerModal`. Content is rendered from a typed array (`{type: 'heading'}`, `{type: 'bullet'}`, `{type: 'paragraph'}`). Button says "Close", calls `onClose` prop.
 
 ---
 

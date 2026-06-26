@@ -1359,10 +1359,10 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 20 (v20: L1 conventional_dairy annotation — gentle awareness framing for milk-derived ingredients)', () => {
+  test('PROMPT_VERSION is 21 (v21: allergen advisory stripping, yogurt culture ignore list, flag deduplication)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(20);
+    expect(PROMPT_VERSION).toBe(21);
   });
 });
 
