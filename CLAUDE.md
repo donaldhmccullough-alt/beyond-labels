@@ -828,6 +828,64 @@ Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conve
 |------|-------------|
 | (pending) | fix: allergen advisory stripping in analyzeIngredients() — 5 regex patterns strip "may contain", "manufactured on a line", "produced in a facility", "contains:" phrases before trigger matching; yogurt culture strains added to ALWAYS_IGNORE_INGREDIENTS (24 new entries: Lactobacillus/Bifidobacterium/Streptococcus strain names, rennet, pectin); rawUnknownTokens filter extended to also exclude ALWAYS_IGNORE_INGREDIENTS terms (prevents inconclusive verdict on organic yogurt); flag deduplication by (category, matchedIngredient) before verdict calculation; bump PROMPT_VERSION to 21; 7 new rulesEngine tests (blocks 38–40); 1048 total |
 
+### Session — staged batch Changes 1–12 (pending PROMPT_VERSION bump)
+> **STAGED — do not bump PROMPT_VERSION until batch is reviewed and approved.**
+
+| Change | Description |
+|--------|-------------|
+| 1 | `parseIngredientTokens()` — strip leading `*` (asterisk) from tokens before trigger matching |
+| 2 | `parseIngredientTokens()` — strip trailing `)` in addition to `.` `*` `[` `]` |
+| 3 | `rawUnknownTokens` filter — inline `corn` exclusion (handled by standalone corn regex; absent from ALL_TRIGGERS by design) |
+| 4 | SYNTHETIC_ADDITIVES — add: `caffeine`, `cultured celery extract`, `cultured onion juice`, `cherry powder`, `disodium succinate`, `erythorbic acid`, `ester gum`. `fd&c yellow #5/5`, `fd&c red 40`, `fd&c blue 1/2`, `fd&c red 3` already covered by existing triggers + `#(digit)` preprocessing. |
+| 5 | FORTIFIED_VITAMINS — add `ferric phosphate`. (`cyanocobalamin`, `d-alpha-tocopherol`, `ferrous sulfate` already present.) |
+| 6 | (covered by 5 — cyanocobalamin and d-alpha-tocopherol confirmed already present) |
+| 7 | NATURAL_COLORANTS — add: `annatto color`, `beet powder`, `black carrot juice concentrate`, `carrot juice concentrate`, `red cabbage juice concentrate`, `turmeric color`, `paprika oleoresin`, `extractives of paprika`. (`annatto extract`, `beet juice concentrate`, `beta-carotene` already present. Bare `paprika` and `turmeric` excluded to avoid false positives on spice use.) |
+| 8 | MILK_DERIVED_INGREDIENTS — add: `cultured pasteurized milk`, `cultured lowfat milk`, `cultured milk`, `nonfat dry milk`, `butter powder`, `caseins`. (`butter oil`, `calcium caseinate` already present.) |
+| 9 | ALWAYS_IGNORE_INGREDIENTS — add `amylase` and `culture` (singular; `cultures` already present). `cultured onion juice` moved to SYNTHETIC_ADDITIVES (Change 4). |
+| 10 | CONVENTIONAL_CROPS — add `cane juice crystals`, `cane juice`, `cane syrup` before `invert sugar` / `sugar` |
+| 11 | GLYPHOSATE_HEAVY — add `enriched acini di pepe` before `enriched macaroni product` |
+| 12 | REVIEWED_CLEAN_INGREDIENTS — Batch 2 & 3 additions (June 2026): herbs/spices (sage, dill, parsley, cilantro, coriander, fennel, cloves, nutmeg, cardamom, allspice, bay leaves, bay leaf, marjoram, tarragon, mint, spearmint, peppermint), nuts/butters (almond butter, sunflower seed butter, sunflower butter, tahini, pine nuts), fruits/berries (blueberries, strawberries, raspberries, blackberries, cherries, apricots, dates, figs, raisins, cranberries, pomegranate, mango, pineapple, banana, apple, pear), vegetables (spinach, kale, sweet potato, broccoli, carrot, carrots, beet, beets, celery), proteins (quinoa, amaranth, teff), sweeteners (date sugar, date syrup, raw honey, agave nectar, agave syrup), fats (ghee), sea vegetables (acacia fiber, apple cider, lemon/lime/orange zest, sea vegetables, dulse, nori, kelp) |
+
+**Tests added (blocks 41–50):** 22 new rulesEngine tests. Total: 2,704 passing (2,103 rulesEngine + 601 scan).
+
+### Session — staged batch Changes 1–9 (pending final unverified ingredient review before PROMPT_VERSION bump)
+> **STAGED — do not bump PROMPT_VERSION until batch is reviewed and approved.**
+
+| Change | Description |
+|--------|-------------|
+| 1 | SYNTHETIC_ADDITIVES — add: `glycerin` (common name for glycerol; different string, needed explicitly), `karaya gum` (E416 stabilizer), `konjac gum` (E425 thickener), `l-cysteine` (E920 dough conditioner) |
+| 2 | CONVENTIONAL_CROPS — add `guar gum` (galactomannan hydrocolloid); fixes unverified gap — was absent from CONVENTIONAL_CROPS and thus absent from ALL_TRIGGERS, causing it to slip into unverifiedIngredients even when organically cleared |
+| 3 | FORTIFIED_VITAMINS added to ALL_TRIGGERS — fixes folic acid/iron unverified gap; FORTIFIED_VITAMINS was detected via `containsFortifiedVitamins()` separately but never blocked the unverified queue; also add bare `iron` to FORTIFIED_VITAMINS; broken test 12 updated (phrase containing "zinc gluconate" now caught by FORTIFIED_VITAMINS filter; replaced with neutral phrase) |
+| 4 | CONVENTIONAL_CROPS — add `grain vinegar` (fermented from wheat/corn, clearable by organic cert) to corn/fermentation section |
+| 5 | NATURAL_COLORANTS — add: `fruit and/or vegetable juice color`, `fruit and vegetable juice`, `huito juice concentrate` |
+| 6 | MILK_DERIVED_INGREDIENTS — add: `grade a grassfed reduced fat organic milk`, `grade a pasteurized skim milk`, `imported greek yogurt`, `fontina cheese`, `half & half` (ampersand variant of existing `half and half`) |
+| 7 | ALWAYS_IGNORE_INGREDIENTS — add: `himalayan pink sea salt` (variant not covered by `himalayan pink salt`), `lactase enzyme`, `lactase`, `lactic acid starter culture`, `l. paracasei and l. rhamnosus`, `l.paracasei and l. rhamnosus`, `lactis dn 173-010/cncm 1-2494`, bare `lactobacillus` genus |
+| 8 | New `MEAT_DERIVED_INGREDIENTS` array + `containsMeatDerived()` helper in rulesEngine.js; exported; imported in scan.js; new Node 8c in L2 tree (after 8b conventional_eggs, before 9 conventional_dairy) — injects `conventional_meat` reject when gelatin found without organic cert. MEAT_DERIVED_INGREDIENTS: `beef gelatin`, `pork gelatin`, `kosher gelatin`, `gelatin`. |
+| 9 | REVIEWED_CLEAN_INGREDIENTS — Batch 4 additions (June 2026): fresh/ginger/garlic forms, hemp protein, gum acacia/arabic, koji, Korean red pepper, various seasonal produce, freeze-dried blends, tea extracts, Italian tomato forms, fish oil, jalapeño items, Himalayan salt variant, lactase, lactobacillus, lactic acid starter |
+
+**Tests added (blocks 51–57):** 14 new rulesEngine tests. Total: 2,718 passing (2,117 rulesEngine + 601 scan).
+
+Key architecture note: `ALL_TRIGGERS` now includes `...FORTIFIED_VITAMINS`. This is a breaking addition for any token-level test that expected a FORTIFIED_VITAMINS member to survive as unverified — update those tests to use neutral phrases.
+
+`containsMeatDerived` is exported from `lib/rulesEngine.js` and destructured in `pages/api/scan.js`. ConcernCard already maps `conventional_meat` so no UI change needed.
+
+### Session — staged batch Changes 1–10 (pending final unverified ingredient review before PROMPT_VERSION bump)
+> **STAGED — do not bump PROMPT_VERSION until batch is reviewed and approved.**
+
+| Change | Description |
+|--------|-------------|
+| 1+10 | ALWAYS_IGNORE_INGREDIENTS — add (combined): `onion salt` (salt form, before `sea salt`); `live and active probiotic` (before `live active cultures`); `live active` bare form; `leavening [baking soda and/or calcium phosphate` (compound leavening); `leavening` bare; `lactococcus lactis` (probiotic genus). SKIP (already present): `lactobacillus acidophilus`, `lactobacillus bulgaricus`, `lactobacillus delbrueckii subsp. bulgaricus`, `lactobacillus delbrueckii subsp. lactis`, `live cultures`, `non-animal enzymes`, `live and active cultures`. |
+| 2 | SYNTHETIC_ADDITIVES — add: `malic acid` (near acidulants, after `sorbic acid`); `modified cellulose` (thickeners section, after `konjac gum`); bare `nisin` (before existing `nisin preparation`). Tests: 1 per trigger. |
+| 3 | FORTIFIED_VITAMINS — add: `natural vitamin e` (before `mixed tocopherols`); `palmitate` (after `vitamin a palmitate`, catches bare form). SKIP: `mixed tocopherols` already present. `niacin` already present + now in ALL_TRIGGERS from Batch 2. Tests: containsFortifiedVitamins for mixed tocopherols, natural vitamin e, palmitate. |
+| 4 | GLYPHOSATE_HEAVY — add `oatmilk` (no-space variant) before `oat milk`. Test: 1. |
+| 5 | NATURAL_COLORANTS — add `oleoresin of paprika` (longest form, before `oleoresin paprika`), `oleoresin paprika` (before `paprika oleoresin`). Test: 1. |
+| 6 | MILK_DERIVED_INGREDIENTS — add (longest forms first): `mozzarella white cheddar cheese blend`, `low moisture part skim mozzarella cheese`, `low moisture mozzarella cheese`, `mozzarella cheese`; `mild cheddar cheese` (before `cheddar`); `made from milk`, `milk [whole & skim`, `milk chocolate`, `milk protein blend` (before `milk protein concentrate`); `modified whey` (before `whey`); `lowfat greek yogurt` (before `yogurt`). SKIP: bare `mozzarella` already present. Tests: 2. |
+| 7 | CONVENTIONAL_CROPS — add `lactose` (dairy sugar, clearable by organic cert; puts it in ALL_TRIGGERS; also detected by containsMilkDerived in scan.js L2 tree). Test: 1. |
+| 8 | CONVENTIONAL_CROPS — add `modified potato starch` and `modified tapioca starch` before `modified starch` (substring matching does NOT work for these — "modified potato starch" does not contain "modified starch" as a substring since "modified potato starch".includes("modified starch") = false). Tests: 2. |
+| 9 | REVIEWED_CLEAN_INGREDIENTS — Batch 5 additions (June 2026): `lemon juice concentrate`, `lemongrass puree`, `lime`, `lime juice concentrate`, `lime juice powder`, `lime oil`, `locust bean gum`, `maca root powder`, `magnesium oxide`, `magnesium sulfate potassium bicarbonate`, `mandarins`, `molasses powder`, `monk fruit extract`, `mushroom extract`, `mustard flour`, `mustard greens`, `natural artesian water`, `natural maple syrup`, `nutmeg oil`, `oncorhynchus gorbuscha` (pink salmon scientific name), `mung bean protein`. SKIP: `nutmeg` already present from Batch 2. No new tests. |
+
+**Tests added (blocks 58–64):** 13 new rulesEngine tests. Total: 2,731 passing (2,130 rulesEngine + 601 scan).
+
 ---
 
 ## PWA / Icons

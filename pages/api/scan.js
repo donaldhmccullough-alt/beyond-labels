@@ -53,12 +53,14 @@ const {
   containsNaturalColorants,
   ALWAYS_IGNORE_INGREDIENTS,
   containsMilkDerived,
+  containsMeatDerived,
 } = rulesEngine;
 
 import { supabaseServer as sb } from '../../lib/supabaseServer';
 import Anthropic from '@anthropic-ai/sdk';
 import { PROMPT_VERSION } from '../../lib/cacheVersion';
 import { SYSTEM_PROMPT, buildUserMessage } from './explain';
+import { ANTHROPIC_MODEL } from '../../lib/aiConfig';
 
 const OFF_BASE = 'https://world.openfoodfacts.org/api/v0/product';
 
@@ -574,7 +576,7 @@ async function fetchExplanation(verdict, flags, productName, ingredientsText, us
     const client = new Anthropic({ apiKey });
 
     const message = await client.messages.create({
-      model:      'claude-sonnet-4-20250514',
+      model:      ANTHROPIC_MODEL,
       max_tokens: 1000,
       system:     SYSTEM_PROMPT,
       messages: [{
@@ -664,8 +666,7 @@ export default async function handler(req, res) {
           productCategory:       cached.product_category ?? null,
           unverifiedReason:      cached.unverified_reason ?? null,
           isMeat:                cached.is_meat ?? false,
-          // TODO: persist olive_caveat to scan_cache then replace false with cached value
-          oliveCaveat:           false,
+          oliveCaveat:           cached.olive_caveat ?? false,
         });
       }
     } catch {
@@ -913,8 +914,6 @@ export default async function handler(req, res) {
         verdict = 'yellow';
       } else if (maskedText && maskedText.includes('olive oil')) {
         // Olive oil adulteration risk — even organic labels are not immune.
-        // oliveCaveat is available on the response for future messaging.
-        // TODO: persist olive_caveat to scan_cache once the column is added.
         oliveCaveat = true;
         verdict = 'yellow';
         flags = [...flags, {
@@ -977,6 +976,17 @@ export default async function handler(req, res) {
         // just set the verdict here. No injection needed.
         verdict   = 'red';
         clearedBy = null;
+
+      } else if (maskedText && containsMeatDerived(maskedText)) {
+        // Node 8c: Animal-derived gelatin without organic cert.
+        verdict   = 'red';
+        clearedBy = null;
+        flags = [{
+          category:          'conventional_meat',
+          severity:          'reject',
+          matchedIngredient: '',
+          summary:           'Contains animal-derived gelatin without organic certification.',
+        }, ...flags];
 
       } else if (maskedText && containsMilkDerived(maskedText)) {
         // Node 9: Conventional dairy without organic cert.
@@ -1103,6 +1113,7 @@ export default async function handler(req, res) {
             product_name:           productName,
             product_category:       productCategory,
             is_meat:                isMeat,
+            olive_caveat:           oliveCaveat,
             prompt_version:         PROMPT_VERSION,
             last_accessed_at:       new Date().toISOString(),
           },

@@ -83,6 +83,8 @@ export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, o
         productName: scanResult.productName,
         ingredients: scanResult.ingredients,
         userLevel,
+        clearedBy: scanResult.clearedBy,
+        unverifiedReason: scanResult.unverifiedReason,
       }),
     })
       .then(r => r.json())

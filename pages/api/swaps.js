@@ -23,6 +23,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { ANTHROPIC_MODEL } from '../../lib/aiConfig';
 
 const COLUMNS = [
   'product_name',
@@ -120,7 +121,7 @@ async function getAISuggestions(category, userLevel) {
 
   try {
     const message = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: ANTHROPIC_MODEL,
       max_tokens: 700,
       messages: [{ role: 'user', content: prompt }],
     });
@@ -152,6 +153,11 @@ export default async function handler(req, res) {
   }
 
   const { category, userLevel: rawUserLevel } = req.query;
+
+  if (rawUserLevel !== undefined && rawUserLevel !== '1' && rawUserLevel !== '2') {
+    return res.status(400).json({ error: 'Invalid userLevel. Must be 1 or 2.' });
+  }
+
   const userLevel = rawUserLevel === '1' ? 1 : 2;
 
   if (category && !VALID_CATEGORIES.includes(category)) {
