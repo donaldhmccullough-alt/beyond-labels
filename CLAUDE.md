@@ -66,7 +66,7 @@ lib/
   rulesEngine.js          — deterministic ingredient analysis engine (core logic)
   rulesEngine.test.js     — Jest tests for rules engine (35 describe blocks; 2050 tests total; block 20 = SYNTHETIC_ADDITIVES bucket-1 expansion (91 tests); block 21 = FD&C "No." normalization (19 tests); block 22 = mechanically separated meat (3 tests); block 23 = interesterified variants, lake forms, dye synonyms, new E-numbers, stearyl emulsifiers, cyclamate (78 tests); block 24 = synonym/E-number expansion: nitrates, BVO, bleaching agents, BHA/BHT names, SLS, E-numbers e320/e321/e924/e950–e955 (50 tests); block 25 = gluten grains expansion: ancient grains, botanical names, asafoetida/hing, smoke flavoring, brown rice syrup (34 tests); block 26 = H2: artifact phrases and red list additions — polysorbates, synthetic phosphates, red 3/#-normalizer (17 tests); block 27 = I: Sina gluten expansion — 65 new GLUTEN_GRAINS entries across corn derivatives, wheat flour varieties, barley/rye/oat forms, processed ingredients (22 tests); block 28 = FORTIFIED_VITAMINS group — synthetic vitamin fortification detection (61 tests); block 29 = NATURAL_COLORANTS group — plant-derived colorant detection (12 tests); block 32 = containsMilkDerived, containsEggDerived, ALWAYS_IGNORE_INGREDIENTS — new helper functions and ignore-list constant (32 tests); block 33 = GLYPHOSATE_HEAVY — high-glyphosate-risk crops: pea protein, oat milk, buckwheat, ascorbic acid, lecithin, potato starch, papaya, glyphosate-free escape hatch for oats/wheat, GLYPHOSATE_HEAVY export (11 tests); block 34 = CONVENTIONAL_CROPS_NO_FLAG — sunflower lecithin range-claim without flag (5 tests); block 35 = REVIEWED_CLEAN_INGREDIENTS — display-only suppression filter, Set export, almond flour/arrowroot suppressed, unknown ingredient still surfaces, engine flags/verdict unaffected (5 tests))
   __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (18 suites A–R; 156 tests total; suite H = L2 decision tree coverage: cert gate, organic path, non-organic path, seafood/meat/dairy logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 16 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests; suite J = L1 explicit overrides — gluten suppression, conventional meat caution injection (8 tests); suite K = L2 flags array cleanup — gluten suppression and organic conventional_crops strip (5 tests); suite L = universal L2 decision tree — 15 integration scenarios covering all 14 nodes (L5 updated: eggs now produce conventional_eggs not conventional_meat); suite M = PROMPT_VERSION contract — 1 test; suite N = wild-caught detection — product name signals, farmed exclusions, seed oil short-circuit (4 tests); suite O = cert_unconfirmed — all-organic ingredient prefix detection, trivial ingredient exclusion, non-organic partial mix, usda-organic cert bypass (4 tests); suite P = conventional_eggs — non-meat product with eggs, organic prefix clearance, meat+eggs both flags, dairy-only no-interference (4 tests); suite Q = detectWildCaught standalone wild signal — product name only, ingredients signal, non-seafood unaffected, astaxanthin farmed exclusion (4 tests); suite R = pure-water GREEN path — artesian water + minerals, sparkling water, water+natural-flavor regression, coconut water non-match (4 tests))
-  ── Combined test total: 1048 tests (892 rulesEngine + 156 scan) ──
+  ── Combined test total: 2,731 tests (2,130 rulesEngine + 601 scan) ──
   onboardingData.js       — QUESTIONS array (13 Qs), STAGES array (5 stages), getStageFromScore()
   userProfile.js          — localStorage profile read/write/clear helpers
   userLevel.js            — getUserLevel(), setUserLevel(), hasUserLevel() — localStorage bl_user_level
@@ -542,10 +542,10 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 21.**
+**Current PROMPT_VERSION is 22.**
 
 ### Cache Invalidation
-When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 21. Run `DELETE FROM scan_cache WHERE prompt_version < 21` in Supabase to purge all stale rows before deploying.
+When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 22. Run `DELETE FROM scan_cache WHERE prompt_version < 22` in Supabase to purge all stale rows before deploying.
 
 ---
 
@@ -885,6 +885,29 @@ Key architecture note: `ALL_TRIGGERS` now includes `...FORTIFIED_VITAMINS`. This
 | 9 | REVIEWED_CLEAN_INGREDIENTS — Batch 5 additions (June 2026): `lemon juice concentrate`, `lemongrass puree`, `lime`, `lime juice concentrate`, `lime juice powder`, `lime oil`, `locust bean gum`, `maca root powder`, `magnesium oxide`, `magnesium sulfate potassium bicarbonate`, `mandarins`, `molasses powder`, `monk fruit extract`, `mushroom extract`, `mustard flour`, `mustard greens`, `natural artesian water`, `natural maple syrup`, `nutmeg oil`, `oncorhynchus gorbuscha` (pink salmon scientific name), `mung bean protein`. SKIP: `nutmeg` already present from Batch 2. No new tests. |
 
 **Tests added (blocks 58–64):** 13 new rulesEngine tests. Total: 2,731 passing (2,130 rulesEngine + 601 scan).
+
+### Session — Rules engine expansion & unverified ingredients audit (June 2026)
+- Audited 100+ scan_cache records and 400+ unverified_ingredients rows
+- Added allergen advisory text stripping (Fix 1), yogurt culture ALWAYS_IGNORE expansion (Fix 2), flag deduplication (Fix 3)
+- Expanded SYNTHETIC_ADDITIVES, CONVENTIONAL_CROPS, GLYPHOSATE_HEAVY, FORTIFIED_VITAMINS, NATURAL_COLORANTS, MILK_DERIVED_INGREDIENTS, ALWAYS_IGNORE_INGREDIENTS, REVIEWED_CLEAN_INGREDIENTS across multiple passes
+- New MEAT_DERIVED_INGREDIENTS system added with containsMeatDerived() and Node 8c in L2 tree (triggers on gelatin)
+- Tokenizer fixes: asterisk stripping, trailing punctuation cleanup, corn unverified gap
+- Deleted 411 resolved rows from unverified_ingredients table
+- Total tests: 2,731 | PROMPT_VERSION: 22
+
+---
+
+## Pending Policy Decisions
+
+Items deferred from the June 2026 unverified ingredients audit — pending team review before adding to the engine.
+
+- **autolyzed yeast extract** — possible SYNTHETIC_ADDITIVES addition (hidden glutamate); confirm framing before flagging
+- **monocalcium phosphate, phosphoric acid, potassium salts** — pending additive flagging decision; used in many organic products as leavening agents
+- **roasted sesame oil** — not in SEED_OILS, pending decision; cold-pressed sesame oil is considered clean by many practitioners
+- **powdered cellulose, resistant tapioca starch, inulin, MCT powder, mirin, Mexican vanilla extract** — left in unverified_ingredients pending review
+- **Gelatin explanation copy for non-meat products** (marshmallows, gummies) — `conventional_meat` flag + Joel voice may confuse users when no meat is involved; may need a tailored category or copy adjustment
+- **Organic seed oils policy** — currently flagged red at L2 regardless of organic status; worth revisiting whether organic high-oleic sunflower or organic canola should be caution rather than reject
+- **Vitamin D3 mandatory fortification in organic milk** — FORTIFIED_VITAMINS caution flag fires on organic dairy products that use D3 as required by organic standards; may confuse users who expect a green for organic milk
 
 ---
 

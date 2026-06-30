@@ -1359,10 +1359,10 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 21 (v21: allergen advisory stripping, yogurt culture ignore list, flag deduplication)', () => {
+  test('PROMPT_VERSION is 22 (v22: rules engine expansion — synthetic additives, milk/meat-derived, REVIEWED_CLEAN batch 5)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(21);
+    expect(PROMPT_VERSION).toBe(22);
   });
 });
 
