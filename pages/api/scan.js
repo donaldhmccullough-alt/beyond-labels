@@ -56,7 +56,7 @@ const {
   containsMeatDerived,
 } = rulesEngine;
 
-import { supabaseServer as sb } from '../../lib/supabaseServer';
+import { getSupabaseServer } from '../../lib/supabaseServer';
 import Anthropic from '@anthropic-ai/sdk';
 import { PROMPT_VERSION } from '../../lib/cacheVersion';
 import { SYSTEM_PROMPT, buildUserMessage } from './explain';
@@ -520,6 +520,7 @@ function mapProductCategory(categoriesTags) {
  * @param {string}   barcode      - Cleaned barcode for context.
  */
 async function captureUnverifiedIngredients(ingredients, productName, barcode) {
+  const sb = getSupabaseServer();
   if (!sb) return;
 
   const now = new Date().toISOString();
@@ -634,6 +635,7 @@ export default async function handler(req, res) {
   }
 
   // ── Cache lookup ──────────────────────────────────────────────────────────
+  const sb = getSupabaseServer();
   if (sb) {
     try {
       const { data: cached } = await sb

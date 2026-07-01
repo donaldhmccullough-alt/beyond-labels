@@ -678,6 +678,11 @@ This applies to **all** Supabase writes in API routes. Never use fire-and-forget
 
 Earlier sessions: rules engine expansions (SB 25, EU additives, seed oils, conventional crops, gluten grains), swaps system build, certifications, cache write fix, prompt iterations — see `git log` for full history.
 
+### Session — fix silent scan_cache write failure (lazy Supabase client init)
+| Hash | Description |
+|------|-------------|
+| (pending) | fix: convert `lib/supabaseServer.js` from module-load-time client initialization to a lazy `getSupabaseServer()` function; update `pages/api/scan.js` to call it inside the request handler instead of importing a pre-initialized client; fixes silent scan_cache write failures caused by `sb` resolving to `null` at cold start when env vars weren't yet available — ~100+ scans from the June 29 2026 session were lost and unrecoverable; all 2,731 tests pass |
+
 ### Session — audit fixes (gluten_grains key, conventional_meat UI, flavor over-match, scan response shape)
 | Hash | Description |
 |------|-------------|
@@ -966,3 +971,4 @@ ProfileScreen has a **"Legal & Privacy"** card section (cream-dark background, b
 - Do not prefix `SUPABASE_SERVICE_ROLE_KEY` with `NEXT_PUBLIC_` — that would expose it to the browser
 - Do not use substring matching for OFF category tags — use exact set lookup (`normalized.has(t)`). Substring matching causes false positives (e.g. `en:cheese-flavored-snacks` matching dairy).
 - Do not add new swap categories without updating `VALID_CATEGORIES` in `pages/api/swaps.js` and `CATEGORY_TAG_MAP` in `pages/api/scan.js` (current 10 swap categories: `chips`, `snacks`, `cereal`, `condiments`, `beverages`, `dairy`, `bread`, `frozen`, `cooking_oils`, `meat`)
+- Do not initialize Supabase clients (or any client relying on `process.env`) at module load time in files under `pages/api/` or `lib/` that are used in serverless functions — e.g. `export const supabaseServer = createClient(...)` at the top level of a file. On Vercel, env vars may not be reliably available at cold-start module evaluation, causing the client to silently resolve to `null` and stay `null` for that function instance's lifetime — with no error thrown. This caused a real incident in June 2026 where `lib/supabaseServer.js` exported a pre-initialized client (`export const supabaseServer = makeServerClient()`), `sb` was `null` during a 100+ scan session, and scan_cache writes silently no-op'd with zero scans persisted. Always export a function (e.g. `getSupabaseServer()`) that constructs the client lazily inside the request handler, called fresh on each invocation.
