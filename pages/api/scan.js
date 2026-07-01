@@ -1115,7 +1115,7 @@ export default async function handler(req, res) {
             product_name:           productName,
             product_category:       productCategory,
             is_meat:                isMeat,
-            olive_caveat:           oliveCaveat,
+
             prompt_version:         PROMPT_VERSION,
             last_accessed_at:       new Date().toISOString(),
           },
