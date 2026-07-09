@@ -1763,10 +1763,10 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 30 (v30: "-free"/"non-" bare-word trigger guard generalized across categories + manufacturer address/facility-statement stripping — fixes live false-positive flags including canola-free forcing red via seed_oils)', () => {
+  test('PROMPT_VERSION is 31 (v31: bare "Contains X." allergen-statement false-flag fix — glyphosate_heavy/conventional_crops/conventional_eggs reject flags no longer trigger from allergen-advisory text alone; "less than X% of the following" qualifier stripped without hiding real ingredients after it; "(VEGAN):"-style cert-prefix labels stripped)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(30);
+    expect(PROMPT_VERSION).toBe(31);
   });
 });
 

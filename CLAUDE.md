@@ -1842,6 +1842,88 @@ unreviewed and unbacked-up on a single machine the way `olive_caveat`'s did for 
 
 ---
 
+### Session — bare "Contains X." allergen-statement false-flag fix (July 2026, PROMPT_VERSION 31) — CORRECTNESS / URGENCY, not cosmetic
+
+Follow-up to a diagnosis session investigating garbled `unverified_ingredients` tokens (e.g.
+`"TAPIOCA FLOUR. CONTAINS MILK"`, `"VEGAN"` leaking from a `"(VEGAN):"` label prefix). The cosmetic
+symptom led to a much more serious finding: **`stripAllergenAdvisory()` only handled the colon form
+`"contains:"` — a bare, no-colon `"Contains X."` sentence (the common FALCPA allergen-summary wording
+many labels actually use) was never stripped, and the unstripped allergen name could trip a real,
+**reject-severity** trigger.** Confirmed directly: `analyzeIngredients('sunflower seeds, dried
+cranberries, sea salt. Contains wheat.', [], 2)` produced a `glyphosate_heavy` **reject** flag on
+`"wheat"` and a RED verdict, on a product with no wheat ingredient anywhere — the word appears only in
+the allergen advisory. Systematically tested every FDA "big 9" allergen plus the common gluten-grain
+companions against every trigger category; confirmed reject-severity false flags for:
+`glyphosate_heavy` (`wheat`, `barley`, `rye`, `oats`), `conventional_crops` (`soybean`, `soybeans`),
+and `conventional_eggs` (`egg`, `eggs`). Only `gluten_grains` (already known, caution-only,
+verdict-excluded) and the previously-diagnosed cosmetic leaks were caution-or-lower; these six terms
+are `reject`-severity and directly flip the verdict red. The original repro that surfaced the cosmetic
+bug used a `usda-organic`-labeled product, which incidentally cleared `conventional_crops` and
+`glyphosate_heavy` regardless of the bug — masking the more severe issue underneath. Non-organic
+products, the common unprotected case at L2, have no such shield.
+
+**Fix — three additions to `lib/rulesEngine.js`, all inside `stripAllergenAdvisory()` /
+`stripCertPrefixLabel()` (new)**:
+1. **`"contains less than X% of [the following:]"` qualifier** — strips only the qualifier phrase
+   itself, leaving everything after it in the ingredient text for normal tokenization and trigger
+   matching. Written to cover both real-world phrasings in one pattern: the colon form
+   (`"...of the following: soy lecithin, xanthan gum, natural flavors."`) and — discovered mid-fix,
+   via the existing Kraft Mac & Cheese test fixture already in this suite — the equally common
+   no-colon form (`"...of citric acid, sodium phosphate, ... soybean oil, yellow 5, yellow 6)."`).
+   An earlier version of this pattern only matched the colon form; the no-colon form fell through to
+   pattern 2's broader match, whose greedy `[^.]*` silently deleted the entire real ingredient list —
+   citric acid, soybean oil, yellow 5, and yellow 6 all stopped flagging. Caught immediately by the
+   existing test suite (46 failures on first pass), not a hypothetical risk.
+2. **Bare `"Contains <allergen list>."`** — the actual false-flag source; strips the whole clause
+   (period-terminated and end-of-string variants, mirroring the existing `"contains:"` pattern's own
+   robustness). Two guards were required after the first implementation attempt broke existing tests:
+   - A negative lookahead excluding bioengineering disclosures. `"contains a bioengineered food
+     ingredient"` is itself a literal `BIOENGINEERING_TERMS` trigger phrase — the first version of
+     this pattern deleted that mandatory disclosure before bioengineering detection ever ran,
+     breaking every bioengineering-detection test in the suite.
+   - A negative lookbehind (`(?<!^\s*)`) excluding matches where "contains" opens the string. A real
+     allergen/qualifier disclosure always trails the actual ingredient list on a label — it never
+     opens it. This also protects a widespread pre-existing test-fixture convention throughout this
+     suite (`describe` blocks 13, 14, 17) that uses `"contains <additive>"` as a whole, standalone
+     `ingredientText` string to name the additive under test — e.g. `'contains azodicarbonamide'` —
+     which is a real ingredient declaration by construction, not throwaway advisory text, and must
+     keep flagging.
+3. **`stripCertPrefixLabel()`** (new function) — narrow, curated fix for leading `"(WORD):"`
+   dietary/certification-claim prefixes (`vegan`, `kosher`, `halal`, `gluten-free`, `dairy-free`,
+   `non-gmo`, `plant-based`), anchored to the true start of the string via `^`. Deliberately not a
+   blanket "any leading parenthetical is not an ingredient" rule — confirmed via direct regex test
+   that a genuine leading ingredient like `"(Organic) Coconut Milk, ..."` is untouched, since
+   `"organic"` isn't in the curated list.
+
+**Explicitly out of scope for this fix** (per the design review): the `"(color)"`-style single-word
+category-descriptor parenthetical leak, and the sub-ingredient-flattening vocabulary gaps (e.g.
+`"pasteurized cream"`, `"tomato paste"` showing as unverified) — both confirmed working as intended /
+a separate vocabulary-coverage concern, not a parsing defect, during the diagnosis session.
+
+**Tests added (block 74, `lib/rulesEngine.test.js`):** 23 tests — the 8 confirmed reject-severity
+false-flag terms (`wheat`, `barley`, `rye`, `oats`, `soybean`, `soybeans`, `egg`, `eggs`), each
+asserting zero flags and a non-red verdict with **no organic label** (the unprotected case); 3
+negative controls (`soy`, `milk`, `corn` — confirm still clean/unaffected); the qualifier tests
+proving a real reject-severity ingredient (`natural_flavors`) after both the colon and no-colon
+qualifier forms still flags, plus a test confirming the qualifier phrase itself never becomes an
+`unverifiedIngredients` token; an explicit pattern-ordering guard; the `"(VEGAN):"` and `"(Kosher)"`
+cert-prefix cases plus a regression guard for an unrelated genuine leading parenthetical; regression
+guards for the pre-existing colon-form `"contains:"` patterns; regression guards for both
+bioengineering disclosure phrasings; and a regression guard for the `describe` block 13/14/17
+string-opening `"contains <additive>"` test-fixture convention. Full suite: 1,260 passing (1,057
+rulesEngine + 192 scan + 11 explain), up from 1,237 — two rounds of regressions were caught and fixed
+during implementation (46 failures, then 0) before this count was reached; see the fix description
+above for both root causes.
+
+**PROMPT_VERSION bumped 30 → 31.** This changes real `flags`/`verdict` output for a class of
+previously-cached products — any product whose OFF ingredient text contains a bare, no-colon allergen
+statement naming wheat, barley, rye, oats, soybean(s), or egg(s), most severely any such product with
+no organic certification, which previously got an incorrect RED verdict from the advisory sentence
+alone. Run `DELETE FROM scan_cache WHERE prompt_version < 31` in Supabase before/after deploying. The
+`M. PROMPT_VERSION` contract test was updated to assert `31`.
+
+---
+
 ## Pending Policy Decisions
 
 Items deferred from the June 2026 unverified ingredients audit — pending team review before adding to the engine.
