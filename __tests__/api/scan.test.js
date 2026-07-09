@@ -1406,11 +1406,27 @@ describe('N. Wild-caught detection', () => {
     expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
   });
 
-  // ── N2: name detection when OFF has no seafood category tag ──────────────
+  // ── N2: name signal alone, with no OFF seafood category, is no longer ────
+  //       sufficient to trigger wild-caught clearance (isSeafood gate added) ──
 
-  test('N2: "Wild Caught Alaskan Salmon" (name signal, no OFF seafood category) → GREEN', async () => {
-    // Product has no en:salmon/en:seafood category in OFF — wild-caught is
-    // detected purely from the product name, not from the category or label.
+  test('N2: "Wild Caught Alaskan Salmon" with NO OFF seafood category → YELLOW (Node 14 default), not the wild-caught GREEN', async () => {
+    // Historical note: this test previously asserted GREEN/'wild-caught' —
+    // Node 5 originally had no isSeafood gate at all, so a bare product-name
+    // signal was sufficient regardless of OFF category data. That same
+    // permissiveness (the wild-caught clearance requiring no confirmation
+    // that the product is actually seafood) is what let a bare "wild" signal
+    // false-clear real reject flags on non-seafood products like "Banana
+    // Berry" (frozen fruit, "wild blueberries") — see the July 2026 fix.
+    // Node 5 now requires isSeafoodProduct(categoriesTags) to be true, so a
+    // product with no OFF seafood category tag can no longer reach the
+    // wild-caught clearance via name/ingredient text alone, even if it's
+    // genuinely wild-caught salmon. This is a deliberate, accepted trade-off:
+    // the failure mode is now "falls to a cautious default" (YELLOW) instead
+    // of "silently ignores a real reject flag" (the original bug) — safer in
+    // both directions, at the cost of this one specific under-categorised-by-OFF
+    // scenario no longer getting the special-cased GREEN. With no OFF
+    // category, isMeat/isSeafood/isConventionalMeat are all false, so this
+    // product falls through every meat/dairy/crop node to Node 14's default.
     mockFetchOnce(wildCaughtOffResp({
       productName:     'Wild Caught Alaskan Salmon',
       ingredientsText: 'salmon, water, salt',
@@ -1419,6 +1435,21 @@ describe('N. Wild-caught detection', () => {
     }));
     const res = makeRes();
     await handler(makeReq('POST', { barcode: '000000000402', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('yellow');
+    expect(res.body.clearedBy).toBeNull();
+  });
+
+  // ── N2b: the same name signal DOES still clear when OFF confirms seafood ─
+
+  test('N2b: "Wild Caught Alaskan Salmon" WITH an OFF seafood category tag → GREEN, clearedBy wild-caught (original behavior preserved when isSeafood is true)', async () => {
+    mockFetchOnce(wildCaughtOffResp({
+      productName:     'Wild Caught Alaskan Salmon',
+      ingredientsText: 'salmon, water, salt',
+      categoriesTags:  ['en:salmon'],
+      labelsTags:      [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000405', userLevel: 2 }), res);
     expect(res.body.verdict).toBe('green');
     expect(res.body.clearedBy).toBe('wild-caught');
   });
@@ -1707,13 +1738,24 @@ describe('Q. detectWildCaught — standalone wild signal', () => {
     expect(res.body.clearedBy).toBe('wild-caught');
   });
 
-  // ── Q3: "Wild Berry Jam" — "wild" in non-seafood product name → not affected
+  // ── Q3: "Wild Berry Jam" — "wild" in non-seafood product name; a real ────
+  //       reject flag must not be silently cleared to green ─────────────────
 
-  test('Q3: "Wild Berry Jam" (non-seafood, isMeat=false) → detectWildCaught irrelevant; no conventional_meat flag', async () => {
-    // detectWildCaught would return true for this product, but that only matters
-    // at Node 5 of the L2 tree which only fires when the tree hasn't already exited.
-    // A non-meat, non-seafood product with no cert and no concerning ingredients
-    // reaches Node 14 (default yellow) — not flagged as conventional_meat.
+  test('Q3: "Wild Berry Jam" (non-seafood) with a real conventional_crops ingredient → RED, NOT green/wild-caught (corrected — see note)', async () => {
+    // CORRECTED July 2026 — this test previously asserted only
+    // `flags.some(f => f.category === 'conventional_meat') === false` and its
+    // own comment claimed the product "reaches Node 14 (default yellow)" with
+    // "no concerning ingredients." Both were wrong: "sugar" in this exact
+    // fixture IS a real conventional_crops reject trigger, and prior to the
+    // isSeafood/reject-flag gates being added to Node 5, this product's
+    // verdict was actually 'green' with clearedBy 'wild-caught' — the reject
+    // flag was present in the response but silently ignored by the verdict.
+    // The old assertion only checked an unrelated category (conventional_meat)
+    // and so never caught this; the bug shipped undetected inside this exact
+    // test's own fixture. Node 5 now requires isSeafood (this product has no
+    // seafood category) AND no reject flags already present before it can
+    // clear to green, so this correctly falls through to Node 10
+    // (conventional_crops flag present) → RED.
     mockFetchOnce(wildOffResp({
       productName:     'Wild Berry Jam',
       ingredientsText: 'strawberries, sugar, pectin',
@@ -1722,7 +1764,25 @@ describe('Q. detectWildCaught — standalone wild signal', () => {
     }));
     const res = makeRes();
     await handler(makeReq('POST', { barcode: '000000000703', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.clearedBy).toBeNull();
     expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+    expect(res.body.flags.some(f => f.category === 'conventional_crops' && f.severity === 'reject')).toBe(true);
+  });
+
+  // ── Q3b: genuinely clean non-seafood "wild" product → Node 14 default ────
+
+  test('Q3b: "Wild Rice Pilaf" (non-seafood, genuinely clean ingredients) → YELLOW (Node 14 default), clearedBy null — not the nonsensical "wild-caught" clearance', async () => {
+    mockFetchOnce(wildOffResp({
+      productName:     'Wild Rice Pilaf Mix',
+      ingredientsText: 'water, salt',
+      categoriesTags:  [],
+      labelsTags:      [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000709', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('yellow');
+    expect(res.body.clearedBy).toBeNull();
   });
 
   // ── Q4: "wild" in product name but "astaxanthin" in ingredients → farmed exclusion
@@ -1740,6 +1800,71 @@ describe('Q. detectWildCaught — standalone wild signal', () => {
     await handler(makeReq('POST', { barcode: '000000000704', userLevel: 2 }), res);
     expect(res.body.verdict).toBe('red');
     expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(true);
+  });
+
+  // ── Q5–Q7: full blast-radius sweep — a non-seafood "wild X" product must ─
+  //           not silently clear a reject flag from ANY category ───────────
+
+  test('Q5: "wild honey" (non-seafood) + eggs → RED, conventional_eggs reject NOT silently cleared to green', async () => {
+    mockFetchOnce(wildOffResp({
+      productName:     'Wild Honey Granola Bar',
+      ingredientsText: 'wild honey, eggs, flour',
+      categoriesTags:  [],
+      labelsTags:      [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000705', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.clearedBy).toBeNull();
+    expect(res.body.flags.some(f => f.category === 'conventional_eggs' && f.severity === 'reject')).toBe(true);
+  });
+
+  test('Q6: "wild mushrooms" (non-seafood) + bioengineering disclosure → RED, bioengineering reject NOT silently cleared to green', async () => {
+    mockFetchOnce(wildOffResp({
+      productName:     'Wild Mushroom Soup',
+      ingredientsText: 'wild mushrooms, contains a bioengineered food ingredient',
+      categoriesTags:  [],
+      labelsTags:      [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000706', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.clearedBy).toBeNull();
+    expect(res.body.flags.some(f => f.category === 'bioengineering' && f.severity === 'reject')).toBe(true);
+  });
+
+  test('Q7: "wild oats" (non-seafood) → RED, glyphosate_heavy reject NOT silently cleared to green', async () => {
+    mockFetchOnce(wildOffResp({
+      productName:     'Wild Oats Cereal',
+      ingredientsText: 'wild oats, salt',
+      categoriesTags:  [],
+      labelsTags:      [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000707', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.clearedBy).toBeNull();
+    expect(res.body.flags.some(f => f.category === 'glyphosate_heavy' && f.severity === 'reject')).toBe(true);
+  });
+
+  test('Q8: genuinely wild-caught seafood, WITH an unrelated reject flag, correctly falls through to RED (Node 5b) — not the wild-caught GREEN, but still not the incorrect "farmed" message alone; verdict correctness preserved over exact message', async () => {
+    // Real wild-caught fish with an unrelated conventional_crops ingredient
+    // (e.g. citric acid as a preservative). isSeafood=true and a reject flag
+    // is present, so Node 5's clearance is correctly blocked; falls through
+    // to Node 5b (isSeafood, no wild-caught clearance) which injects its own
+    // conventional_meat flag alongside the pre-existing conventional_crops
+    // flag. Verdict is RED either way — the important, tested invariant.
+    mockFetchOnce(wildOffResp({
+      productName:     'Wild Salmon',
+      ingredientsText: 'salmon, citric acid, salt',
+      categoriesTags:  ['en:salmon'],
+      labelsTags:      [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000708', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.clearedBy).not.toBe('wild-caught');
+    expect(res.body.flags.some(f => f.category === 'conventional_crops' && f.severity === 'reject')).toBe(true);
   });
 });
 

@@ -932,11 +932,31 @@ export default async function handler(req, res) {
     } else {
       // ── NON-ORGANIC PATH (Nodes 5–14) ────────────────────────────────────
 
-      if (detectWildCaught(productName, labelsDetected, ingredientsText)) {
+      if (
+        isSeafood &&
+        !flags.some(f => f.severity === 'reject') &&
+        detectWildCaught(productName, labelsDetected, ingredientsText)
+      ) {
         // Node 5: Wild-caught fish — clean regardless of how the product is
         // categorised in OFF. Detected via OFF label OR product name; farmed
         // signals (name contains "farm-raised"/"farmed"/"atlantic salmon", or
         // ingredients contain "astaxanthin") take precedence and skip this node.
+        //
+        // Two gates added (fixing a live false-"all clear" bug): (1) `isSeafood`
+        // — detectWildCaught() fires on the standalone word "wild" appearing
+        // ANYWHERE in the product name or ingredients text (e.g. "wild rice",
+        // "wild honey", "wild blueberries", "wild oats"), which is meaningless
+        // for a non-seafood product; "wild-caught" as a clearance reason only
+        // makes sense for actual seafood, so non-seafood products now fall
+        // through to whichever later node actually matches their content
+        // (e.g. Node 10 for conventional_crops). (2) `!flags.some(reject)` —
+        // this node was unconditionally forcing verdict='green' even when a
+        // reject-severity flag (conventional_crops, conventional_eggs,
+        // bioengineering, glyphosate_heavy) was already present in `flags`,
+        // silently ignoring it — the flag stayed in the response, but the
+        // verdict never reflected it. Both gates mirror the existing
+        // "reject flags always win" precedent already used by
+        // INSTANT_RED_CATEGORIES at the very top of this tree.
         verdict   = 'green';
         clearedBy = 'wild-caught';
 
