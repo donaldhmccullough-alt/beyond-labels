@@ -59,7 +59,7 @@ const {
 import { getSupabaseServer } from '../../lib/supabaseServer';
 import Anthropic from '@anthropic-ai/sdk';
 import { PROMPT_VERSION } from '../../lib/cacheVersion';
-import { SYSTEM_PROMPT, buildUserMessage } from './explain';
+import { SYSTEM_PROMPT, buildUserMessage, parseExplanationResponse } from './explain';
 import { ANTHROPIC_MODEL } from '../../lib/aiConfig';
 
 const OFF_BASE = 'https://world.openfoodfacts.org/api/v0/product';
@@ -561,6 +561,9 @@ async function captureUnverifiedIngredients(ingredients, productName, barcode) {
 /**
  * Call the Claude API and return a parsed explanation object.
  * Returns null on any error — callers must always handle null gracefully.
+ * This includes an unparseable/truncated Claude response (see
+ * parseExplanationResponse() in ./explain) — never surfaces raw,
+ * malformed text as the explanation.
  *
  * @param {string}   verdict
  * @param {object[]} flags
@@ -578,7 +581,7 @@ async function fetchExplanation(verdict, flags, productName, ingredientsText, us
 
     const message = await client.messages.create({
       model:      ANTHROPIC_MODEL,
-      max_tokens: 1000,
+      max_tokens: 2000,
       system:     SYSTEM_PROMPT,
       messages: [{
         role:    'user',
@@ -587,14 +590,7 @@ async function fetchExplanation(verdict, flags, productName, ingredientsText, us
     });
 
     const rawText = message.content.find(b => b.type === 'text')?.text ?? '{}';
-
-    try {
-      return JSON.parse(rawText);
-    } catch {
-      const match = rawText.match(/\{[\s\S]*\}/);
-      if (match) return JSON.parse(match[0]);
-      return { summary: rawText, details: {} };
-    }
+    return parseExplanationResponse(rawText);
   } catch {
     return null;
   }
@@ -826,10 +822,23 @@ export default async function handler(req, res) {
   //
   // Proxy threshold: > 5 unverified tokens avoids flipping genuinely clean
   // products that have a handful of unfamiliar whole-food tokens.
+  //
+  // "No real flags" must exclude gluten_grains, mirroring the activeFlags
+  // filter lib/rulesEngine.js uses for its own verdict calculation
+  // (gluten is a paywall feature, invisible at both levels, by design).
+  // rulesEngine.js excludes gluten_grains from ITS verdict field but does
+  // NOT strip gluten_grains entries out of the flags array it returns — that
+  // stripping only happens later, in the L2 tree pre-processing below. Using
+  // the raw `flags` array here meant any product containing a gluten grain
+  // (wheat, oat, barley, rye, etc.) had a non-empty flags array even when
+  // gluten_grains was its only flag category, so this check would
+  // short-circuit before ever evaluating the unverified-count threshold —
+  // regardless of how many ingredients were actually unrecognized.
+  const nonGlutenFlagsForInconclusive = flags.filter(f => f.category !== 'gluten_grains');
   if (
     ingredientsText !== null &&
     verdict === 'green' &&
-    flags.length === 0 &&
+    nonGlutenFlagsForInconclusive.length === 0 &&
     (unverifiedIngredients?.length ?? 0) > 5
   ) {
     verdict = 'inconclusive';
@@ -1028,6 +1037,16 @@ export default async function handler(req, res) {
 
       } else if (flags.some(f => f.category === 'bioengineering')) {
         // Node 11: Bioengineered product without cert.
+        verdict   = 'red';
+        clearedBy = null;
+
+      } else if (flags.some(f => f.category === 'glyphosate_heavy' && f.severity === 'reject')) {
+        // Node 11b: Glyphosate-heavy crop the engine rejected (no organic/glyphosate-free
+        // clearance — if either applied, the engine would already have downgraded this
+        // flag's own severity to 'caution', so this check and Node 12 below are mutually
+        // exclusive by construction). Every other reject-severity category the engine can
+        // emit has an explicit check in this tree; this one was missing, silently letting
+        // glyphosate_heavy-only products fall through to Node 14's default yellow.
         verdict   = 'red';
         clearedBy = null;
 

@@ -20,7 +20,32 @@
  *   E. Barcode 999999999999 — Product not in OFF database (UNVERIFIED)
  *   F. Label normalisation (OFF tags → internal certification strings)
  *   G. Response shape — structural contract for all three scenarios
+ *   T. fetchExplanation() Claude-response parsing (clean/fenced/truncated)
+ *
+ * The @anthropic-ai/sdk client is mocked at module scope (safe for every
+ * pre-existing test — none of them set ANTHROPIC_API_KEY, so
+ * fetchExplanation() always short-circuits to null before the mocked
+ * client is ever invoked; only Suite T's tests set the key).
  */
+
+const mockAnthropicCreate = jest.fn();
+jest.mock('@anthropic-ai/sdk', () => {
+  return jest.fn().mockImplementation(() => ({
+    messages: { create: mockAnthropicCreate },
+  }));
+});
+
+// getSupabaseServer() is mocked at module scope, default-returning undefined
+// (falsy — same as the real function's null return when env vars are
+// absent, which is always true in this test env). Safe for every
+// pre-existing test, which never sets a return value and therefore never
+// exercises the scan_cache read/write code paths — identical to before this
+// mock existed. Only the "scan_cache persistence" tests below opt in via
+// getSupabaseServer.mockReturnValueOnce(...).
+jest.mock('../../lib/supabaseServer', () => ({
+  getSupabaseServer: jest.fn(),
+}));
+const { getSupabaseServer } = require('../../lib/supabaseServer');
 
 const handler = require('../../pages/api/scan').default;
 
@@ -895,6 +920,59 @@ const ALL_UNKNOWN_OFF = {
   },
 };
 
+/**
+ * "TRACTOR WHEELS Organic Toddler Soft-Baked Bar" (barcode 810003512611) —
+ * real production reproduction case for the gluten_grains-masks-inconclusive
+ * bug. Contains oat flour and wheatgrass (both GLUTEN_GRAINS triggers, so the
+ * engine returns two gluten_grains caution flags in the flags array even
+ * though gluten_grains is excluded from its own verdict field) alongside
+ * unrecognized ingredient tokens well above the >5 threshold (originally 9;
+ * now 8 after Batch 10 resolved singular "date" — still comfortably above
+ * the threshold, so the test's `toBeGreaterThan(5)` assertion is unaffected).
+ * Before the fix, checking `flags.length === 0` treated this product as
+ * having "real" flags (because gluten_grains wasn't yet stripped from the
+ * array at this point in the pipeline) and the >5 check never ran, so
+ * verdict incorrectly stayed 'green'.
+ */
+const TRACTOR_WHEELS_OFF = {
+  status: 1,
+  product: {
+    product_name: 'TRACTOR WHEELS Organic Toddler Soft-Baked Bar Strawberry, Pumpkin & Beet',
+    ingredients_text:
+      'OAT FLOUR, DATE*, COCONUT OIL*, AGAVE INULIN* (PREBIOTIC), APPLE, STRAWBERRY**, ' +
+      'PUMPKIN SEED BUTTER*, STRAWBERRY PUREE, PUMPKIN, VANILLA EXTRACT, BEET**, ' +
+      'BAKING SODA (SODIUM BICARBONATE), CINNAMON*, GREENS POWDER BLEND* (WHEATGRASS, KALE, CHLORELLA*, MORINGA*)',
+    labels_tags: ['en:usda-organic'],
+    categories_tags: [],
+  },
+};
+
+/**
+ * "Smoothie Melts Blueberry Burst" (barcode 810003512802) — at the time of
+ * the gluten_grains/inconclusive investigation (PROMPT_VERSION 26), this
+ * product had 7 unrecognized tokens and zero flags, making it a real-world
+ * regression guard for the zero-flags inconclusive path alongside the
+ * synthetic-gibberish ALL_UNKNOWN_OFF fixture. Batch 10 (REVIEWED_CLEAN_INGREDIENTS/
+ * ALWAYS_IGNORE_INGREDIENTS additions for "Date", "Bifidobacterium lactics",
+ * and bare "probiotic") subsequently resolved three of those tokens, dropping
+ * the count to 3 — below the >5 threshold — so this product no longer
+ * qualifies as inconclusive. See the "current, correct behavior" test below;
+ * the original inconclusive-path coverage remains via ALL_UNKNOWN_OFF and
+ * TRACTOR_WHEELS_OFF, both using tokens that can't be "fixed" out from under
+ * the test by legitimate future vocabulary batches.
+ */
+const SMOOTHIE_MELTS_OFF = {
+  status: 1,
+  product: {
+    product_name: 'Smoothie Melts Blueberry Burst',
+    ingredients_text:
+      'Cultured whole milk, blueberry purée, whole milk powder, cherry purée, Date, lemon juice, ' +
+      'tapioca starch, vitamin E (mix tocopherols to protect flavor), Bifidobacterium lactics (probiotic). Organic.',
+    labels_tags: ['en:usda-organic'],
+    categories_tags: [],
+  },
+};
+
 describe('I — inconclusive verdict: all ingredients unrecognized', () => {
   test('returns verdict: inconclusive (not green) when all ingredient tokens are unrecognized', async () => {
     mockFetchOnce(ALL_UNKNOWN_OFF);
@@ -916,6 +994,33 @@ describe('I — inconclusive verdict: all ingredients unrecognized', () => {
     const res = makeRes();
     await handler(makeReq('POST', { barcode: '000000000099', userLevel: 2 }), res);
     expect(res.body.flags).toEqual([]);
+  });
+
+  test('gluten_grains flags present + >5 unverified → still resolves to inconclusive, not green (regression for the gluten-masks-inconclusive bug)', async () => {
+    mockFetchOnce(TRACTOR_WHEELS_OFF);
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '810003512611', userLevel: 2 }), res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.verdict).toBe('inconclusive');
+    expect(res.body.unverifiedIngredients.length).toBeGreaterThan(5);
+    // gluten_grains flags are present in the raw engine output at the point
+    // the inconclusive check runs, but must not block it from firing.
+    expect(res.body.flags.every(f => f.category === 'gluten_grains')).toBe(true);
+  });
+
+  test('Smoothie Melts now correctly resolves to YELLOW (not inconclusive) — Batch 10 vocabulary fixes dropped its unverified count to 3, below the >5 threshold', async () => {
+    // Documents the improvement: "Date", "Bifidobacterium lactics", and bare
+    // "probiotic" are now recognized (Batch 10), so this real product is no
+    // longer punted to inconclusive — it's correctly screened via the L2
+    // organic sub-tree's fortified_vitamins check (vitamin E / tocopherols).
+    mockFetchOnce(SMOOTHIE_MELTS_OFF);
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '810003512802', userLevel: 2 }), res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.verdict).toBe('yellow');
+    expect(res.body.clearedBy).toBe('organic');
+    expect(res.body.flags.some(f => f.category === 'fortified_vitamins')).toBe(true);
+    expect(res.body.unverifiedIngredients.length).toBeLessThanOrEqual(5);
   });
 });
 
@@ -1112,8 +1217,11 @@ describe('K. Level 2 flags cleanup', () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-// L. Universal L2 decision tree — 15 integration scenarios
-//    Tests each node of the new decision tree independently.
+// L. Universal L2 decision tree — 18 integration scenarios
+//    Tests each node of the new decision tree independently. L16/L17 cover
+//    Node 11b (glyphosate_heavy reject → RED) added to close the missing-node
+//    gap; L18 confirms the "l. rhamnosus" ALWAYS_IGNORE_INGREDIENTS addition
+//    doesn't disturb fortified_vitamins masking — see CLAUDE.md changelog.
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('L. Universal L2 decision tree', () => {
@@ -1352,6 +1460,70 @@ describe('L. Universal L2 decision tree', () => {
     expect(res.body.verdict).toBe('yellow');
     expect(res.body.flags).toHaveLength(0);
   });
+
+  // ── L16: glyphosate_heavy-only reject → RED (Node 11b) ─────────────────────
+
+  test('L16: glyphosate_heavy only, no cert (Chickpea, Tapioca, Pea Protein, Salt) → RED at glyphosate_heavy node, not the default node', async () => {
+    // Regression for the missing tree node: glyphosate_heavy was the only
+    // reject-severity category with no explicit check in the L2 tree, so
+    // products whose sole concern was glyphosate_heavy silently fell through
+    // to Node 14's default YELLOW instead of RED.
+    //
+    // Both "chickpea" and "pea protein" match GLYPHOSATE_HEAVY, since a later
+    // correction moved singular "chickpea" from REVIEWED_CLEAN_INGREDIENTS
+    // into GLYPHOSATE_HEAVY alongside plural "chickpeas" (same crop, same
+    // pre-harvest desiccation exposure) — see CLAUDE.md changelog.
+    mockFetchOnce(l2TreeOffResp({
+      ingredientsText: 'Chickpea, Tapioca, Pea Protein, Salt',
+      labelsTags:      [],
+      categoriesTags:  ['en:cereals'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000316', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.clearedBy).toBeNull();
+    const glyphosateFlags = res.body.flags.filter(f => f.category === 'glyphosate_heavy');
+    expect(glyphosateFlags).toHaveLength(2);
+    expect(glyphosateFlags.every(f => f.severity === 'reject')).toBe(true);
+    expect(glyphosateFlags.map(f => f.matchedIngredient).sort()).toEqual(['chickpea', 'pea protein']);
+  });
+
+  // ── L17: glyphosate_heavy + glyphosate-free label → YELLOW (Node 12 still fires) ──
+
+  test('L17: pea protein with glyphosate-free label → YELLOW, not RED (downgrade path unaffected by the new node)', async () => {
+    // The engine itself downgrades the flag's severity to 'caution' when
+    // hasGlyphosateFree is true, so the new Node 11b check
+    // (severity === 'reject') never matches here — Node 12 still fires as
+    // before. Guards against the fix for L16 accidentally overriding the
+    // legitimate glyphosate-free certification downgrade.
+    mockFetchOnce(l2TreeOffResp({
+      ingredientsText: 'Chickpea, Tapioca, Pea Protein, Salt',
+      labelsTags:      ['en:glyphosate-free'],
+      categoriesTags:  ['en:cereals'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000317', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('yellow');
+    expect(res.body.clearedBy).toBe('glyphosate-free');
+    const flag = res.body.flags.find(f => f.category === 'glyphosate_heavy');
+    expect(flag).toBeDefined();
+    expect(flag.severity).toBe('caution');
+  });
+
+  // ── L18: l. rhamnosus masking does not disturb the fortified_vitamins organic path ──
+
+  test('L18: "l. rhamnosus" present alongside vitamin d3 in an organic product — fortified_vitamins still correctly fires (masking the new ALWAYS_IGNORE_INGREDIENTS entry does not interfere with containsFortifiedVitamins())', async () => {
+    mockFetchOnce(l2TreeOffResp({
+      ingredientsText: 'organic cultured milk, l. rhamnosus, vitamin d3',
+      labelsTags:      ['en:usda-organic'],
+      categoriesTags:  [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000318', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('yellow');
+    expect(res.body.clearedBy).toBe('organic');
+    expect(res.body.flags.some(f => f.category === 'fortified_vitamins')).toBe(true);
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1359,10 +1531,10 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 22 (v22: rules engine expansion — synthetic additives, milk/meat-derived, REVIEWED_CLEAN batch 5)', () => {
+  test('PROMPT_VERSION is 30 (v30: "-free"/"non-" bare-word trigger guard generalized across categories + manufacturer address/facility-statement stripping — fixes live false-positive flags including canola-free forcing red via seed_oils)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(22);
+    expect(PROMPT_VERSION).toBe(30);
   });
 });
 
@@ -2094,5 +2266,95 @@ describe('S. L1 seafood / game-meat / dairy overrides', () => {
     const flag = res.body.flags.find(f => f.category === 'conventional_dairy');
     expect(flag).toBeDefined();
     expect(flag.severity).toBe('caution');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// T. fetchExplanation() Claude-response parsing — clean / fenced / truncated
+//    Root-cause regression coverage for the raw-JSON-in-summary bug (see
+//    CLAUDE.md changelog). This code path previously had zero test coverage
+//    anywhere in the codebase.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('T. fetchExplanation() — Claude response parsing', () => {
+  /** Minimal OFF response with a real reject flag, so fetchExplanation() is called. */
+  function explanationOffResp() {
+    return {
+      status: 1,
+      product: {
+        product_name:     'Test Product With Issues',
+        ingredients_text: 'canola oil, sugar, salt',
+        labels_tags:      [],
+        categories_tags:  [],
+      },
+    };
+  }
+
+  beforeEach(() => {
+    mockAnthropicCreate.mockReset();
+    process.env.ANTHROPIC_API_KEY = 'test-key';
+  });
+
+  afterEach(() => {
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  test('T1: clean, well-formed JSON response → parsed normally, summary and details preserved', async () => {
+    mockAnthropicCreate.mockResolvedValueOnce({
+      content: [{
+        type: 'text',
+        text: '{"summary":"This has a couple of issues worth knowing about.","details":{"seed_oils":"Sina here — canola oil is a refined seed oil."}}',
+      }],
+    });
+    mockFetchOnce(explanationOffResp());
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001001', userLevel: 2 }), res);
+    expect(res.body.explanation).toEqual({
+      summary: 'This has a couple of issues worth knowing about.',
+      details: { seed_oils: 'Sina here — canola oil is a refined seed oil.' },
+    });
+  });
+
+  test('T2: JSON wrapped in a ```json markdown fence, with a valid closing brace → still parses correctly via regex recovery', async () => {
+    mockAnthropicCreate.mockResolvedValueOnce({
+      content: [{
+        type: 'text',
+        text: '```json\n{"summary":"Fenced but complete.","details":{"conventional_crops":"Joel here — sugar without cert."}}\n```',
+      }],
+    });
+    mockFetchOnce(explanationOffResp());
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001002', userLevel: 2 }), res);
+    expect(res.body.explanation).toEqual({
+      summary: 'Fenced but complete.',
+      details: { conventional_crops: 'Joel here — sugar without cert.' },
+    });
+  });
+
+  test('T3: genuinely truncated response with NO closing brace → degrades to null, does NOT surface raw text as the summary', async () => {
+    // Reproduces the exact production bug shape: a markdown fence followed by
+    // a partial JSON object that never closes.
+    mockAnthropicCreate.mockResolvedValueOnce({
+      content: [{
+        type: 'text',
+        text: '```json\n{\n  "summary": "This product has three significant issues: safflower oil (a seed oil that drives inflammation), conventional grain ingredients (grown with pesticides and GMO',
+      }],
+    });
+    mockFetchOnce(explanationOffResp());
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001003', userLevel: 2 }), res);
+    expect(res.body.explanation).toBeNull();
+  });
+
+  test('T4: max_tokens sent to the Claude API is 2000, not the old 1000', async () => {
+    mockAnthropicCreate.mockResolvedValueOnce({
+      content: [{ type: 'text', text: '{"summary":"Fine.","details":{}}' }],
+    });
+    mockFetchOnce(explanationOffResp());
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001004', userLevel: 2 }), res);
+    expect(mockAnthropicCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ max_tokens: 2000 })
+    );
   });
 });

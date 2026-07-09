@@ -152,13 +152,52 @@ ${flagsSection}${ingredientSnippet}${levelContext}
 
 Respond with a JSON object with exactly this structure — no markdown, no text outside the JSON:
 {
-  "summary": "<1-2 sentence plain-language summary of the overall verdict, written to the parent or person scanning the product>",
+  "summary": "<EXACTLY 1-2 sentences — a brief, plain-language headline of the overall verdict, written to the parent or person scanning the product. Do NOT list or explain individual flagged categories here, even when several are flagged — every category gets its own full explanation in "details" below. If you find yourself naming more than one specific ingredient or category in the summary, stop and move that content into "details" instead.>",
   "details": {
     "<category_name>": "<Open with 'Sina here —' or 'Joel here —' per the voice assignment in the system prompt, then 2-3 sentences: what was found in this product, why it matters, and one empowering note>"
   }
 }
 
-Include a "details" key only for categories that were actually flagged. If no flags exist, return an empty "details" object and write a warm, affirming summary. Match the category names exactly as given above (e.g. "seed_oils", "conventional_crops", "bioengineering", "additives", "gluten_grains", "natural_flavors").`;
+Include a "details" key only for categories that were actually flagged. If no flags exist, return an empty "details" object and write a warm, affirming summary. Match the category names exactly as given above (e.g. "seed_oils", "conventional_crops", "bioengineering", "additives", "gluten_grains", "natural_flavors"). When several categories are flagged, keep "summary" short regardless — length and detail belong in "details", one entry per category, not in the summary.`;
+}
+
+/**
+ * Parse Claude's raw text response into a { summary, details } object.
+ * Shared by fetchExplanation() (pages/api/scan.js) and this file's own
+ * handler, so the two call sites can't drift apart on how a malformed
+ * response is handled — they were previously hand-duplicated copies of the
+ * same logic.
+ *
+ * Handles two recoverable shapes:
+ *   1. Clean JSON, parses directly.
+ *   2. JSON wrapped in a markdown code fence (```json ... ```) or otherwise
+ *      surrounded by stray text, but still containing a complete, balanced
+ *      `{...}` block — recovered via regex extraction.
+ *
+ * Returns null (not a raw-text fallback) when neither succeeds — e.g. a
+ * genuine mid-generation truncation with no closing `}` anywhere in the
+ * text. Callers must treat null the same as any other explanation failure
+ * (fetchExplanation() already returns null for missing API keys and other
+ * errors; explain.js's handler already returns a 502 for other Claude-call
+ * failures) — never surface the raw, unparsed text to the user.
+ *
+ * @param {string} rawText - Raw text content from Claude's response.
+ * @returns {{ summary: string, details: object } | null}
+ */
+export function parseExplanationResponse(rawText) {
+  try {
+    return JSON.parse(rawText);
+  } catch {
+    const match = rawText.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        return JSON.parse(match[0]);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
 }
 
 /**
@@ -193,7 +232,7 @@ export default async function handler(req, res) {
 
     const message = await client.messages.create({
       model:      ANTHROPIC_MODEL,
-      max_tokens: 1000,
+      max_tokens: 2000,
       system:     SYSTEM_PROMPT,
       messages: [{
         role:    'user',
@@ -202,20 +241,16 @@ export default async function handler(req, res) {
     });
 
     const rawText = message.content.find(b => b.type === 'text')?.text ?? '{}';
+    const parsed = parseExplanationResponse(rawText);
 
-    // Parse Claude's JSON response
-    let parsed;
-    try {
-      parsed = JSON.parse(rawText);
-    } catch {
-      // Claude occasionally wraps JSON in a markdown code fence — strip it
-      const match = rawText.match(/\{[\s\S]*\}/);
-      if (match) {
-        parsed = JSON.parse(match[0]);
-      } else {
-        // Total fallback: return the raw text as the summary
-        parsed = { summary: rawText, details: {} };
-      }
+    if (!parsed) {
+      // Unparseable or genuinely truncated response (no closing brace found)
+      // — treat the same as any other Claude-call failure. Never surface
+      // the raw, malformed text to the user.
+      return res.status(502).json({
+        error:  'Failed to generate explanation.',
+        detail: 'Claude returned an unparseable or truncated response.',
+      });
     }
 
     return res.status(200).json({

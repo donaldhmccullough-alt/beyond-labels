@@ -65,8 +65,10 @@ components/
 lib/
   rulesEngine.js          — deterministic ingredient analysis engine (core logic)
   rulesEngine.test.js     — Jest tests for rules engine (35 describe blocks; 2050 tests total; block 20 = SYNTHETIC_ADDITIVES bucket-1 expansion (91 tests); block 21 = FD&C "No." normalization (19 tests); block 22 = mechanically separated meat (3 tests); block 23 = interesterified variants, lake forms, dye synonyms, new E-numbers, stearyl emulsifiers, cyclamate (78 tests); block 24 = synonym/E-number expansion: nitrates, BVO, bleaching agents, BHA/BHT names, SLS, E-numbers e320/e321/e924/e950–e955 (50 tests); block 25 = gluten grains expansion: ancient grains, botanical names, asafoetida/hing, smoke flavoring, brown rice syrup (34 tests); block 26 = H2: artifact phrases and red list additions — polysorbates, synthetic phosphates, red 3/#-normalizer (17 tests); block 27 = I: Sina gluten expansion — 65 new GLUTEN_GRAINS entries across corn derivatives, wheat flour varieties, barley/rye/oat forms, processed ingredients (22 tests); block 28 = FORTIFIED_VITAMINS group — synthetic vitamin fortification detection (61 tests); block 29 = NATURAL_COLORANTS group — plant-derived colorant detection (12 tests); block 32 = containsMilkDerived, containsEggDerived, ALWAYS_IGNORE_INGREDIENTS — new helper functions and ignore-list constant (32 tests); block 33 = GLYPHOSATE_HEAVY — high-glyphosate-risk crops: pea protein, oat milk, buckwheat, ascorbic acid, lecithin, potato starch, papaya, glyphosate-free escape hatch for oats/wheat, GLYPHOSATE_HEAVY export (11 tests); block 34 = CONVENTIONAL_CROPS_NO_FLAG — sunflower lecithin range-claim without flag (5 tests); block 35 = REVIEWED_CLEAN_INGREDIENTS — display-only suppression filter, Set export, almond flour/arrowroot suppressed, unknown ingredient still surfaces, engine flags/verdict unaffected (5 tests))
-  __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (18 suites A–R; 156 tests total; suite H = L2 decision tree coverage: cert gate, organic path, non-organic path, seafood/meat/dairy logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 16 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests; suite J = L1 explicit overrides — gluten suppression, conventional meat caution injection (8 tests); suite K = L2 flags array cleanup — gluten suppression and organic conventional_crops strip (5 tests); suite L = universal L2 decision tree — 15 integration scenarios covering all 14 nodes (L5 updated: eggs now produce conventional_eggs not conventional_meat); suite M = PROMPT_VERSION contract — 1 test; suite N = wild-caught detection — product name signals, farmed exclusions, seed oil short-circuit (4 tests); suite O = cert_unconfirmed — all-organic ingredient prefix detection, trivial ingredient exclusion, non-organic partial mix, usda-organic cert bypass (4 tests); suite P = conventional_eggs — non-meat product with eggs, organic prefix clearance, meat+eggs both flags, dairy-only no-interference (4 tests); suite Q = detectWildCaught standalone wild signal — product name only, ingredients signal, non-seafood unaffected, astaxanthin farmed exclusion (4 tests); suite R = pure-water GREEN path — artesian water + minerals, sparkling water, water+natural-flavor regression, coconut water non-match (4 tests))
-  ── Combined test total: 2,731 tests (2,130 rulesEngine + 601 scan) ──
+  __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (18 suites A–R; 156 tests total; suite H = L2 decision tree coverage: cert gate, organic path, non-organic path, seafood/meat/dairy logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 16 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests; suite J = L1 explicit overrides — gluten suppression, conventional meat caution injection (8 tests); suite K = L2 flags array cleanup — gluten suppression and organic conventional_crops strip (5 tests); suite L = universal L2 decision tree — 17 integration scenarios covering all 14 nodes plus 11b (L5 updated: eggs now produce conventional_eggs not conventional_meat; L16/L17 added for the glyphosate_heavy-reject-forces-red fix and its glyphosate-free-downgrade regression guard); suite M = PROMPT_VERSION contract — 1 test; suite N = wild-caught detection — product name signals, farmed exclusions, seed oil short-circuit (4 tests); suite O = cert_unconfirmed — all-organic ingredient prefix detection, trivial ingredient exclusion, non-organic partial mix, usda-organic cert bypass (4 tests); suite P = conventional_eggs — non-meat product with eggs, organic prefix clearance, meat+eggs both flags, dairy-only no-interference (4 tests); suite Q = detectWildCaught standalone wild signal — product name only, ingredients signal, non-seafood unaffected, astaxanthin farmed exclusion (4 tests); suite R = pure-water GREEN path — artesian water + minerals, sparkling water, water+natural-flavor regression, coconut water non-match (4 tests))
+  ── Combined test total: 1,222 tests (1,034 rulesEngine + 177 scan + 11 explain) — corrected July 2026; the
+     previously documented 2,731 figure was inflated by summing jest runs across stale
+     .claude/worktrees/ copies of the test files alongside the real root-only source of truth ──
   onboardingData.js       — QUESTIONS array (13 Qs), STAGES array (5 stages), getStageFromScore()
   userProfile.js          — localStorage profile read/write/clear helpers
   userLevel.js            — getUserLevel(), setUserLevel(), hasUserLevel() — localStorage bl_user_level
@@ -79,7 +81,8 @@ lib/
 
 pages/api/
   scan.js                 — POST barcode → cache check → Open Food Facts → rulesEngine → Claude → scan_cache upsert
-  explain.js              — POST verdict/flags → Claude API → plain-language explanation (standalone; also exports SYSTEM_PROMPT + buildUserMessage)
+  explain.js              — POST verdict/flags → Claude API → plain-language explanation (standalone; also exports SYSTEM_PROMPT, buildUserMessage, parseExplanationResponse)
+  __tests__/api/explain.test.js — Jest tests for parseExplanationResponse() and the standalone handler (11 tests: clean/fenced/truncated Claude responses, input validation)
   swaps.js                — swap suggestions (Google Sheet CSV + AI fallback); level-aware Good/Better tiers
   health.js               — health check endpoint
 ```
@@ -240,27 +243,34 @@ LEVEL_1_YELLOW_CATEGORIES
 ```
 
 ### Text preprocessing (inside `analyzeIngredients`)
-Before any trigger matching the raw ingredient string is normalized in two steps:
-1. **"No." stripping** — `/\bno\.\s+/gi` removes the FD&C ordinal suffix so label strings like `"FD&C Red No. 40"` → `"FD&C Red 40"` and then match the existing `red 40` trigger. Covers all FD&C dyes and `Citrus Red No. 2`. `\b` prevents the regex from firing inside words (e.g. "Casino."). The fix lives in `analyzeIngredients`, **not** in `scan.js`, because `scan.js` passes the raw OFF ingredient text directly — this ensures every caller (tests, future endpoints) gets consistent behavior automatically.
-2. **Lowercase** — the entire string is lowercased for case-insensitive trigger matching.
+Before any trigger matching, the raw ingredient string is normalized in four steps, producing the shared `ingredientTextCleaned` variable (original casing preserved) that both the trigger-matching `text` and the unverified-token derivation (`parseIngredientTokens()`) are built from — so the two pipelines can't drift apart on what counts as a real ingredient:
+1. **`stripAllergenAdvisory()`** — strips "may contain"/"contains:"/"manufactured on a line"/"produced in a facility" disclaimers, trailing certification-note sentence fragments (e.g. `". Organic."`), and — since PROMPT_VERSION 30 — "manufactured by: [company] [address]" (stripped through the next newline only, deliberately with **no** end-of-string fallback, since a real ingredient could otherwise be silently swallowed if it follows on the same line with no other separator) and "this product is made in a [...] facility [...]." (a distinct wording variant of the existing "produced in a facility" pattern). See `lib/rulesEngine.js` for the full regex set.
+2. **`stripPurposeNoteParentheticals()`** — strips parenthetical purpose-notes that explain *why* an ingredient is present rather than *what* it is (e.g. `"vegetable juice (for color)"`, `"ascorbic acid (to preserve freshness)"`), so they never become their own fake token or interrupt a trigger-phrase match. Distinguishes a purpose note from a real sub-ingredient parenthetical (e.g. `"chocolate chips (unsweetened chocolate, sugar, cocoa butter)"`) by requiring the content to start with `for`/`to` immediately after the opening paren — no real ingredient name begins that way. Collapses any double space left behind so a trigger phrase spanning the removed note (e.g. `"canola (for cooking) oil"` → `"canola oil"`) still matches correctly.
+3. **"No." stripping** — `/\bno\.\s+/gi` removes the FD&C ordinal suffix so label strings like `"FD&C Red No. 40"` → `"FD&C Red 40"` and then match the existing `red 40` trigger. Covers all FD&C dyes and `Citrus Red No. 2`. `\b` prevents the regex from firing inside words (e.g. "Casino."). The fix lives in `analyzeIngredients`, **not** in `scan.js`, because `scan.js` passes the raw OFF ingredient text directly — this ensures every caller (tests, future endpoints) gets consistent behavior automatically.
+4. **Lowercase** — the entire string is lowercased for case-insensitive trigger matching (this step is `text`-only — `parseIngredientTokens()` receives the original-cased `ingredientTextCleaned` so `unverifiedIngredients` output preserves label casing for display).
+
+`parseIngredientTokens()` itself also strips a leading Oxford-comma conjunction (`/^and\s+/i` — e.g. `"...X, and Y"`'s last token `"and Y"` → `"Y"`), leading `*`/`NN%`, and trailing `.*[])` from each token. The conjunction strip is whitespace-anchored so it can't match a real ingredient name that merely starts with the letters "and" (e.g. `"andouille sausage"` has no space between "and" and "ouille").
 
 ### Categories
 1. **TRANS_FATS** — always red at both levels; no clearance
-2. **SEED_OILS** — Level 2: red; Level 1: yellow; no organic clearance
+2. **SEED_OILS** — Level 2: red; Level 1: yellow; no organic clearance. Uses `findMatches()` directly (not `matchAndClaim()`) so a match rejected by the `isInFreeOrNonContext()` guard (e.g. `"canola-free"`) is not claimed either, leaving the range available to other categories.
 3. **CONVENTIONAL_CROPS** — Level 2: red; Level 1: yellow; clearable by `usda-organic` label, `non-gmo-project-verified` label, or "organic" word prefix on the ingredient
 4. **BIOENGINEERING_TERMS** — Level 2: red; Level 1: yellow; first match only
 5. **NATURAL_FLAVORS** — Level 2: red; Level 1: yellow; no clearance
 6. **SYNTHETIC_ADDITIVES** — always red at both levels; no clearance; expanded with ~200 additional EU n/n triggers. Category string: `'additives'` (the engine loop emits `category: 'additives'`; `ConcernCard` maps both `'additives'` and `'synthetic_additives'` to the same display for backwards-compatibility). Includes lake dye forms (e.g. `yellow 5 lake`), chemical name synonyms (e.g. `tartrazine`, `allura red`), 22 E-numbers, stearyl ester emulsifiers, bare `cyclamate`, and a **"Processing methods"** section: `mechanically separated meat`. PRIORITY_ADDITIVES pre-pass runs before SEED_OILS; contains `interesterified palm oil`, `interesterified soybean oil`, `brominated vegetable oil`, and `soya lecithin` (added to prevent `lecithin` in CONVENTIONAL_CROPS from claiming the suffix first). The bare `flavor` trigger uses a **word-boundary guard** in the SYNTHETIC_ADDITIVES loop.
-6b. **GLYPHOSATE_HEAVY** — Level 2: red; Level 1: always caution (yellow). Category string: `'glyphosate_heavy'`. Covers crops where glyphosate is routinely used as a pre-harvest desiccant: oats and oat derivatives, wheat and wheat derivatives (moved from old CONVENTIONAL_CROPS), barley and malt derivatives (moved from old CONVENTIONAL_CROPS), lentils, peas, edible beans, flax/linseed, rye, buckwheat, millet. Clearance: `usda-organic` label OR organic ingredient prefix → skip entirely; `glyphosate-free` label → flag stays but downgraded to caution (YELLOW). **bare `malt` guard**: if character immediately after the match is a letter, skip (prevents false positives in `maltodextrin`, `maltose`). Detection loop runs between CONVENTIONAL_CROPS and BIOENGINEERING. Included in `LEVEL_1_YELLOW_CATEGORIES` and `LEVEL_1_YELLOW_TRIGGERS`.
+6b. **GLYPHOSATE_HEAVY** — Level 2: red; Level 1: always caution (yellow). Category string: `'glyphosate_heavy'`. Covers crops where glyphosate is routinely used as a pre-harvest desiccant: oats and oat derivatives, wheat and wheat derivatives (moved from old CONVENTIONAL_CROPS), barley and malt derivatives (moved from old CONVENTIONAL_CROPS), lentils, peas, edible beans, flax/linseed, rye, buckwheat, millet. Clearance: `usda-organic` label OR organic ingredient prefix → skip entirely; `glyphosate-free` label → flag stays but downgraded to caution (YELLOW). **bare `malt` guard**: if character immediately after the match is a letter, skip (prevents false positives in `maltodextrin`, `maltose`). **`isInFreeOrNonContext()` guard** (added PROMPT_VERSION 30): skips matches inside a `"-free"`/`" free"`/`"non-"`/`"non "` claim (e.g. `"wheat-free"`, `"barley-free"`, `"rye-free"`) — see the shared-helper note under GLUTEN_GRAINS below for the full list of categories this now applies to. Detection loop runs between CONVENTIONAL_CROPS and BIOENGINEERING. Included in `LEVEL_1_YELLOW_CATEGORIES` and `LEVEL_1_YELLOW_TRIGGERS`.
 7. **GLUTEN_GRAINS** — soft flag (caution/yellow only at both levels). Category string: `'gluten_grains'` (not `'gluten'`).
    - **Flags every match**, not just the first — a product with wheat flour, oats, and barley malt gets three separate `gluten_grains` flags.
    - **Bypasses the claiming system entirely** — runs `findMatches(text, GLUTEN_GRAINS, [])` with an empty blocked-ranges list, so no prior category can suppress a grain match. Prolamin protein is an independent concern from pesticide exposure, bioengineering, or seed-oil content.
    - Organic/Non-GMO clearance does **not** suppress GLUTEN_GRAINS flags — organic wheat is still a prolamin concern.
    - **Broader prolamin definition**: rice entries (`whole grain brown rice flour`, `rice flour`, `rice`, etc.) are included because rice prolamins (oryzin) can trigger sensitivity in celiac and non-celiac gluten-sensitive individuals. Added `whole grain brown rice flour` (shadows `rice flour` and `brown rice` at the same position). Also added `malt flavor` to the barley/malt section.
    - **Sina clinical list expansion** (65 new entries): corn derivatives (`high fructose corn syrup`, `corn syrup`, `hydrolyzed corn protein`, `corn oil`, `corn gluten`, `polenta`, `zea mays`, etc.); wheat flour varieties (`whole wheat flour`, `bread flour`, `self-rising flour`, `pastry flour`, `cake flour`, `all-purpose flour`, `tipo 00 flour`); barley varieties (`pearl barley`, `barley flour`, `barley flakes`, `hulled barley`, etc.); rye varieties (`pumpernickel`, `cereal rye`, `ryegrass`, `white/light/medium/dark rye`); oat varieties (`steel-cut oats`, `oat groats`, `quick oats`, `instant oats`, `scottish oats`, `sprouted oats`); sorghum varieties (`grain sorghum`, `sweet sorghum`, `broomcorn`); corn-derived sweeteners (`maltodextrin`, `dextrose`, `fructose`, `glucose syrup`, `maltose`, `vanillin`, `sorbitol`, `xanthan gum`); processed/ambiguous ingredients (`modified food starch`, `food starch`, `pregelatinized starch`, `hydrolyzed vegetable protein`, `textured vegetable protein`, `vegetable gum`, `soy sauce`, `miso`, `dextrin`, `baking powder`). Double-flagging with CONVENTIONAL_CROPS or SYNTHETIC_ADDITIVES is acceptable by design — GLUTEN_GRAINS bypasses the claiming system.
-   - **Two false-positive filters** applied per match before a flag is emitted:
+   - **Three false-positive filters** applied per match before a flag is emitted:
      1. `isPrecededBySourceNote()` — skips grains that appear in source-disclosure parentheticals, e.g. "maltodextrin (made from corn)" does not flag "corn".
      2. `isOilDerivative()` — skips a grain word immediately followed by ` oil` (e.g. "corn" inside "corn oil"). Refined oils carry no meaningful prolamin and are already covered by SEED_OILS.
+     3. `isInFreeOrNonContext()` (added PROMPT_VERSION 30) — skips a grain word inside a `"-free"`/`" free"`/`"non-"`/`"non "` claim, e.g. `"corn-free"`, `"wheat-free"`.
+
+   **`isInFreeOrNonContext(text, index, end)`** — shared helper (`lib/rulesEngine.js`, alongside `isPrecededByOrganic()`/`isPrecededBySourceNote()`) that generalizes a guard originally written narrowly for the bare `"gmo"` trigger in `BIOENGINEERING_TERMS` into a single reusable check applied across every bare-word trigger category: `SEED_OILS`, `CONVENTIONAL_CROPS`, `CONVENTIONAL_EGGS`, `GLUTEN_GRAINS`, `GLYPHOSATE_HEAVY`, and `BIOENGINEERING_TERMS`'s own `"gmo"` trigger (now calling the shared function instead of its own inline copy). A bare-word trigger match immediately preceded by `"non-"`/`"non "` or immediately followed by `"-free"`/`" free"` asserts the *absence* of the ingredient (e.g. "egg-free facility," "canola-free," "non-GMO") and must not produce a flag — confirmed real false positives this closed: `egg-free` → `conventional_eggs`, `corn-free`/`wheat-free`/`barley-free`/`rye-free` → `gluten_grains`/`glyphosate_heavy`, `canola-free` → `seed_oils` (an `INSTANT_RED_CATEGORIES` member — this alone could force a product red from a facility disclaimer with zero real ingredient concern), `sugar-free` → `conventional_crops`. The existing letter-adjacency word-boundary guard on `CONVENTIONAL_EGGS` (protects `"eggplant"`) is unrelated and stays in place alongside this new check — a hyphen is not a letter, so that guard alone never caught the `"-free"` case.
 
 ### Verdict logic
 - Any hard reject (`severity: 'reject'`) → `'red'`
@@ -284,7 +294,7 @@ For `userLevel === 2`, `scan.js` applies a universal 14-node decision tree **aft
 | 3 | `trans_fats` flag present | RED | null |
 | 3b | `natural_flavors` flag present | RED | null |
 | 4 | `usda-organic` label | → organic sub-tree | `'organic'` |
-| 5 | `detectWildCaught()` returns true (OFF label OR product name contains wild-caught signal, no farmed exclusions) | GREEN | `'wild-caught'` |
+| 5 | `isSeafood` AND no reject-severity flag already present AND `detectWildCaught()` returns true (OFF label OR product name contains wild-caught signal, no farmed exclusions) — **both the `isSeafood` gate and the reject-flag gate were added PROMPT_VERSION 29, see changelog; before that, this node had neither and could silently force GREEN over a real reject flag on any product, seafood or not** | GREEN | `'wild-caught'` |
 | 5b | `isSeafood` + no wild-caught signal detected | RED (inject `conventional_meat` flag) | null |
 | 6 | Game meat category (`en:game-meats`) | GREEN | null |
 | 7 | `non-gmo-project-verified` label | YELLOW | `'non-gmo-project-verified'` |
@@ -293,6 +303,7 @@ For `userLevel === 2`, `scan.js` applies a universal 14-node decision tree **aft
 | 9 | `containsMilkDerived(maskedText)` | RED (inject `conventional_dairy` flag) | null |
 | 10 | `conventional_crops` flag present | RED | null |
 | 11 | `bioengineering` flag present | RED | null |
+| 11b | `glyphosate_heavy` flag present with `severity: 'reject'` (added PROMPT_VERSION 24 — see changelog; mutually exclusive with node 12 by construction, since the engine already downgrades this flag's own severity to `'caution'` when `glyphosate-free`/`usda-organic` clearance applies) | RED | null |
 | 12 | `glyphosate-free` label | YELLOW | `'glyphosate-free'` |
 | 13 | `glyphosate-heavy` label | RED | null |
 | 14 | Default | YELLOW | null |
@@ -305,12 +316,28 @@ For `userLevel === 2`, `scan.js` applies a universal 14-node decision tree **aft
 | `maskedText.includes('olive oil')` | YELLOW + inject `olive_oil_adulteration` flag, set `oliveCaveat: true` |
 | None of the above | GREEN |
 
+**⚠️ Keeping the tree in sync with the engine — required reading before adding a new reject-severity category:**
+Every category `analyzeIngredients()` can emit with `severity: 'reject'` at Level 2 MUST have a
+corresponding check in this tree (either via `INSTANT_RED_CATEGORIES`, or an explicit
+`flags.some(f => f.category === '...')` node like 8b/10/11/11b). If a new reject category is added
+to `lib/rulesEngine.js` without a matching node here, a product whose *only* concern is that
+category will silently fall through to Node 14's default **YELLOW** instead of RED — the engine's
+own flag object will still correctly say `severity: 'reject'`, but the top-level verdict will be
+wrong, and the mismatch is easy to miss because products that also carry *any other* checked reject
+category still show RED (masking the gap). This has now happened twice: `glyphosate_heavy` shipped
+in an earlier session (GLYPHOSATE_HEAVY category) without a tree node, undetected until a July 2026
+production-data investigation found "Unsweetened Cereal" (860002152400) — a product whose sole flag
+was a reject-severity `glyphosate_heavy` — cached as verdict `yellow`. Fixed at Node 11b,
+PROMPT_VERSION 24. **When adding a new reject-severity category to the engine, add a tree node in
+the same change**, and add a Suite L test asserting the top-level `verdict` (not just the flag's own
+`severity` field) for a product whose *only* flag is that new category.
+
 **Key behaviour changes from the previous cert-gate waterfall:**
 - Products with no cert AND no conventional ingredient signals now default to **YELLOW** (node 14), not RED. "Pistachios, salt" is yellow not red.
 - Seafood and game meat have dedicated nodes — no conventional_meat flag for wild-caught fish or venison.
 - Conventional dairy (`conventional_dairy` flag) is now a distinct tree node separate from conventional meat.
 - Conventional eggs (`conventional_eggs` flag) have their own Node 8b — no longer merged into the `conventional_meat` node. Products like ravioli, pasta, and cookies with egg ingredients get `conventional_eggs` (not `conventional_meat`). The flag comes from the rules engine (not scan.js injection) and carries the actual matched ingredient string.
-- Egg ingredients are detected by the rules engine (CONVENTIONAL_EGGS loop with `isPrecededByOrganic()` guard) and handled at Node 8b — separate from conventional_meat. Products like ravioli, pasta, and cookies with egg ingredients get a `conventional_eggs` flag (not `conventional_meat`). "organic eggs" as an ingredient prefix clears the flag at engine level. `containsEggDerived()` is still exported from rulesEngine but no longer used in scan.js.
+- Egg ingredients are detected by the rules engine (CONVENTIONAL_EGGS loop with `isPrecededByOrganic()` guard, a letter-adjacency word-boundary guard, and — since PROMPT_VERSION 30 — the shared `isInFreeOrNonContext()` guard so `"egg-free"` facility disclaimers don't false-flag) and handled at Node 8b — separate from conventional_meat. Products like ravioli, pasta, and cookies with egg ingredients get a `conventional_eggs` flag (not `conventional_meat`). "organic eggs" as an ingredient prefix clears the flag at engine level. `containsEggDerived()` is still exported from rulesEngine but no longer used in scan.js.
 - `oliveCaveat: true` is set on the response object when the organic path hits the olive oil branch. Not yet persisted to `scan_cache` (no `olive_caveat` column); `TODO` comment left in upsert.
 
 **New helper sets in scan.js:**
@@ -338,6 +365,7 @@ const GAME_MEAT_CATEGORIES = new Set(['en:game-meats', 'en:game', 'en:wild-game'
 - Combines four positive signals: (1) `labelsDetected.includes('wild-caught')`; (2) product name contains `'wild-caught'` or `'wild caught'` (case-insensitive); (3) product name contains standalone word `'wild'` (`/\bwild\b/` — will not match "wildlife" or "wilderness"); (4) ingredients text contains standalone word `'wild'` (same regex — covers labels like "Wild pink salmon").
 - Farmed exclusions take precedence over all signals: product name contains `'farm-raised'`, `'farmed'`, or `'atlantic salmon'` → returns false. Ingredients contain `'astaxanthin'` (synthetic farmed-salmon color additive) → returns false.
 - Used at Node 5 of the L2 tree. Node 5b (`isSeafood` + no wild-caught signal) still applies for seafood that is definitively not wild-caught.
+- **The function itself has no category awareness** — it is a pure text-signal detector; signals 3 and 4 fire on the bare word "wild" appearing *anywhere*, including non-seafood products ("wild rice," "wild honey," "wild mushrooms," "wild oats," "wild blueberries"). It relies entirely on its caller to have already established seafood relevance. **PROMPT_VERSION 29 fixed a bug where Node 5 was calling this with no such gate at all** — see "Level 2 universal decision tree" Node 5 row and the changelog entry below. Do not add a new call site for `detectWildCaught()` without first gating on `isSeafoodProduct(categoriesTags)` and confirming no reject-severity flag is already present, or the same bug class will recur.
 
 **`matchedIngredient: ''` convention** — injected flags (`conventional_meat`, `conventional_dairy`) always use an empty string, not `null`. `ConcernCard` asserts `typeof matchedIngredient === 'string'`; do not change this to `null`. `conventional_eggs` flags are engine-emitted (not injected) and carry the actual matched ingredient string (e.g. `'eggs'`, `'egg whites'`).
 
@@ -496,6 +524,7 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 - Claude is never called when `verdict === 'unverified'` — no ingredients to explain
 - VerdictScreen renders a human-readable message card for unverified results (keyed on `unverifiedReason` + `isMeat`) instead of the AI summary, and shows a "Scan Again" button instead of "See Cleaner Swaps"
 - At Level 2, the universal decision tree runs after `analyzeIngredients()` — see "Level 2 universal decision tree" in the Rules Engine section for the full 14-node spec
+- **Inconclusive verdict** (runs before the L2 tree, which explicitly skips `unverified`/`inconclusive` results): if `ingredientsText !== null && verdict === 'green' && <flags excluding gluten_grains>.length === 0 && unverifiedIngredients.length > 5` → `verdict = 'inconclusive'`. The `> 5` figure is a proxy threshold, not a literal "100% unrecognized" check — see the July 2026 PROMPT_VERSION 26 changelog entry for the history. **⚠️ The "no real flags" check must exclude `gluten_grains`, kept in sync with the `activeFlags` filter `analyzeIngredients()` uses for its own verdict field** (`lib/rulesEngine.js`, gluten is a paywall feature excluded from verdict calc at both levels by design). `analyzeIngredients()` excludes `gluten_grains` from *its own* verdict but does **not** strip `gluten_grains` entries out of the `flags` array it returns — that stripping only happens later, in the L2 tree's own gluten-stripping pre-processing step. Checking the raw `flags` array here (instead of a gluten_grains-excluded set) let any product containing a gluten grain skip the `> 5` check entirely, regardless of its actual unverified-ingredient count — fixed at PROMPT_VERSION 26. If `analyzeIngredients()`'s verdict-exclusion list ever changes (e.g. a new paywalled/excluded category is added), update this check to match, or it will silently drift the same way again.
 - **Pure-water GREEN path** (post-waterfall, both levels): after the L2 tree and cert_unconfirmed check, if `verdict === 'yellow' && flags.length === 0 && clearedBy === null` and every ingredient token is in `WATER_SAFE_INGREDIENTS` → set `verdict = 'green'` and `clearedBy = 'pure_water'`. Covers natural mineral water, spring water, artesian water, sparkling water. USDA organic cert is inapplicable to geological water sources; the `pure_water` clearance tells Claude not to mention cert at all.
 - `isMeat: false` is included in the 404 not-found response for consistent response shape
 - Uses `supabaseServer` (service role key) for all Supabase writes
@@ -504,8 +533,10 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 - Body: `{ verdict, flags, productName, ingredients, userLevel?: 1 | 2, clearedBy?: string | null, unverifiedReason?: string | null }`
 - Calls Claude Sonnet with Sina-Joel voice system prompt
 - Returns: `{ summary: string, details: { [category]: string } }`
-- Exports `SYSTEM_PROMPT`, `buildUserMessage`, `PROMPT_VERSION` for use by `scan.js`
+- Exports `SYSTEM_PROMPT`, `buildUserMessage`, `PROMPT_VERSION`, `parseExplanationResponse` for use by `scan.js`
 - VerdictScreen never calls this endpoint directly — explanation is always returned inline in the POST /api/scan response.
+- **`parseExplanationResponse(rawText)`** — shared helper (added July 2026) that both this endpoint and `fetchExplanation()` in `scan.js` call to parse Claude's raw text into `{ summary, details }`. Tries `JSON.parse()` directly first; if that fails, tries regex-extracting a balanced `{...}` block (recovers from a markdown code fence or stray prose around the JSON) and parsing that. If **neither** succeeds — most commonly a genuine mid-generation truncation with no closing `}` anywhere in the text — returns `null`. Callers must treat `null` the same as any other explanation failure: `fetchExplanation()` already returns `null` for a missing API key or any other error, and this endpoint's handler returns the same `502 { error: 'Failed to generate explanation.' }` shape used for other Claude-call failures. **Never** falls back to stuffing the raw, unparsed text into `summary` — that was the bug (see changelog: raw truncated JSON, including a literal `` ```json `` fence and an unescaped `{`, was being served as the user-facing summary for any product whose explanation response got cut off mid-generation, most commonly multi-flag-category products needing a longer response).
+- `max_tokens: 2000` at both call sites (raised from `1000`) — a summary plus one detailed explanation per flagged category, each requiring specific per-category framing (see `buildUserMessage()`), can plausibly exceed 1000 tokens for products with 3+ flagged categories. The JSON template's `summary` field instruction was also strengthened to explicitly forbid listing multiple issues in the summary itself ("if you find yourself naming more than one specific ingredient or category in the summary, stop and move that content into `details` instead") — the corrupted production response that surfaced this bug showed Claude drifting into listing all three flagged issues inside `summary` itself, eating into the token budget meant for `details`.
 - **System prompt voice**: Sina McCullough (PhD Nutrition, autoimmune healing journey, science-first, rhetorical questions, inflammation/gut/gene-expression framing) + Joel Salatin (Polyface Farm, story-and-analogy thinker, farming-system angle). Together: empowering, not alarmist, skeptical of GRAS and industry-funded science.
 - **Level-aware tone**: Level 1 users get encouragement and awareness-building framing; Level 2 users get direct, graduate-level honesty. Controlled by `[Level 1 awareness item]` note injected per flagged category in `buildUserMessage()`.
 - **`flagsSection` in `buildUserMessage()` has six conditions** (checked in order; first match wins): (1) flags present → "Flagged categories: …" list; (2) no flags + verdict is `'red'` → certification-standards explanation (L2 uncertified conventional product — no USDA Organic or Non-GMO cert found; instruct Claude to be honest but not alarmist); (3) no flags + `verdict === 'yellow'` + `clearedBy === null` + `unverifiedReason === 'cert_unconfirmed'` → cert_unconfirmed branch: tells Claude the ingredients all look organic but the seal couldn't be confirmed in the database, and to encourage the user to flip the package and look for the USDA seal; return `"details": {}` (empty); (4) no flags + `verdict === 'yellow'` + `clearedBy === null` → default Yellow branch: instructs Claude to write Sina's honest no-cert framing into the `summary` field and return `"details": {}` (empty — no flag categories to render); (5) `clearedBy === 'pure_water'` → pure-water branch: tells Claude this is a pure water product (mineral/spring/artesian water), that USDA organic cert is literally inapplicable to geological water sources and must not be mentioned, give a clean warm GREEN explanation celebrating the simplicity; return `"details": {}` (empty); (6) no flags + any other verdict → "No concerning ingredients found — product passed all checks." Branch 3 fires before branch 4; branch 5 fires before branch 6. Yellow verdicts with `clearedBy` set (non-gmo-project-verified, glyphosate-free) fall through to branch 6. `default_yellow` is NOT a voice-assignment category and must never appear as a `details` key. `clearedBy` is the sixth parameter and `unverifiedReason` is the seventh parameter of both `buildUserMessage()` and `fetchExplanation()` (both default `null`).
@@ -542,10 +573,10 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 22.**
+**Current PROMPT_VERSION is 30.**
 
 ### Cache Invalidation
-When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 22. Run `DELETE FROM scan_cache WHERE prompt_version < 22` in Supabase to purge all stale rows before deploying.
+When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 30. Run `DELETE FROM scan_cache WHERE prompt_version < 30` in Supabase to purge all stale rows before deploying.
 
 ---
 
@@ -898,7 +929,717 @@ Key architecture note: `ALL_TRIGGERS` now includes `...FORTIFIED_VITAMINS`. This
 - New MEAT_DERIVED_INGREDIENTS system added with containsMeatDerived() and Node 8c in L2 tree (triggers on gelatin)
 - Tokenizer fixes: asterisk stripping, trailing punctuation cleanup, corn unverified gap
 - Deleted 411 resolved rows from unverified_ingredients table
-- Total tests: 2,731 | PROMPT_VERSION: 22
+- Total tests: 2,731 (this figure was later found to be inflated — see July 2026 correction below) | PROMPT_VERSION: 22
+
+### Session — REVIEWED_CLEAN_INGREDIENTS Batch 6 (whole-food coverage gap fix, July 2026)
+
+Follow-up to a production bug investigation: a scan of "Grain Free Granola: Banana With Maca"
+(barcode 628504873144) returned `verdict: inconclusive` with `cleared_by: organic` and nearly every
+ingredient in `unverified_ingredients`. The investigation found the product's trailing-asterisk
+organic convention (`"coconut flakes*, ... (*organic)"`) was parsed correctly by the tokenizer —
+the real cause was a whole-food vocabulary coverage gap: 10 compound ingredient tokens had zero
+matches anywhere in `rulesEngine.js`.
+
+| Change | Description |
+|--------|-------------|
+| 1 | REVIEWED_CLEAN_INGREDIENTS — Batch 6 additions (July 2026): `coconut flakes`, `banana puree`, `bananas`, `sprouted sunflower seeds`, `sprouted pumpkin seeds`, `dried plums`, `prunes`, `virgin coconut oil`, `maca powder`, `ground cinnamon`. Added to REVIEWED_CLEAN_INGREDIENTS (not WHOLE_FOOD_TOKENS_L2) — matches the established Batch 2–5 pattern for audit-confirmed clean whole foods, applies at both user levels, and avoids touching level-specific filtering logic. `tree nuts` intentionally excluded — its appearance in the original bug report is an artifact of a separate allergen-advisory-parsing gap (the `contains:` regex requires a trailing period and this product's disclosure ends in a comma), deferred to another session. |
+
+**Tests added (block 65):** 12 new rulesEngine tests. Total: 1,131 passing (969 rulesEngine + 162 scan).
+
+**Test count correction discovered this session**: the running total documented above (2,731) was
+computed by summing `jest` output across the root test files *and* several stale duplicate copies
+under `.claude/worktrees/*/lib/rulesEngine.test.js` and `.claude/worktrees/*/__tests__/api/scan.test.js`
+left over from prior worktree-isolated agent sessions. The root files — the actual source of truth —
+had 957 rulesEngine + 162 scan = 1,119 tests before this batch, not 2,130 + 601. All historical
+per-batch deltas in this changelog (e.g. "+22 tests", "+14 tests") are still accurate; only the
+running *total* was compounding the worktree duplication. Run `npx jest --testPathIgnorePatterns=".claude/worktrees"`
+to get an accurate root-only count in future sessions.
+
+### Session — allergen-advisory stripping fix: shared helper + comma/EOS "contains:" termination (July 2026, PROMPT_VERSION 23)
+
+Follow-up to the granola bug investigation: two compounding bugs in the allergen-advisory stripping
+added under PROMPT_VERSION 21 were confirmed and fixed.
+
+**Bug 1 — unverified-token derivation never saw the stripped text.** The `text` variable used for
+trigger/flag matching had allergen phrases stripped, but `rawUnknownTokens` (the source of
+`unverifiedIngredients`) re-parsed the raw, unstripped `ingredientText` independently. Disclaimer
+fragments like `"contains"` and `"tree nuts"` could leak into the review queue even on labels where
+the advisory phrase *was* correctly stripped from `text`.
+
+**Bug 2 — the `contains:` regex required a trailing period.** `/contains:[^.]*\./` only matched
+advisory clauses closed by a period. A label ending its allergen statement in a comma or with no
+closing punctuation at all (e.g. `"...contains: tree nuts (coconut),"`) was not stripped —
+**from either pipeline**, since this regex also feeds `text`. This turned out to be more serious
+than inflated unverified counts: because the unstripped clause still fed trigger matching, an
+allergen name disclosed only as a legal disclaimer could trip a real reject flag. Reproduced with
+`'roasted nuts, sea salt, contains: soy lecithin,'` — before the fix this returned a false
+`conventional_crops` reject flag on `"soy lecithin"` and verdict `red`; the product contains no such
+ingredient, it was only named in the allergen disclaimer.
+
+**Fix:**
+- Added `stripAllergenAdvisory(str)` ([lib/rulesEngine.js](lib/rulesEngine.js)) — a single shared
+  helper now called once to produce `ingredientTextNoAdvisory` (original casing preserved), which
+  both the `text` pipeline (trigger matching; further lowercased/normalized from there) and
+  `rawUnknownTokens` (via `parseIngredientTokens(ingredientTextNoAdvisory)`) derive from. The two
+  pipelines can no longer drift apart. Token casing in `unverifiedIngredients` is unchanged —
+  still original-case, not lowercased — since `ingredientTextNoAdvisory` is not lowercased.
+- Extended the `contains:` handling to two additional patterns: `/contains:[^,]*,/gi` (comma-terminated)
+  and `/contains:[^.,]*$/gi` (end-of-string, no closing punctuation at all) — mirroring the existing
+  period/comma pair already used for `"may contain"`. `"may contain"`, `"manufactured on a line"`,
+  and `"produced in a facility"` were left untouched (not part of the reported bug; out of scope).
+
+**Tests added (block 66):** 7 new rulesEngine tests — comma-terminated `contains:`/`may contain`
+clauses excluded from `unverifiedIngredients` (not just `flags`, closing the gap that let this bug
+through block 38 originally); end-of-string `contains:` clause; the false-positive-flag regression
+(`soy lecithin` no longer flagged); the exact granola string from the bug report (`contains`,
+`tree nuts`, duplicate `coconut` all absent); a no-regression check on the original period-terminated
+block 38 case; and a casing-preservation check. Total: 1,138 passing (976 rulesEngine + 162 scan).
+Full suite (`__tests__/api/scan.test.js` included) passes with no other regressions.
+
+**PROMPT_VERSION bumped 22 → 23.** This fix changes engine `flags`/`verdict` output (not just the
+display-only `unverifiedIngredients` list) for any previously-scanned product whose OFF ingredient
+text ends in a comma- or unpunctuated `contains:` clause — those products may have an incorrect
+flag/verdict baked into `scan_cache` from before this fix, and `flags` feeds directly into the
+Claude prompt via `buildUserMessage()` in `explain.js`. Per the cache-invalidation pattern, run
+`DELETE FROM scan_cache WHERE prompt_version < 23` in Supabase before/after deploying. The
+`M. PROMPT_VERSION` contract test in `scan.test.js` was updated to assert `23`.
+
+### Session — L2 tree missing node: glyphosate_heavy reject silently downgraded to yellow (July 2026, PROMPT_VERSION 24)
+
+Follow-up to a production bug investigation: "Unsweetened Cereal" (barcode 860002152400,
+ingredients `"Chickpea, Tapioca, Pea Protein, Salt"`, no OFF labels, Level 2) was cached with a
+`glyphosate_heavy` flag whose own `severity` field correctly read `'reject'`, yet the top-level
+`verdict` was `'yellow'` — contradicting the documented rule "any `severity: 'reject'` flag → red".
+
+**Root cause**: `analyzeIngredients()` in `lib/rulesEngine.js` computes verdict correctly per the
+documented rule. But at Level 2, `scan.js` runs a 14-node decision tree *after* the engine that
+overrides its verdict using explicit per-category checks (`INSTANT_RED_CATEGORIES`, plus dedicated
+checks for `conventional_eggs`/`conventional_crops`/`bioengineering`/etc.). Every reject-severity
+category the engine can emit had a matching check in this tree **except `glyphosate_heavy`** — it
+had none. A product whose *only* reject flag was `glyphosate_heavy` fell through every node to
+Node 14's unconditional default (`verdict = 'yellow'`), silently discarding the correct RED. This
+affects every product in the GLYPHOSATE_HEAVY list (oats, wheat, barley/malt, lentils, peas, edible
+beans, flax/linseed, rye, buckwheat, millet) whenever it's the sole concern — products with an
+*additional* checked reject category (e.g. `seed_oils`) still showed RED, which is what masked the
+gap until now. Confirmed **not** related to the `glyphosate-free` label downgrade path (that path is
+correct — it updates the flag's own `severity` to `'caution'` at the engine level before the tree
+even runs, per `lib/rulesEngine.js` GLYPHOSATE_HEAVY loop) — reproduced with zero OFF labels present.
+
+**Fix**: added Node 11b to the L2 tree in `pages/api/scan.js`, between the existing bioengineering
+node (11) and the glyphosate-free node (12): `flags.some(f => f.category === 'glyphosate_heavy' && f.severity === 'reject')`
+→ RED. Mutually exclusive with Node 12 by construction, since the engine has already downgraded the
+flag's severity to `'caution'` by the time the tree runs if `glyphosate-free`/`usda-organic`
+clearance applied — confirmed with a dedicated regression test. `hasGlyphosateHeavy` / Node 13 (the
+unrelated OFF product-level `en:glyphosate-heavy` label check) and the engine's glyphosate-free
+downgrade logic were left untouched, as neither was implicated.
+
+**Tests added (Suite L, L16–L17):** L16 reproduces the exact bug case and asserts `verdict: 'red'`;
+L17 is a regression guard confirming the glyphosate-free downgrade still correctly produces
+`'yellow'` (flag `severity: 'caution'`) once a `glyphosate-free` label is present, so the new node
+doesn't clobber the legitimate certification path. Audited every other GLYPHOSATE_HEAVY-triggering
+fixture already in `scan.test.js` (wheat flour, rye) — all were paired with an additional
+`INSTANT_RED_CATEGORIES` flag (seed_oils) or organic clearance, so none were asserting the bug; no
+existing test needed correction. Full suite: 1,140 passing (976 rulesEngine + 164 scan), no
+regressions.
+
+**PROMPT_VERSION bumped 23 → 24.** Same reasoning as the v23 fix: this changes real `verdict` output
+(yellow → red) for a class of previously-cached products, and `flags`/`verdict` feed directly into
+`buildUserMessage()` in `explain.js`. Run `DELETE FROM scan_cache WHERE prompt_version < 24` in
+Supabase before/after deploying. The `M. PROMPT_VERSION` contract test was updated to assert `24`.
+
+**Process note**: this is the second time a reject-severity category was added to the engine without
+a corresponding L2 tree node (see the new "Keeping the tree in sync with the engine" callout added
+under "Level 2 universal decision tree" above). Check that callout when adding any new reject
+category to `lib/rulesEngine.js`.
+
+### Session — REVIEWED_CLEAN_INGREDIENTS Batch 7 (whole-food coverage gap fix, July 2026)
+
+Same pattern as Batch 6: "chickpea" (and by report, "chickpeas") was showing up in
+`unverified_ingredients` across multiple scanned products. Confirmed via grep that bare "chickpea"
+did not appear anywhere in `rulesEngine.js` before adding.
+
+| Change | Description |
+|--------|-------------|
+| 1 | REVIEWED_CLEAN_INGREDIENTS — Batch 7: `chickpea` (singular). **`chickpeas` (plural) intentionally NOT added** — grep and a direct repro showed it is already a `GLYPHOSATE_HEAVY` trigger (edible beans section, `lib/rulesEngine.js` CONVENTIONAL_CROPS/GLYPHOSATE_HEAVY block) and is correctly caught by Pass 1 (`ALL_TRIGGERS`) before ever reaching this filter — `analyzeIngredients('chickpeas, sea salt', [], 2)` confirms it still correctly produces a `glyphosate_heavy` reject flag, verdict `red`. Adding the plural form to REVIEWED_CLEAN_INGREDIENTS would have been a dead, misleading entry (functionally inert now, but semantically wrong and a latent risk if the Pass 1/Pass 3 ordering is ever refactored) — deviated from the literal task instruction here after the verification step it explicitly asked for surfaced the conflict. Note: `WHOLE_FOOD_TOKENS_L2` already has a similarly dead/redundant `'chickpeas'` entry from an earlier session (same Pass-1-shadows-it issue) — pre-existing, not touched. |
+| 2 (optional, added) | REVIEWED_CLEAN_INGREDIENTS — `monk fruit` (bare form; `monk fruit extract` was already covered from Batch 5, but the bare form is a distinct token and was separately unverified). Confirmed via grep no conflicting trigger exists. |
+| 3 (optional, added) | REVIEWED_CLEAN_INGREDIENTS — `cocoa` (bare form; `cocoa powder`/`cocoa butter` were already covered). Confirmed via grep no conflicting trigger exists. |
+
+**Tests added (block 67):** 5 new rulesEngine tests — 3 per-token suppression tests, 1 flags/verdict-unaffected
+test, and 1 explicit regression guard confirming `chickpeas` (plural) still correctly flags
+`glyphosate_heavy`/red (proving the omission above was deliberate, not an oversight). Total: 1,145
+passing (981 rulesEngine + 164 scan).
+
+> **CORRECTION (July 2026, PROMPT_VERSION 25) — singular "chickpea" reclassified.** The Batch 7
+> `Change 1` decision above was wrong: singular `chickpea` was added to `REVIEWED_CLEAN_INGREDIENTS`
+> ("confirmed clean whole food") in the same breath as noting that plural `chickpeas` is a
+> deliberate `GLYPHOSATE_HEAVY` reject trigger. There is no basis for the singular and plural forms
+> of the same crop carrying different glyphosate exposure risk — a label printing "Chickpea" instead
+> of "Chickpeas" doesn't change how the crop was grown. Singular `chickpea` has been **removed from
+> `REVIEWED_CLEAN_INGREDIENTS` and added to `GLYPHOSATE_HEAVY`** (edible beans section, alongside
+> `chickpeas`), so both forms now consistently produce a `glyphosate_heavy` reject flag at L2 (and
+> caution at L1, per the usual level rule). `monk fruit` and `cocoa` (Changes 2–3 above) are
+> unaffected and remain in `REVIEWED_CLEAN_INGREDIENTS`. This entry is left in place rather than
+> edited, per the project's non-rewrite convention — see the follow-up session below for the fix,
+> new tests (block 68), and the `M. PROMPT_VERSION` bump to 25. This changes real verdict/flag
+> output for any product using "chickpea"/"Chickpea" (singular) as an ingredient — e.g. the
+> cereal-category products with chickpea as a primary ingredient (including barcode 860002152400
+> from the earlier Node 11b investigation, which now correctly reports **two** `glyphosate_heavy`
+> flags — `chickpea` and `pea protein` — instead of one). Run
+> `DELETE FROM scan_cache WHERE prompt_version < 25` in Supabase before/after deploying.
+
+### Session — chickpea singular/plural correction (July 2026, PROMPT_VERSION 25)
+
+Follow-up to the Batch 7 session above. That session added singular `chickpea` to
+`REVIEWED_CLEAN_INGREDIENTS` while *also* noting, in the same table row, that plural `chickpeas` is
+a deliberate `GLYPHOSATE_HEAVY` reject trigger for pre-harvest desiccation risk. That's internally
+inconsistent — "chickpea" and "chickpeas" are the same crop grown the same way; the plural `-s` on a
+label doesn't change glyphosate exposure. Singular `chickpea` should never have been classified as
+"confirmed clean."
+
+**Fix**: removed `chickpea` from `REVIEWED_CLEAN_INGREDIENTS`
+([lib/rulesEngine.js](lib/rulesEngine.js)) and added it to `GLYPHOSATE_HEAVY`'s edible-beans section,
+directly alongside the existing `chickpeas` entry, using the same trigger format. Verified via
+`findMatches()`'s longest-trigger-first sort that this doesn't disturb the existing `chickpea flour`
+trigger (14 chars, still matches first and claims its own range) or double-flag plural `chickpeas`
+(9 chars, still claims its full range before the new 8-char `chickpea` trigger can overlap it).
+
+**Tests**: removed the now-incorrect Batch 7 assertion that `chickpea` is suppressed from
+`unverifiedIngredients`; updated the "Batch 7 additions do not affect flags/verdict" test to drop
+`chickpea` from its ingredient string (`monk fruit`/`cocoa` only, since those are unaffected). Added
+new **block 68** (3 tests): singular `chickpea` now produces a `glyphosate_heavy` reject matching
+plural `chickpeas`; organic-prefix clearance behaves identically for both forms; `chickpea flour`
+still matches its own longer trigger and isn't double-flagged by the new bare `chickpea` trigger.
+Also fixed a real regression this surfaced in `__tests__/api/scan.test.js` Suite L: test **L16**
+(the exact production reproduction case from the Node 11b investigation, ingredients `"Chickpea,
+Tapioca, Pea Protein, Salt"`) previously asserted the single `glyphosate_heavy` flag's
+`matchedIngredient` was `'pea protein'` via `.find()` — now that `chickpea` also matches, that
+product correctly carries **two** `glyphosate_heavy` reject flags, and the `.find()`-based assertion
+was asserting on flag-array ordering, not on correctness. Updated to assert both flags exist with
+`matchedIngredient` values `['chickpea', 'pea protein']`. Full suite: 1,147 passing (983 rulesEngine
++ 164 scan), no other regressions.
+
+**PROMPT_VERSION bumped 24 → 25.** This changes real `flags`/`verdict` output for any previously
+cached product using singular "chickpea"/"Chickpea" as an ingredient with no organic/glyphosate-free
+clearance — those products were incorrectly missing a `glyphosate_heavy` reject flag (and, if
+`chickpea` was their only concern, an incorrect non-red verdict). Run
+`DELETE FROM scan_cache WHERE prompt_version < 25` in Supabase before/after deploying. The
+`M. PROMPT_VERSION` contract test was updated to assert `25`.
+
+### Session — REVIEWED_CLEAN_INGREDIENTS Batch 9 (unsweetened chocolate; chocolate chips deliberately excluded, July 2026)
+
+Same pattern as Batch 6/7: investigation of a production scan ("Chocolate chip cookie," barcode
+854198004810, ingredients `"Almond butter, organic honey, chocolate chips (unsweetened chocolate,
+sugar, cocoa butter), pea protein, egg whites, vanilla extract, sea salt. Contains: almonds, eggs."`)
+found `unsweetened chocolate` — a sub-ingredient disclosed inside the "chocolate chips" parenthetical
+— surfacing in `unverified_ingredients` with no coverage anywhere in `rulesEngine.js`. A prior
+investigation session (no code changes) confirmed this was an ordinary vocabulary gap, not a
+tokenization/parenthetical-flattening bug — see that session's findings for the full trace of how
+`parseIngredientTokens()` flattens nested parentheticals identically for both the trigger-matching
+and unverified-ingredient pipelines.
+
+| Change | Description |
+|--------|-------------|
+| 1 | REVIEWED_CLEAN_INGREDIENTS — Batch 9: `unsweetened chocolate` (cocoa solids + cocoa butter, no sugar/additives — same category as `cocoa butter`, already whitelisted since the original base list). Confirmed via grep no conflicting trigger exists. |
+| 2 | **`chocolate chips` deliberately NOT added**, unlike prior batches' policy of whitelisting whatever term was reported. Unlike a raw whole food, "chocolate chips" is a manufactured/compound product whose composition varies by brand and near-universally includes added sugar (often soy lecithin, milk solids) that go **undisclosed** when a label lists it bare, without a parenthetical breakdown. Whitelisting the container term would cause the app to treat any product with undisclosed "chocolate chips" as confirmed-clean, masking those real ingredients — structurally the same class of mistake as the chickpea/chickpeas conflict corrected in Batch 7, just a disclosure-completeness issue instead of a direct trigger collision. When a label *does* disclose the breakdown in a parenthetical (as this cookie does), the sub-ingredients are already checked individually — `sugar` correctly flags `conventional_crops`, `cocoa butter` is already clean, and now `unsweetened chocolate` is too. No fix needed for the container term itself; bare "chocolate chips" should keep surfacing as unverified so the team is prompted to review actual composition when a label doesn't disclose it. |
+
+**Tests added (block 69):** 3 new rulesEngine tests — `unsweetened chocolate` suppression test,
+flags/verdict-unaffected test, and a regression guard confirming bare `chocolate chips` (no
+disclosed breakdown) still correctly surfaces as unverified, so this container term isn't
+accidentally whitelisted in a future batch without this reasoning being revisited. Total: 1,150
+passing (986 rulesEngine + 164 scan). No PROMPT_VERSION bump — this is a display-only
+`unverifiedIngredients` change (Pass 3 filter), not a `flags`/`verdict` change, consistent with how
+Batch 6/7's additive whitelist entries were handled.
+
+### Session — inconclusive verdict: gluten_grains masking the unverified-count check (July 2026, PROMPT_VERSION 26)
+
+Follow-up to a production bug investigation: two real products with `clearedBy: 'organic'` and
+`flags: []`-or-not got wildly inconsistent verdicts. "TRACTOR WHEELS Organic Toddler Soft-Baked Bar"
+(barcode 810003512611, 9 unverified ingredients, contains oat flour + wheatgrass) incorrectly stayed
+`verdict: 'green'`. "Smoothie Melts Blueberry Burst" (barcode 810003512802, only 7 unverified
+ingredients, no gluten at all) correctly became `verdict: 'inconclusive'`. The product with *more*
+unrecognized ingredients got the *better* verdict — backwards from the documented intent of the
+inconclusive check.
+
+**Root cause**: the inconclusive check in `pages/api/scan.js` (~line 829) read:
+```js
+if (ingredientsText !== null && verdict === 'green' && flags.length === 0 && unverifiedIngredients.length > 5)
+```
+`flags.length === 0` checked the **raw** `flags` array. But `analyzeIngredients()` in
+`lib/rulesEngine.js` (~line 2337) already excludes `gluten_grains` from *its own* `verdict`
+field via an `activeFlags` filter (gluten is a paywall feature, invisible at both levels, by
+design — correct and unchanged) — **without** stripping `gluten_grains` entries out of the `flags`
+array it actually returns. That stripping only happens later, in the L2 tree's own gluten-stripping
+pre-processing step, which runs *after* this check. So any product containing a gluten grain (wheat,
+oat, barley, rye, etc.) had a non-empty `flags` array purely from `gluten_grains` entries, even when
+gluten was its *only* concern — the `&&` chain short-circuited before the `> 5` unverified-count
+check ever ran, regardless of how unrecognized the product's ingredients actually were.
+
+**Fix**: `pages/api/scan.js` now filters `flags` to exclude `gluten_grains` before the length check
+(`nonGlutenFlagsForInconclusive = flags.filter(f => f.category !== 'gluten_grains')`), mirroring the
+`activeFlags` pattern `analyzeIngredients()` uses internally, so the two can't drift apart on what
+"no real flags" means. Neither the engine's own gluten exclusion nor the later L2-tree gluten-strip
+step was touched — both were already correct and out of scope. Added a documentation note in the
+"POST /api/scan" section flagging that this check must stay in sync with whatever `analyzeIngredients()`
+excludes from its own verdict calculation, mirroring the "keep the L2 tree in sync with the engine"
+callout added after the earlier `glyphosate_heavy` fix.
+
+**Tests added (Suite I):** two new tests using the real production ingredient strings — Tractor
+Wheels (gluten_grains flags present + 9 unverified → now correctly `inconclusive`) and Smoothie
+Melts (zero flags + 7 unverified → still correctly `inconclusive`, an explicit real-world regression
+guard alongside the existing synthetic-gibberish `ALL_UNKNOWN_OFF` fixture). Audited every other
+gluten-grain-containing fixture already in `scan.test.js` (Kraft's wheat flour, Annie's organic wheat
+flour, the L1/L2 wheat-flour/oat-flour/rye cases) — all have short, mostly-recognized ingredient
+lists well under the `> 5` unverified threshold, so none were silently relying on the old fallthrough.
+Full suite: 1,152 passing (986 rulesEngine + 166 scan), no regressions.
+
+**PROMPT_VERSION bumped 25 → 26.** This changes real `verdict` output (green → inconclusive) for a
+class of previously-cached products — any organic-cleared product containing a gluten grain with
+more than 5 unverified ingredients — and `verdict`/`flags` feed directly into `buildUserMessage()` in
+`explain.js` (though `inconclusive` skips Claude entirely, so the practical effect is these products
+now correctly show the inconclusive-messaging card instead of a false-clean AI explanation). Run
+`DELETE FROM scan_cache WHERE prompt_version < 26` in Supabase before/after deploying. The
+`M. PROMPT_VERSION` contract test was updated to assert `26`.
+
+### Session — trailing certification-note tokenizer fix (". Organic." fragment, July 2026)
+
+Follow-up to the gluten_grains/inconclusive investigation: "Smoothie Melts Blueberry Burst"
+(barcode 810003512802) surfaced a malformed `". Organic"` token in `unverifiedIngredients`, distinct
+from the already-fixed gluten_grains/inconclusive bug and from the earlier granola
+trailing-asterisk-footnote fix.
+
+**Root cause**: the ingredient string ends `"...Bifidobacterium lactics (probiotic). Organic."` —
+a trailing sentence-fragment certification note after the last real ingredient, not a comma-separated
+item. `parseIngredientTokens()` only splits on commas/semicolons (never periods, by design — ingredient
+lists are comma-separated, and general period-splitting would break decimals/abbreviations), so after
+paren-flattening the closing `)` becomes a comma and `". Organic."` becomes its own token. Compounding
+this, `parseIngredientTokens()` only strips **trailing** punctuation (`/[.*[\])]+$/`) — there's no
+leading-punctuation strip — so the token's trailing period is removed but its leading `". "` survives,
+producing the malformed `". Organic"` string observed in the cached row.
+
+**Fix**: added one more `.replace()` to the shared `stripAllergenAdvisory()` helper in
+`lib/rulesEngine.js` (already used by both the trigger-matching and unverified-token pipelines, per
+the earlier allergen-advisory fix):
+```js
+.replace(/\.\s*(?:usda\s+)?(?:certified\s+)?organic\.?\s*$/gi, '')
+```
+Deliberately narrow and anchored to end-of-string: requires a literal period immediately before the
+certification word, so it strips `"...(probiotic). Organic."`, `". Organic"` (no trailing period),
+`"...water. Certified Organic."`, and `"...water. USDA Organic."` — but leaves mid-string periods
+(decimals like `"0.5%"`, abbreviations like `"vitamin b12."`) and comma-separated ingredients that
+merely *start* with "Organic" (e.g. `"salt, pepper, Organic Coconut Oil."`) completely untouched,
+since those don't have a period immediately preceding a bare "organic" at the very end of the string.
+Confirmed via direct regex testing against all these cases before implementing, per the task's
+explicit instruction not to generalize into a "treat periods as separators" change.
+
+**Tests added (block 70):** 6 new rulesEngine tests — exact reproduction (no more `". Organic"` or
+any leading-period token), the no-trailing-period variant, `"Certified Organic."`/`"USDA Organic."`
+variants, a flags/verdict-unaffected check (same two `conventional_crops` flags as before the fix,
+verdict unchanged), a regression guard for mid-string abbreviation/decimal periods, and a regression
+guard confirming a real trailing ingredient that merely starts with "Organic" is left alone. Full
+suite: 1,158 passing (992 rulesEngine + 166 scan), no regressions in `scan.test.js` (untouched this
+session).
+
+**No PROMPT_VERSION bump.** Confirmed by direct testing (with and without the `usda-organic` label)
+that this change only affects the derived `unverifiedIngredients` display list — `flags` and `verdict`
+are byte-for-byte identical before and after the fix on the exact reproduction string. "Organic" was
+never a substring trigger anywhere in `ALL_TRIGGERS`, and the malformed fragment sat at the very end
+of the string, so it couldn't have been clearing or un-clearing anything earlier in the text via
+`isPrecededByOrganic()` either. Same reasoning as the `chocolate chips`/`unsweetened chocolate` batch:
+a display-only Pass 1/tokenizer change, not a `flags`/`verdict` change.
+
+### Session — Batch 10 (probiotic, Bifidobacterium lactics, singular date; July 2026)
+
+Same pattern as Batch 6/7/9: three vocabulary/typo gaps surfaced in the same "Smoothie Melts
+Blueberry Burst" (barcode 810003512802) investigation that produced the ". Organic" tokenizer fix.
+
+| Item | Fix | Reasoning |
+|------|-----|-----------|
+| 1 | `ALWAYS_IGNORE_INGREDIENTS` — added bare `probiotic`, right next to the existing `live and active probiotic` entry (same list, same "Live cultures" section). | Confirmed via grep that only the compound phrase existed; bare `probiotic` was unverified whenever a label lists it standalone (e.g. inside a parenthetical like `"(probiotic)"`). |
+| 2 | `ALWAYS_IGNORE_INGREDIENTS` — added `bifidobacterium lactics` (extra "c") directly beside the existing correctly-spelled `bifidobacterium lactis`, in the "Probiotic / yogurt cultures" section. | Confirmed via grep this is a distinct string from the existing entry — a labeling variant/typo, not a new strain. Took the smaller option (a) per the task's own guidance: an additional sibling entry, not a general strain-name normalization pass — no evidence such a normalizer already exists elsewhere in the file, and one wasn't needed to fix the one confirmed variant. |
+| 3 | `REVIEWED_CLEAN_INGREDIENTS` — added singular `date`, next to the existing plural `dates` (Batch 2&3 "Fruits & berries" section). | Confirmed via grep no conflicting trigger. `REVIEWED_CLEAN_INGREDIENTS` uses exact `Set.has()` matching on the whole trimmed token (not substring), so this only suppresses a token that is *literally* `"date"` — it cannot over-match into `"date sugar"`, `"date syrup"`, or any other compound token, which are already separate entries; verified directly. Same matching discipline as the existing `chickpea`/`chickpeas` and `dates` entries. |
+
+**Regression found and fixed during verification**: fixing these three tokens dropped
+`unverifiedIngredients` for the real "Smoothie Melts" product from 6 (post-". Organic" fix) to 3 —
+below the `> 5` inconclusive threshold. The Suite I test that had asserted this product resolves to
+`'inconclusive'` (added in the PROMPT_VERSION 26 session) was now asserting stale, incorrect
+behavior — the product should no longer be inconclusive, since it's now sufficiently well-recognized
+to be screened normally. Updated `__tests__/api/scan.test.js`: the test now asserts the product's
+new, correct behavior (`verdict: 'yellow'`, `clearedBy: 'organic'`, a `fortified_vitamins` caution
+flag from the vitamin E / tocopherols check, `unverifiedIngredients.length <= 5`), and the fixture's
+JSDoc comment was updated to explain the before/after. The `TRACTOR_WHEELS_OFF` fixture's unverified
+count also dropped (9 → 8, since it contains `DATE*`) but stayed well above the `>5` threshold, so
+its test needed no assertion change — only its docstring comment was corrected for accuracy. No other
+fixture in either test file references `probiotic`, `bifidobacterium`, or bare `date`.
+
+**Tests added (block 71):** 9 new rulesEngine tests — per-token suppression tests for all three
+items, non-interference checks confirming the pre-existing `live and active probiotic`,
+`bifidobacterium lactis`, `dates`, and `date sugar` entries are unaffected, a flags/verdict-unaffected
+test, and a real-world reproduction check against the Smoothie Melts string. Plus 1 corrected test in
+`scan.test.js` (documented above). Total: 1,167 passing (1,001 rulesEngine + 166 scan).
+
+**PROMPT_VERSION bumped 26 → 27 — this batch was expected to stay display-only (same as Batch
+6/7/9), but direct testing found a real exception and that expectation didn't fully hold.** In
+isolation, `flags`/`verdict` are unchanged for all three tokens (confirmed directly) — that part of
+the display-only pattern holds. But `unverifiedIngredients.length` directly gates the `> 5`
+inconclusive threshold (`pages/api/scan.js`, fixed at PROMPT_VERSION 26), so *any* vocabulary batch
+that removes enough tokens from a specific product's unverified list can cross that threshold and
+flip its verdict — exactly what happened here: Smoothie Melts' cached row, written under
+`prompt_version: 26` with `verdict: 'inconclusive'` by the immediately preceding session's own fix,
+would otherwise keep serving `'inconclusive'` indefinitely on cache hits, undermining the point of
+that fix. Bumping ensures it (and any other previously-cached product whose unverified count crosses
+the threshold because of these three tokens) gets recomputed. Batch 6/7/9 did not hit this exact
+interaction in practice, but the underlying risk was always latent in any vocabulary batch —
+worth remembering for future batches: *check whether a specific product's unverified count is near
+the `>5` boundary before assuming "purely additive vocabulary" implies "no PROMPT_VERSION bump."*
+Run `DELETE FROM scan_cache WHERE prompt_version < 27` in Supabase before/after deploying. The
+`M. PROMPT_VERSION` contract test was updated to assert `27`.
+
+### Session — Oxford-comma conjunction stripping, l. rhamnosus, and general purpose-note parenthetical stripping (July 2026, PROMPT_VERSION 28)
+
+Follow-up to a production bug investigation: "Mango Chobani" (barcode 818290015365) had
+`unverified_ingredients` including `"mangoes"` (a separate, legitimate vocabulary gap, left
+untouched), `"vegetable juice"` (same), `"for color"`, and `"and L. Rhamnosus"` — three genuine,
+independent gaps confirmed and fixed.
+
+**Issue 1 — leading conjunction not stripped.** Oxford-comma-ending ingredient lists (`"...L. Casei,
+and L. Rhamnosus"`) produced a token `"and L. Rhamnosus"` because `parseIngredientTokens()` had no
+conjunction-stripping logic at all — only leading `*`/`NN%` and trailing punctuation were stripped.
+**Fix**: added `.replace(/^and\s+/i, '')` to the token `.map()` chain. Whitespace-anchored so it
+cannot match a real ingredient name that merely starts with the letters "and" (e.g. "andouille
+sausage" has no space between "and" and "ouille" — confirmed via a dedicated regression test).
+
+**Issue 2 — bare "l. rhamnosus" independently missing.** Confirmed via isolated testing that even
+with "and " correctly stripped, `"L. Rhamnosus"` alone still surfaced as unverified — every sibling
+probiotic strain (`l. casei`, `l. bulgaricus`, `l. acidophilus`, `s. thermophilus`, `bifidus`) had
+its own bare `ALWAYS_IGNORE_INGREDIENTS` entry; `l. rhamnosus` did not (only the compound
+`'l. paracasei and l. rhamnosus'` phrase existed, for labels printing that exact paired name — left
+untouched). **Fix**: added bare `'l. rhamnosus'` alongside its siblings.
+
+**Issue 3 — general purpose-note parenthetical stripping (the larger fix).** Parentheticals that
+explain *why* an ingredient is present rather than *what* it is (`"vegetable juice (for color)"`,
+`"ascorbic acid (to preserve freshness)"`) were leaking their contents as fake standalone tokens.
+This previously only "worked" for one specific phrase (`'to preserve freshness'`) because that exact
+string happened to already sit in `ARTIFACT_PHRASES` from an earlier session — not because of any
+general rule. Confirmed via testing that this is a recurring pattern (`"for freshness"` and other
+variants also leaked). **Fix**: added `stripPurposeNoteParentheticals(str)`
+([lib/rulesEngine.js](lib/rulesEngine.js)), called alongside `stripAllergenAdvisory()` and folded
+into the same shared `ingredientTextCleaned` variable both the trigger-matching `text` and
+`parseIngredientTokens()` derive from (renamed from `ingredientTextNoAdvisory` to reflect that it now
+strips more than just allergen advisories). The regex `/\(\s*(?:for|to)\b[^()]*\)/gi` requires the
+parenthetical's content to start with "for"/"to" as a whole word immediately after the opening
+paren — structurally distinct from a real sub-ingredient list (which starts with an ingredient noun,
+e.g. `"chocolate chips (unsweetened chocolate, sugar, cocoa butter)"`, confirmed still flattens and
+flags normally via a dedicated regression test). Also collapses any double space left behind when a
+purpose note sits *between* two words of a trigger phrase (e.g. `"high oleic (for flavor) sunflower
+oil"`), so the trigger still matches correctly across the gap.
+
+**`ARTIFACT_PHRASES`'s `'to preserve freshness'` entry left in place, not removed** — the general
+rule now covers the common parenthetical case, but the literal-phrase entry still catches the rare
+case where that exact wording appears without enclosing parens (e.g. as a bare comma-separated item).
+Costs nothing to keep as a redundant safeguard; removing it speculatively risked a regression for no
+real benefit, consistent with this project's established non-deletion convention for cases like this
+(see the `WHOLE_FOOD_TOKENS_L2` `'chickpeas'` dead-entry precedent from the Batch 7 correction).
+
+**Tests added (block 72, rulesEngine.test.js):** 14 tests — the exact Mango Chobani reproduction;
+bare `l. rhamnosus` isolated; the conjunction strip isolated from the vocabulary fix; the `andouille
+sausage` regression guard; the compound `'l. paracasei and l. rhamnosus'` trigger confirmed
+unaffected; `"(for color)"`/`"(for freshness)"`/`"(to preserve texture)"` variants; the chocolate-chips
+sub-ingredient regression guard; the mid-phrase double-space hardening case; a **flags-changing**
+confirmation (`"canola (for cooking) oil"` — see below); an engine-level flags/verdict-neutral check
+for Issue 2; the pre-existing `'to preserve freshness'` case; and a combined flags/verdict-unchanged
+check for the full Mango Chobani reproduction. Plus **L18** in `scan.test.js` Suite L, confirming
+`l. rhamnosus` masking doesn't disturb the `fortified_vitamins` organic-path injection in
+`pages/api/scan.js`. Full suite: 1,182 passing (1,015 rulesEngine + 167 scan), no regressions —
+searched both test files for any other fixture using an Oxford-comma ending or a `"(for/to ...)"`
+parenthetical; none exist outside this session's own new tests.
+
+**PROMPT_VERSION bumped 27 → 28 — Issues 1 and 2 are confirmed display-only (Issue 1: `parseIngredientTokens()`
+is never used for the trigger-matching `text`; Issue 2: directly tested that `l. rhamnosus` masking
+doesn't change flags/verdict in either the engine-level or L2-organic-path checks), but Issue 3 is
+not.** Because `stripPurposeNoteParentheticals()` is applied to the shared `text` used for trigger
+matching (not just the token-derivation pipeline), and because whole-string substring matching
+requires exact character contiguity, a purpose note sitting *inside* a multi-word trigger phrase can
+change the match outcome. Directly confirmed with a realistic (not synthetic) label shape: `"canola
+(for cooking) oil"` did **not** match the `"canola oil"` seed_oils trigger before this fix (the
+parenthetical broke contiguity — a false negative), and correctly does now. This is a real,
+reproducible `flags`/`verdict` change for a plausible product shape, not just theoretical risk — so,
+per this session's own established standard (see the Batch 10 entry above), it gets a bump. Run
+`DELETE FROM scan_cache WHERE prompt_version < 28` in Supabase before/after deploying. The
+`M. PROMPT_VERSION` contract test was updated to assert `28`.
+
+### Session — L2 tree Node 5 wild-caught clearance: missing seafood gate + missing reject-flag check (July 2026, PROMPT_VERSION 29)
+
+Follow-up to a production bug investigation: **the highest-severity bug found in this batch of
+sessions.** "Banana Berry" (barcode 079900003251), a frozen fruit product with ingredients
+`"BANANA SLICES (ASCORBIC AND CITRIC ACIDS ADDED TO PROTECT COLOR), STRAWBERRIES, WILD
+BLUEBERRIES."`, was cached with `verdict: 'green'`, `cleared_by: 'wild-caught'`, while its
+`flags` array still contained a live `conventional_crops` reject flag (`citric acid`) — a false
+"all clear" shown to users with the actual concern sitting unused in the data. Worse than the prior
+`glyphosate_heavy`/`gluten_grains` verdict bugs, which under-flagged to yellow; this one produced
+green over an active reject.
+
+**Root cause**: Node 5 of the L2 tree (`pages/api/scan.js`) read:
+```js
+if (detectWildCaught(productName, labelsDetected, ingredientsText)) {
+  verdict = 'green'; clearedBy = 'wild-caught';
+} else if (isSeafood) { ... }
+```
+Two missing gates, both now confirmed via direct testing:
+1. **No `isSeafood` check.** `detectWildCaught()` fires on the standalone word "wild" appearing
+   *anywhere* in the product name or ingredients text (by design — it's a pure text-signal detector
+   with no category awareness, trusting its caller to establish seafood relevance first). Node 5 never
+   did. Any non-seafood product containing "wild rice," "wild honey," "wild mushrooms," "wild oats,"
+   or "wild blueberries" — in either the name or ingredients — triggered this node.
+2. **No reject-flag check.** Even ignoring (1), Node 5 unconditionally overwrote `verdict` to
+   `'green'` with zero reference to the `flags` array, silently discarding any reject-severity flag
+   already present. Confirmed this affects every reject category that survives into `flags`
+   regardless of category-specific node: `conventional_crops`, `conventional_eggs`, `bioengineering`,
+   `glyphosate_heavy` all reproduced directly. Two categories (`conventional_dairy`, gelatin/
+   `conventional_meat` at Node 8c) are *injected* by their own later node rather than pre-existing in
+   `flags`, so for those the injection simply never ran at all — no flag, no evidence, same false
+   green. Only the four `INSTANT_RED_CATEGORIES` (checked at the very top of the tree, before the
+   organic/non-organic split) were safe, since that check runs before Node 5 is ever reached.
+
+Both gates mirror the existing `INSTANT_RED_CATEGORIES` precedent already in this same tree — "reject
+flags always win" is enforced there by running that check first, unconditionally, before any
+clearance path. Node 5 now does the same for the wild-caught clearance specifically.
+
+**Fix**: `pages/api/scan.js` Node 5's condition is now
+`isSeafood && !flags.some(f => f.severity === 'reject') && detectWildCaught(...)`. If either gate
+fails, execution falls through the existing `else if` chain to whichever node actually matches — no
+new behavior was invented. For non-seafood "wild X" products this means falling straight through to
+the category-specific node that already existed (e.g. Node 10 for `conventional_crops`). For a
+genuinely wild-caught seafood product that also happens to carry an unrelated reject flag, it falls
+to Node 5b, which injects its own `conventional_meat` flag alongside the pre-existing one — the exact
+wording of that injected flag ("farmed or unlabeled") is a known, accepted imprecision for this narrow
+case (the product *was* identified as wild-caught; the reject is for something unrelated), but the
+verdict — the part that matters — is correctly RED either way. `detectWildCaught()` itself, Node 5b,
+and all four wild-caught signals were left untouched, as scoped.
+
+**A known, accepted trade-off** (flagged directly in the fix, not hidden): Node 5 previously allowed
+wild-caught clearance from a product-name/ingredient-text signal alone, with no OFF category
+confirmation — this was deliberately exercised by an existing test (`Suite N, N2`: "Wild Caught
+Alaskan Salmon" with `categoriesTags: []`). Gating on `isSeafoodProduct(categoriesTags)` means a
+genuinely wild-caught product that OFF simply failed to categorize with a seafood tag no longer gets
+the special-cased GREEN — it now falls through to a cautious default (YELLOW via Node 14) instead.
+This is an intentional, safer failure mode: "falls to a cautious default" is a strictly better outcome
+than "silently discards a real reject flag," which was the original bug. `N2` was corrected to assert
+the new, safer behavior (with the old GREEN/wild-caught result documented in the test's comment for
+context); a new `N2b` test confirms the original clearance still works correctly once OFF *does*
+provide a seafood category tag.
+
+**⚠️ A passing test does not guarantee correct behavior if its own assertions don't cover its own
+docstring's claim.** `Suite Q`'s existing test 3 ("Wild Berry Jam," ingredients `"strawberries, sugar,
+pectin"`) had a comment claiming the product "reaches Node 14 (default yellow)" with "no concerning
+ingredients" — both false. `"sugar"` is a real `conventional_crops` reject trigger, and prior to this
+fix the actual result was `verdict: 'green', clearedBy: 'wild-caught'`, exactly this bug, reproducing
+*inside the existing test suite's own fixture*. The test's only assertion
+(`flags.some(f => f.category === 'conventional_meat') === false`) checked an unrelated category and
+never asserted on `verdict` at all, so it passed regardless — this is how the bug shipped and stayed
+undetected across every session in this series until now. `Q3` was corrected to assert `verdict` and
+`clearedBy` directly, with the history documented in its own comment as a reminder for future sessions
+to always assert the actual claim a test's docstring makes, not just a convenient proxy.
+
+**Tests added/corrected:** `N2` corrected (was asserting the pre-fix GREEN/wild-caught result);
+`N2b` added (confirms real seafood + OFF category still clears correctly); `Q3` corrected (was
+asserting only `conventional_meat` absence, not the actual `verdict`/`clearedBy`, letting the bug hide
+in its own fixture); `Q3b`, `Q5`, `Q6`, `Q7` added (non-seafood "wild X" + each of
+`conventional_crops`/`conventional_eggs`/`bioengineering`/`glyphosate_heavy` → confirmed no longer
+silently cleared to green); `Q8` added (genuinely wild-caught seafood + an unrelated reject flag →
+confirmed still correctly RED, not the wild-caught GREEN). Also directly verified (not just assumed)
+that the parallel Level 1 override path (`Override 2` in `pages/api/scan.js`, "mirrors L2 nodes 5 and
+6") was never vulnerable to this bug shape — it already gated on `l1IsSeafood`, and structurally never
+overwrites `verdict` to `'green'` in its wild-caught branch (it only ever leaves the engine's own
+already-correct verdict alone, or upgrades green→yellow elsewhere), so a reject flag there was always
+correctly surfaced. No change needed or made to the L1 path. Full suite: 1,188 passing (1,015
+rulesEngine + 173 scan), no other regressions — searched both test files for every fixture containing
+the word "wild"; all accounted for.
+
+**PROMPT_VERSION bumped 28 → 29 — the same urgency as the earlier `glyphosate_heavy`/`gluten_grains`
+verdict fixes.** This is a currently-live false "all clear" for a class of real products across
+multiple categories (frozen fruit, cereal, condiments, prepared foods) — `verdict`/`clearedBy` change
+for every previously-cached product that hit this bug. Run
+`DELETE FROM scan_cache WHERE prompt_version < 29` in Supabase before/after deploying — treat this
+purge as high-priority given the false-clean nature of the affected cached rows. The
+`M. PROMPT_VERSION` contract test was updated to assert `29`.
+
+### Session — raw truncated JSON leaking into explanation summary (July 2026, no PROMPT_VERSION bump — see reasoning below)
+
+Follow-up to a production bug investigation: "Pink Himalayan Salt Flatbread Crackers" (barcode
+860493002284, 17 flags across 3 categories) had a cached `explanation.summary` containing raw,
+truncated JSON syntax — a literal `` ```json `` markdown fence, an unescaped opening `{`, and a
+sentence cut off mid-word — served directly to users as the plain-language summary, with
+`explanation.details` forced to `{}` despite the product having three flagged categories that
+should each have their own detailed explanation.
+
+**Root cause**: `fetchExplanation()` (`pages/api/scan.js`) and the standalone `pages/api/explain.js`
+handler each independently hand-duplicated the same Claude-response-parsing logic:
+```js
+try {
+  return JSON.parse(rawText);
+} catch {
+  const match = rawText.match(/\{[\s\S]*\}/);
+  if (match) return JSON.parse(match[0]);
+  return { summary: rawText, details: {} };  // ← the bug
+}
+```
+When Claude's response never contains a closing `}` (a genuine mid-generation truncation, not just
+a markdown-fence-wrapping issue), the regex-recovery attempt fails to find a match, and the code
+fell through to dumping the **entire raw response** — fence, brace, truncated sentence, everything
+— directly into `summary`. This is a different failure mode from every other Claude-call error in
+this codebase: a missing API key returns `null`; any other thrown error is caught by an outer
+`catch` and also degrades to `null`/a 502. Only this one specific failure mode (an unparseable but
+non-throwing response) took a different, worse path that surfaced raw garbage to the user instead
+of degrading like everything else already does. Confirmed `explanation: null` is a safe, already-
+handled UI state before making this the target: `VerdictScreen` renders `"Tap a concern card below
+for details."` when `explanation` is falsy, and `ConcernCard` guards its own detail paragraph with
+`{explanation && ...}` — no crash, no missing-data UI break, just a graceful degrade.
+
+**Contributing factor**: `max_tokens: 1000` at both call sites. The prompt requires a summary plus
+one detailed, per-category explanation (each with specific required framing — e.g. `glyphosate_heavy`
+must cover the pre-harvest-desiccation angle, the farming-system-choice framing, *and* mention
+glyphosate-free certification) for every flagged category. The corrupted response itself showed
+direct evidence of drifting from the "1-2 sentence summary" instruction — it was already listing all
+three flagged issues inside `summary` before ever reaching `details`, eating into the same token
+budget meant for the per-category explanations.
+
+**Fix**:
+1. Extracted the duplicated parsing logic into a single shared `parseExplanationResponse(rawText)`
+   helper, exported from `pages/api/explain.js` (same pattern already established for
+   `SYSTEM_PROMPT`/`buildUserMessage`, which `scan.js` already imports from that file) and imported
+   into `scan.js`. Same reasoning as every other shared-logic fix this session: hand-duplicated logic
+   in two places is exactly the shape that drifts apart over time.
+2. The helper now returns `null` (never the raw text) when neither `JSON.parse()` nor the
+   regex-recovery attempt succeeds — including a new inner `try/catch` around the regex-recovery
+   `JSON.parse(match[0])` call, which previously could itself throw uncaught if the extracted span
+   was structurally complete but internally invalid (e.g. an unescaped quote), producing a different,
+   also-untested failure path.
+3. `fetchExplanation()` now returns `parseExplanationResponse(rawText)` directly — `null` propagates
+   through its existing, already-correct `null`-degrades-gracefully contract with zero other changes
+   needed. `explain.js`'s handler now returns the same `502 { error: 'Failed to generate
+   explanation.' }` shape already used for its other Claude-call failures when parsing fails, instead
+   of inventing new behavior.
+4. `max_tokens` raised `1000` → `2000` at both call sites.
+5. Strengthened the `summary` field's instruction in `buildUserMessage()`'s JSON template to
+   explicitly forbid listing multiple issues in the summary itself, directing that content to
+   `details` instead — directly targeting the drift observed in the corrupted response.
+
+**Tests added:** this parsing logic had zero test coverage anywhere in the codebase before this
+session. Added a new `__tests__/api/explain.test.js` (11 tests: 5 direct unit tests of
+`parseExplanationResponse()` covering clean/fenced/truncated/internally-invalid/prose-wrapped
+responses, plus 6 handler-level tests covering input validation and the same clean/fenced/truncated
+matrix end-to-end, including a `max_tokens: 2000` assertion) and a new Suite T in `scan.test.js`
+(4 tests, same clean/fenced/truncated/max_tokens matrix through the real `/api/scan` handler, using a
+module-scoped `jest.mock('@anthropic-ai/sdk', ...)` with a hoisted `mockAnthropicCreate` — confirmed
+safe for every pre-existing test in the file, since none of them set `ANTHROPIC_API_KEY`, so
+`fetchExplanation()` already short-circuits to `null` before the mocked client is ever invoked).
+Full suite: 1,203 passing (1,015 rulesEngine + 177 scan + 11 explain), no regressions.
+
+**No PROMPT_VERSION bump — different category of decision than every other bump above, documented
+explicitly so it isn't confused with a verdict-changing fix later.** This bug affects only
+`explanation` text quality, never `verdict`/`flags`/`clearedBy` — confirmed directly, no rules-engine
+or L2-tree code was touched. Bumping `PROMPT_VERSION` purely as a cache-repair mechanism (to force the
+one known-corrupted row, and any other undiscovered ones like it, to regenerate on next scan) was
+considered and rejected: a `PROMPT_VERSION` bump invalidates the **entire** `scan_cache` table, not
+just corrupted rows — every already-correct cached product would be re-fetched from Open Food Facts
+and would trigger a brand-new (real-money) Claude API call on its next scan, purely to fix a small,
+edge-case-correlated (multi-flag-category products specifically) number of corrupted explanation
+rows. That's a disproportionate, blunt-instrument cost for a cosmetic-only bug. Instead, run a
+targeted one-off cleanup in Supabase for rows matching this bug's specific fingerprint:
+```sql
+UPDATE scan_cache
+SET explanation = NULL
+WHERE explanation->>'summary' LIKE '%```%'
+   OR explanation->>'summary' LIKE '{%';
+```
+This nulls out only the rows actually showing the corruption signature (a stray markdown fence or a
+literal leading brace in `summary`) — `VerdictScreen` already degrades those to the safe "tap a
+concern card" state, and they'll regenerate cleanly (with the fix in place) on next scan, without
+touching the vast majority of cached rows that were never affected.
+
+### Session — "-free"/"non-" bare-word trigger false positives + manufacturer address/facility-statement leakage (July 2026, PROMPT_VERSION 30)
+
+Follow-up to a production bug investigation: "Guava Toasted Snack Crackers" had **no eggs anywhere**
+in its ingredients, yet was cached with a reject-severity `conventional_eggs` flag — the AI-generated
+explanation even noted the contradiction itself ("the packaging explicitly states this product is
+made in an egg-free facility — so this flag appears to be incorrect"), meaning the app was showing
+users a reject flag alongside AI text telling them the flag was probably wrong. The same product's
+`unverified_ingredients` also contained the manufacturer's name, street address, and city/state/ZIP,
+tokenized as if they were ingredients.
+
+**Issue 1 — bare-word triggers false-positive on "-free"/"non-" claims (the more serious issue).**
+`CONVENTIONAL_EGGS`'s existing word-boundary guard only checks whether the character immediately
+before/after a match is a *letter* — a hyphen is not a letter, so `"egg-free"` sailed through
+untouched. Investigation found this is not eggs-specific: systematically testing `-free` claims
+against every bare-word trigger confirmed false positives for `egg-free` (`conventional_eggs`),
+`corn-free`/`wheat-free`/`barley-free`/`rye-free` (`gluten_grains`, `glyphosate_heavy`), and most
+severely `canola-free` (`seed_oils` — an `INSTANT_RED_CATEGORIES` member, meaning a bare facility
+disclaimer with zero real ingredient concern could force an entire product red). Further testing
+during this session also found `sugar-free` (`conventional_crops`). A working precedent already
+existed: `BIOENGINEERING_TERMS`'s bare `"gmo"` trigger already had a dedicated inline guard checking
+for `"non-"`/`"non "` prefixes and `"-free"`/`" free"` suffixes (with its own test coverage), but it
+was written narrowly for that one trigger only, not generalized.
+
+**Fix**: extracted the `"gmo"` guard's logic into a single shared `isInFreeOrNonContext(text, index,
+end)` helper (`lib/rulesEngine.js`, alongside `isPrecededByOrganic()`/`isPrecededBySourceNote()`),
+and applied it to every bare-word trigger category: `SEED_OILS` (previously had no boundary guard of
+any kind — converted from `matchAndClaim()` to direct `findMatches()` + manual claiming, so a
+guarded/rejected match doesn't block another category from matching the same span), `CONVENTIONAL_CROPS`,
+`CONVENTIONAL_EGGS` (added alongside its existing, still-valid letter-adjacency guard, which protects
+a different case — `"eggplant"` — and was left in place), `GLUTEN_GRAINS`, `GLYPHOSATE_HEAVY`
+(added alongside the existing bare-`"malt"` guard, which protects a different case —
+`"maltodextrin"`/`"maltose"` — and was left in place), and `BIOENGINEERING_TERMS`'s own `"gmo"`
+trigger (refactored to call the shared helper instead of its own inline copy — confirmed via direct
+testing that `match.index + 3` in the old code and `match.end` in the new code are mathematically
+identical for the exactly-3-character `"gmo"` trigger, so this is a pure extraction with zero
+behavior change). `GLUTEN_GRAINS`'s intentional lack of letter-adjacency boundary protection (e.g.
+`"wheat"` inside `"wheatgrass"` is deliberately still flagged — a real prolamin concern, not a bug)
+was left untouched; only the new `-free`/`non-` check was added, not a general boundary guard.
+
+**Issue 2 — manufacturer address / facility-statement leakage (separate root cause, smaller fix).**
+Two phrasings weren't covered by any existing `stripAllergenAdvisory()` pattern: (1) `"Manufactured
+by: [company] [address]"` — conceptually unrelated to the existing `"manufactured on a line"`
+cross-contact pattern (that one is about shared equipment; this one is company attribution); (2)
+`"THIS PRODUCT IS MADE IN A [...] FACILITY [...]."` — close in spirit to the existing `"produced in a
+facility"` pattern but different exact wording, so the literal-phrase regex didn't match it. Added
+both as new patterns. The `"manufactured by:"` pattern required extra care: a period-anchored
+pattern (matching the style of every other pattern in this function) doesn't work here, since a
+printed address routinely contains its own abbreviation periods (`"N.E."`, `"3rd."`) that would
+terminate the match early and leave the rest of the address behind — and a comma-anchored fallback
+doesn't work either, since addresses contain their own internal commas (`"Miami, FL 33138"`). Newline
+is the only reliable boundary. Confirmed via direct testing that a naive `(?:\n|$)` end-of-string
+fallback creates a real over-matching risk — `"Manufactured by: Foo Corp, real ingredient X, real
+ingredient Y"` with no following newline would swallow the real ingredients too — so the end-of-string
+fallback was deliberately dropped; `"manufactured by:"` with no following newline is now left
+unstripped rather than risk consuming real ingredient text, a conservative trade-off documented
+inline in the code and covered by its own regression test.
+
+**Relationship between the two issues**: related but not the same root cause. Fixing Issue 2's
+facility-statement stripping coincidentally also removes this specific product's `egg-free` false
+positive, since `"EGG-FREE"` lives inside the exact sentence that gets stripped — but Issue 1 needed
+its own general fix regardless, since `-free` claims commonly appear outside facility-disclaimer
+sentences entirely (front-of-package badges, standalone "Free From: Eggs, Dairy, Soy" lists, etc.),
+which a facility-specific strip would never catch.
+
+**Tests added (block 73, rulesEngine.test.js):** 19 tests — the full confirmed blast radius
+(`egg-free`, `corn-free`, `wheat-free`, `barley-free`, `rye-free`, `canola-free`, `sugar-free`, each
+confirmed to no longer flag); a regression guard confirming a real, non-`"-free"` occurrence of each
+trigger still correctly flags; five regression guards confirming the pre-existing `"gmo"`/`"non-gmo"`
+guard behavior is byte-for-byte unchanged by the generalization (including that a real bioengineering
+disclosure and a real bare `"gmo"` trigger still correctly flag); the `"manufactured by:"` strip with
+and without a following newline (including the over-matching regression guard); the `"made in a ...
+facility"` strip; regression guards confirming the pre-existing `"produced in a facility"` and
+`"manufactured on a line"` patterns are unaffected by the new ones; and the full combined Guava
+Crackers reproduction. Searched both test files for any other fixture using a `-free` phrase or
+manufacturer/facility text in actual ingredient input (not just a test title) — found and confirmed
+safe. Full suite: 1,222 passing (1,034 rulesEngine + 177 scan + 11 explain), no regressions.
+
+**PROMPT_VERSION bumped 29 → 30.** This changes real `flags`/`verdict` output for a class of
+previously-cached products — any product whose OFF ingredient text contains a `"-free"` facility
+disclaimer or allergen claim naming an ingredient that happens to be a bare-word trigger, most
+severely any `"canola-free"` product that was previously force-reded via `seed_oils` alone. Run
+`DELETE FROM scan_cache WHERE prompt_version < 30` in Supabase before/after deploying. The
+`M. PROMPT_VERSION` contract test was updated to assert `30`.
 
 ---
 
