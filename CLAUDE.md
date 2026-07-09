@@ -1643,6 +1643,167 @@ severely any `"canola-free"` product that was previously force-reded via `seed_o
 
 ---
 
+### Session — `is_meat` ingredient-text corroboration, Phase 1 (July 2026, no PROMPT_VERSION bump)
+
+Follow-up to two live diagnosis sessions: `isMeatProduct()` in `pages/api/scan.js` had both a
+false-positive and a false-negative problem, both traced to relying solely on OFF `categories_tags`
+via exact `Set` lookup against a hand-maintained `MEAT_CATEGORIES` list, with zero ingredient-text
+fallback.
+
+**False positive**: `MEAT_CATEGORIES` included bare parent tags `'en:broths'` and `'en:stocks'`. OFF
+applies these to vegetable/mushroom broths and stocks, not just meat ones — a scanned "Organic
+Vegetable Broth" (barcode 850014634438, zero meat ingredients) was cached `is_meat: true` purely
+because it carried `"en:vegetable-broths"` and its ancestor tag `"en:broths"`. This was masked in
+that specific cached row only because the product also carried a USDA Organic label, which routes
+the L2 tree into the organic branch (Node 4) — a branch that never checks `isMeat` at all. A
+non-organic vegetable broth, or any vegetable broth at L1 (Override 2 has no organic gate), would
+have shown a live, incorrect `conventional_meat` flag.
+
+**False negative — three confirmed modes**: (A) `categories_tags` missing/undefined entirely — no
+data to match, ever (e.g. "Grass fed beef," "PORK CHORIZO"). (B) `categories_tags` present but only
+containing OFF's modern canonical parent tags (`"en:meats-and-their-products"`,
+`"en:prepared-meats"`) rather than the specific short-form tags the set checked for
+(`"en:beef"`) — common for US-contributed products, which often don't drill into leaf category
+tags. Confirmed exact production repro: barcode 011110101082 ("Seasoned Roast Beef," ingredients
+"ORGANIC BEEF, WATER, SEA SALT, ORGANIC BLACK PEPPER") — `is_meat: false`, skipped the entire meat
+decision branch, fell through to Node 14's generic default `yellow` with zero flags, identical
+treatment to a bag of uncertified pistachios. (C) `categories_tags` present but filed under an
+unrelated OFF branch entirely (beef burgers under `"en:sandwiches"`, beef tallow under `"en:fats"`,
+bacon under `"en:snacks"`). A scan_cache sample of 39 meat-named products found 22 (56%) with
+`is_meat: false`.
+
+**Fix**: added ingredient-text corroboration as a second, independent signal, following the existing
+`MILK_DERIVED_INGREDIENTS`/`containsMilkDerived()` pattern.
+- `lib/rulesEngine.js`: new `MEAT_INGREDIENT_TERMS` array (terrestrial meat only — beef/pork/
+  chicken/turkey/lamb/veal and processed forms like bacon, ham, salami, sausage, deli meat) and
+  `containsMeatIngredient()` helper, using the existing `matchesWholePhrase()` word-boundary
+  matcher. Deliberately scoped to terrestrial meat only, this pass — seafood and game meat are
+  excluded, since they interact with `isSeafoodProduct()`/`isGameMeatProduct()` and the
+  wild-caught/no-cert-required tree branches (Node 5/5b/6), which need their own routing signal
+  (`isSeafoodIngredient`), not just `isMeat`; conflating them would misroute a real wild-caught or
+  game product into the conventional-meat organic-required branch. Eggs are excluded — that's
+  `CONVENTIONAL_EGGS`/`EGG_DERIVED_INGREDIENTS`'s job already.
+- New `isInFlavorOrStyleContext(text, index, end)` guard, modeled directly on the existing
+  `isInFreeOrNonContext()` pattern, wired into `matchesWholePhrase()` via a new optional third
+  `guard` parameter (existing callers — milk, egg, gelatin — omit it and are unaffected; confirmed
+  via the full test suite). Suppresses matches inside flavor/style/imitation wording —
+  `"natural beef flavor"`, `"chicken-style seasoning"`, `"imitation bacon bits"` — so plant-based
+  products using meat-word seasoning names don't false-positive.
+- `pages/api/scan.js`: removed `'en:broths'`/`'en:stocks'` from `MEAT_CATEGORIES` (kept the specific
+  `'en:bone-broth'`/`'en:chicken-broth'`/`'en:beef-broth'`). Confirmed this doesn't regress real
+  broths — a genuine chicken broth's ingredient text ("chicken broth, chicken, salt") independently
+  satisfies `containsMeatIngredient()`, so the existing `conventional_eggs`+`conventional_meat` test
+  (Suite P, chicken broth with eggs) passes unchanged, now via ingredient corroboration instead of
+  the removed tag.
+- `isMeat` is now computed as `isMeatCategory || isMeatIngredient`, with both sub-signals kept as
+  separate named variables (not collapsed) and logged via `console.log` on every scan, specifically
+  so the false-positive/false-negative distinction that made this bug invisible for months — a
+  single opaque boolean, no way to tell which signal produced it — doesn't recur. Direct precedent:
+  the compounding issue found during diagnosis where `lib/rulesEngine.js`'s `WHOLE_FOOD_TOKENS_L2`
+  already contained bare `'beef'`/`'pork'`/`'chicken fat'`/`'chicken stock'`, suppressing them from
+  the `unverified_ingredients` human-review queue — confirmed via code trace that this list only
+  affects the display-only unverified-ingredients pipeline (`lib/rulesEngine.js` line ~2102) and has
+  no connection to `flags`/`verdict`/`isMeat`, so it was left unchanged; removing those entries would
+  not have helped `isMeat` in any way and would only have reintroduced them to the review queue.
+
+**Phase 1 vs Phase 2 — explicit scope decision.** This session shipped detection + logging only. Per
+direct instruction, **no `scan_cache` schema change was made** — `isMeatCategory`/`isMeatIngredient`
+are not persisted, only logged server-side. Persisting them as their own `scan_cache` columns (for
+post-hoc auditing without re-scanning) is deferred to an explicit Phase 2.
+
+**Tests added:** 11 new tests in `__tests__/api/scan.test.js` Suite H, in a new "Ingredient-text
+corroboration" nested block — Mode A (empty and `undefined` `categories_tags`), Mode B (exact
+011110101082 repro shape), Mode C (sandwiches/hamburgers miscategorization), vegetable-broth and
+chicken-broth regressions (both directions), three flavor/style guard tests, and two isolation tests
+proving the category and ingredient signals each work independently of the other. Confirmed the
+pre-existing Suite P chicken-broth-with-eggs test still passes, now via ingredient corroboration
+(`isMeatCategory: false, isMeatIngredient: true` in the new log output) rather than the removed
+`'en:broths'` tag. Full suite: 1,233 passing (1,034 rulesEngine + 188 scan + 11 explain), up from
+1,222 — no regressions.
+
+**No PROMPT_VERSION bump.** `is_meat` is not part of the rules-engine `flags`/`verdict`/`clearedBy`
+contract and is not fed into `buildUserMessage()` in `explain.js` — confirmed by grep, `isMeat` is
+only consulted by the L1/L2 meat-decision-tree branches themselves (which independently determine
+`flags`/`verdict` once routed) and by `VerdictScreen`'s unverified-copy branch. A cached row with a
+stale `is_meat` value will self-correct on its next fresh scan (cache miss) without needing a forced
+table-wide purge; there is no `scan_cache` column change to invalidate against. This matches the
+reasoning already used for the July 2026 "raw truncated JSON" fix, the other precedent in this file
+for a real bug fix that intentionally did not bump `PROMPT_VERSION`.
+
+---
+
+### Session — `is_meat` ingredient-text corroboration, Phase 2: persist sub-signals (July 2026, no PROMPT_VERSION bump)
+
+Follow-up to the Phase 1 session above. Persists `isMeatCategory`/`isMeatIngredient` — computed and
+logged in Phase 1 but not written to the DB — as two new `scan_cache` columns, so a cached row's
+meat classification is queryable/auditable instead of only visible in ephemeral request logs.
+
+**Migration**: [supabase/migrations/20260710000000_add_meat_signal_columns_to_scan_cache.sql](supabase/migrations/20260710000000_add_meat_signal_columns_to_scan_cache.sql)
+— `ALTER TABLE scan_cache ADD COLUMN IF NOT EXISTS is_meat_category BOOLEAN;` and the same for
+`is_meat_ingredient`. Deliberately nullable with **no `DEFAULT`** (unlike the `olive_caveat`
+migration's `DEFAULT false`) — old rows get `NULL`, not `false`, for both columns, so "never
+computed" stays distinguishable from "computed and false." **No backfill of existing rows was run —
+an explicit non-goal for this pass.** Old rows populate naturally on their next fresh scan (cache
+miss); until then, both columns read `NULL` for any row written before this migration.
+
+**⚠️ Migration-application risk, found and confirmed during this session — read before deploying.**
+Before writing this migration, checked the existing `20260607000000_add_olive_caveat_to_scan_cache.sql`
+migration (added June 7, 2026) against the live database via a direct PostgREST query
+(`select=olive_caveat`) and confirmed: **that migration file has never actually been applied to
+production**, over a month after it was added to the repo — the live table still has no
+`olive_caveat` column. This is exactly the failure that produced commit `bb3e83e` ("fix: remove
+olive_caveat from scan_cache upsert — column does not exist in DB"), where a prior session added
+`olive_caveat` to the `scan_cache` upsert payload assuming the migration had been applied; it hadn't,
+so PostgREST rejected the entire upsert on every request, silently swallowed by the existing
+try/catch, resulting in zero `scan_cache` writes until caught. **The same class of failure applies
+here if this migration is not run before the code below is deployed** — `is_meat_category`/
+`is_meat_ingredient` in the upsert payload would cause every write to fail the same way. This repo
+has no automated migration-runner in the deploy pipeline; migrations in `supabase/migrations/` are
+only applied when someone manually runs them against Supabase. **Run this migration against the live
+database first, then confirm column existence** (e.g. `select=barcode,is_meat_category&limit=1` via
+the REST API should return the column, not a `42703` error) **before deploying this code.**
+
+**Code changes**:
+- `pages/api/scan.js` — the `scan_cache` upsert payload now includes `is_meat_category: isMeatCategory`
+  and `is_meat_ingredient: isMeatIngredient` alongside the existing `is_meat: isMeat`. `is_meat`'s
+  computation is unchanged — still `isMeatCategory || isMeatIngredient` from Phase 1.
+- **Every `scan_cache` write path was enumerated and checked**: the main upsert (`pages/api/scan.js`,
+  now updated); a fire-and-forget `last_accessed_at` "touch" `.update()` on cache hits (same file) —
+  left unchanged, since it only ever sets `last_accessed_at` and never touches `is_meat`-family
+  columns, so there is nothing for it to persist that isn't already in the row from its original
+  write. `pages/api/explain.js` has no `scan_cache` references at all (confirmed via grep) — it only
+  writes to `unverified_ingredients`, a separate table. No other file in the codebase writes to
+  `scan_cache`.
+- **Console.log kept, not removed** — deliberate choice, not an oversight. Even with persistence in
+  place, the log gives an immediate signal during this fix's rollout (and any future rules-engine
+  work) without a DB round-trip, and given the `olive_caveat` precedent above, having a redundant
+  real-time confirmation that this exact write path is actually succeeding post-deploy was judged
+  worth the log volume.
+
+**Tests added**: 4 new tests in `__tests__/api/scan.test.js` Suite H, in a new "scan_cache
+persistence" nested block — category-only, ingredient-only, both, and neither match, each asserting
+`is_meat_category` and `is_meat_ingredient` independently in the actual upsert payload (not just that
+their OR equals `is_meat`, which Phase 1's tests already covered via the API response). This required
+adding the first mock of `getSupabaseServer()` in this test file's history — `jest.mock('../../lib/supabaseServer')`
+at module scope, defaulting every existing test to the same `undefined`-returning (falsy) behavior
+`getSupabaseServer()` already had in the test environment (`SUPABASE_SERVICE_ROLE_KEY` is not set
+locally), so all 1,233 pre-existing tests are provably unaffected; only the 4 new tests opt in via
+`getSupabaseServer.mockReturnValueOnce(...)`. **Note for future sessions**: before this mock existed,
+the `scan_cache` upsert payload had zero test coverage in this codebase — the `if (sb)` guard around
+every write was always false during `npx jest` runs, so a malformed payload (like the `olive_caveat`
+incident) could never have been caught by the test suite, only by a live production request. The new
+mock infrastructure in this file can now be reused for that kind of test in future sessions.
+
+Full suite: 1,237 passing (1,034 rulesEngine + 192 scan + 11 explain), up from 1,233 — no
+regressions.
+
+**No PROMPT_VERSION bump** — same reasoning as Phase 1: `is_meat` (and now its two persisted
+sub-signals) are not part of the `flags`/`verdict`/`clearedBy` contract `PROMPT_VERSION` gates, and
+are not fed into `buildUserMessage()` in `explain.js`. The `M. PROMPT_VERSION` contract test was
+re-checked and still asserts `30`, unchanged.
+
+---
+
 ## Pending Policy Decisions
 
 Items deferred from the June 2026 unverified ingredients audit — pending team review before adding to the engine.
@@ -1654,6 +1815,7 @@ Items deferred from the June 2026 unverified ingredients audit — pending team 
 - **Gelatin explanation copy for non-meat products** (marshmallows, gummies) — `conventional_meat` flag + Joel voice may confuse users when no meat is involved; may need a tailored category or copy adjustment
 - **Organic seed oils policy** — currently flagged red at L2 regardless of organic status; worth revisiting whether organic high-oleic sunflower or organic canola should be caution rather than reject
 - **Vitamin D3 mandatory fortification in organic milk** — FORTIFIED_VITAMINS caution flag fires on organic dairy products that use D3 as required by organic standards; may confuse users who expect a green for organic milk
+- **Node 8 vs Node 8b ordering for `en:eggs`** — found during the `is_meat` corroboration design review (July 2026): `'en:eggs'` is in `MEAT_CATEGORIES`, and in the L2 tree Node 8 (conventional meat) is evaluated before Node 8b (conventional eggs). An OFF-tagged egg product may be getting generic conventional-meat messaging instead of the dedicated egg messaging Node 8b was built for. The existing `isMeat is true for en:eggs` test (Suite H) only asserts the `isMeat` boolean, not which node actually fires or what flag/message the user sees, so this wasn't caught. Needs investigation before deciding on a fix.
 
 ---
 

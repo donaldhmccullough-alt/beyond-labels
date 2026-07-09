@@ -763,6 +763,238 @@ describe('H. Meat verdict logic', () => {
     expect(res.body.isMeat).toBe(false);
   });
 
+  // ── Ingredient-text corroboration (is_meat) ───────────────────────────────
+  // isMeatProduct() (OFF categories_tags) alone missed a majority of real
+  // meat products in a scan_cache audit: (A) categories_tags missing/empty,
+  // (B) categories_tags present but only OFF's modern canonical parent tags
+  // (e.g. "en:meats-and-their-products") rather than our short-form set,
+  // (C) categories_tags present but filed under an unrelated branch (e.g.
+  // beef burgers under "en:sandwiches"). containsMeatIngredient() closes
+  // these as a second, independent signal, OR'd with the category signal.
+
+  describe('Ingredient-text corroboration', () => {
+    // Mode A: categories_tags is an empty array — no category data to match.
+    test('Mode A: empty categories_tags + meat ingredients → isMeat true', async () => {
+      mockFetchOnce(meatOffResp({
+        categoriesTags:  [],
+        ingredientsText: 'beef, water, salt',
+      }));
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '000000000013', userLevel: 2 }), res);
+      expect(res.body.isMeat).toBe(true);
+    });
+
+    // Mode A: categories_tags is missing entirely (undefined) — real-world
+    // shape for products like "Grass fed beef" (850006943043) in production.
+    test('Mode A: undefined categories_tags + meat ingredients → isMeat true', async () => {
+      mockFetchOnce({
+        status: 1,
+        product: {
+          product_name:     'Grass fed beef',
+          ingredients_text: 'beef, water, salt',
+          labels_tags:      [],
+          categories_tags:  undefined,
+        },
+      });
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '000000000014', userLevel: 2 }), res);
+      expect(res.body.isMeat).toBe(true);
+    });
+
+    // Mode B: exact repro shape of barcode 011110101082 ("Seasoned Roast
+    // Beef") — categories_tags present but only OFF's modern canonical
+    // parent tags, which are absent from MEAT_CATEGORIES.
+    test('Mode B: OFF canonical parent tags only (no short-form match) + meat ingredients → isMeat true', async () => {
+      mockFetchOnce(meatOffResp({
+        categoriesTags:  ['en:meats-and-their-products', 'en:prepared-meats'],
+        ingredientsText: 'organic beef, water, sea salt, organic black pepper',
+      }));
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '000000000015', userLevel: 2 }), res);
+      expect(res.body.isMeat).toBe(true);
+    });
+
+    // Mode C: categories_tags present but filed under an unrelated OFF
+    // branch entirely (real-world shape for "Beef Burgers", 853231007917).
+    test('Mode C: miscategorized OFF branch (sandwiches/hamburgers) + meat ingredients → isMeat true', async () => {
+      mockFetchOnce(meatOffResp({
+        categoriesTags:  ['en:sandwiches', 'en:hamburgers', 'en:beef-hamburgers'],
+        ingredientsText: 'beef, salt, pepper',
+      }));
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '000000000016', userLevel: 2 }), res);
+      expect(res.body.isMeat).toBe(true);
+    });
+
+    // Broth regression — vegetable broth must stay isMeat: false now that
+    // 'en:broths'/'en:stocks' are removed from MEAT_CATEGORIES, and the
+    // ingredient text (no meat words) does not independently confirm meat.
+    test('vegetable broth (en:broths parent tag, no meat ingredients) → isMeat false', async () => {
+      mockFetchOnce(meatOffResp({
+        categoriesTags:  ['en:broths', 'en:vegetable-broths'],
+        ingredientsText: 'water, onions, celery, carrots',
+      }));
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '000000000017', userLevel: 2 }), res);
+      expect(res.body.isMeat).toBe(false);
+    });
+
+    // Broth regression — chicken broth must stay isMeat: true after the
+    // 'en:broths' tag removal, via ingredient-text corroboration instead.
+    test('chicken broth (en:broths parent tag + real chicken) → isMeat true via ingredient corroboration', async () => {
+      mockFetchOnce(meatOffResp({
+        categoriesTags:  ['en:broths', 'en:soups'],
+        ingredientsText: 'chicken broth, chicken, salt',
+      }));
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '000000000018', userLevel: 2 }), res);
+      expect(res.body.isMeat).toBe(true);
+    });
+
+    // Flavor/style guards — isInFlavorOrStyleContext() must suppress these.
+    test('flavor guard: "natural beef flavor" in a plant-based product → isMeat false', async () => {
+      mockFetchOnce(meatOffResp({
+        categoriesTags:  [],
+        ingredientsText: 'pea protein, natural beef flavor, salt',
+      }));
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '000000000019', userLevel: 2 }), res);
+      expect(res.body.isMeat).toBe(false);
+    });
+
+    test('style guard: "chicken-style seasoning" → isMeat false', async () => {
+      mockFetchOnce(meatOffResp({
+        categoriesTags:  [],
+        ingredientsText: 'chicken-style seasoning, salt',
+      }));
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '000000000020', userLevel: 2 }), res);
+      expect(res.body.isMeat).toBe(false);
+    });
+
+    test('imitation guard: "imitation bacon bits" → isMeat false', async () => {
+      mockFetchOnce(meatOffResp({
+        categoriesTags:  [],
+        ingredientsText: 'imitation bacon bits, pea protein',
+      }));
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '000000000021', userLevel: 2 }), res);
+      expect(res.body.isMeat).toBe(false);
+    });
+
+    // Isolation — category signal alone (no meat words in ingredients).
+    test('isolation: category match only, non-meat ingredient text → isMeat true', async () => {
+      mockFetchOnce(meatOffResp({
+        categoriesTags:  ['en:beef'],
+        ingredientsText: 'water, salt',
+      }));
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '000000000022', userLevel: 2 }), res);
+      expect(res.body.isMeat).toBe(true);
+    });
+
+    // Isolation — ingredient signal alone (category doesn't match at all).
+    test('isolation: ingredient match only, non-matching category → isMeat true', async () => {
+      mockFetchOnce(meatOffResp({
+        categoriesTags:  ['en:snacks'],
+        ingredientsText: 'beef, water, salt',
+      }));
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '000000000023', userLevel: 2 }), res);
+      expect(res.body.isMeat).toBe(true);
+    });
+  });
+
+  // ── scan_cache persistence (is_meat_category / is_meat_ingredient) ───────
+  // Phase 2: both sub-signals must be written to their own scan_cache
+  // columns on a fresh scan (cache miss), independently correct — not just
+  // that their OR matches is_meat. getSupabaseServer() is mocked per-test
+  // via mockReturnValueOnce() (see top-of-file mock) so the upsert payload
+  // is inspectable; every other test in this file leaves it unset
+  // (undefined → falsy → scan_cache code path skipped, unchanged from
+  // before this mock existed).
+
+  describe('scan_cache persistence — is_meat_category / is_meat_ingredient', () => {
+    /** Fake Supabase client: cache-read always misses, upsert is a spy. */
+    function makeFakeSb(mockUpsert) {
+      const scanCacheChain = {
+        select:      jest.fn().mockReturnThis(),
+        eq:          jest.fn().mockReturnThis(),
+        maybeSingle: jest.fn().mockResolvedValue({ data: null }), // force cache miss
+        upsert:      mockUpsert,
+      };
+      return { from: jest.fn(() => scanCacheChain) };
+    }
+
+    test('category-only match → is_meat_category true, is_meat_ingredient false', async () => {
+      const mockUpsert = jest.fn().mockResolvedValue({ error: null });
+      getSupabaseServer.mockReturnValueOnce(makeFakeSb(mockUpsert));
+      mockFetchOnce(meatOffResp({
+        categoriesTags:  ['en:beef'],
+        ingredientsText: 'water, salt',
+      }));
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '000000000024', userLevel: 2 }), res);
+
+      expect(mockUpsert).toHaveBeenCalledTimes(1);
+      const payload = mockUpsert.mock.calls[0][0];
+      expect(payload.is_meat_category).toBe(true);
+      expect(payload.is_meat_ingredient).toBe(false);
+      expect(payload.is_meat).toBe(true);
+    });
+
+    test('ingredient-only match → is_meat_category false, is_meat_ingredient true', async () => {
+      const mockUpsert = jest.fn().mockResolvedValue({ error: null });
+      getSupabaseServer.mockReturnValueOnce(makeFakeSb(mockUpsert));
+      mockFetchOnce(meatOffResp({
+        categoriesTags:  ['en:snacks'],
+        ingredientsText: 'beef, water, salt',
+      }));
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '000000000025', userLevel: 2 }), res);
+
+      expect(mockUpsert).toHaveBeenCalledTimes(1);
+      const payload = mockUpsert.mock.calls[0][0];
+      expect(payload.is_meat_category).toBe(false);
+      expect(payload.is_meat_ingredient).toBe(true);
+      expect(payload.is_meat).toBe(true);
+    });
+
+    test('both match → is_meat_category true, is_meat_ingredient true', async () => {
+      const mockUpsert = jest.fn().mockResolvedValue({ error: null });
+      getSupabaseServer.mockReturnValueOnce(makeFakeSb(mockUpsert));
+      mockFetchOnce(meatOffResp({
+        categoriesTags:  ['en:beef'],
+        ingredientsText: 'beef, water, salt',
+      }));
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '000000000026', userLevel: 2 }), res);
+
+      expect(mockUpsert).toHaveBeenCalledTimes(1);
+      const payload = mockUpsert.mock.calls[0][0];
+      expect(payload.is_meat_category).toBe(true);
+      expect(payload.is_meat_ingredient).toBe(true);
+      expect(payload.is_meat).toBe(true);
+    });
+
+    test('neither match → is_meat_category false, is_meat_ingredient false', async () => {
+      const mockUpsert = jest.fn().mockResolvedValue({ error: null });
+      getSupabaseServer.mockReturnValueOnce(makeFakeSb(mockUpsert));
+      mockFetchOnce(meatOffResp({
+        categoriesTags:  ['en:snacks'],
+        ingredientsText: 'water, salt',
+      }));
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '000000000027', userLevel: 2 }), res);
+
+      expect(mockUpsert).toHaveBeenCalledTimes(1);
+      const payload = mockUpsert.mock.calls[0][0];
+      expect(payload.is_meat_category).toBe(false);
+      expect(payload.is_meat_ingredient).toBe(false);
+      expect(payload.is_meat).toBe(false);
+    });
+  });
+
   // ── L2: meat + no organic → RED, conventional_meat flag ──────────────────
 
   test('L2 meat + no organic label → verdict is RED', async () => {

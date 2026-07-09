@@ -54,6 +54,7 @@ const {
   ALWAYS_IGNORE_INGREDIENTS,
   containsMilkDerived,
   containsMeatDerived,
+  containsMeatIngredient,
 } = rulesEngine;
 
 import { getSupabaseServer } from '../../lib/supabaseServer';
@@ -122,7 +123,10 @@ const MEAT_CATEGORIES = new Set([
   'en:deli-meats', 'en:cold-cuts', 'en:sausages', 'en:hot-dogs',
   'en:charcuterie', 'en:bacon', 'en:ham', 'en:salami', 'en:pepperoni',
   'en:smoked-meats', 'en:cured-meats',
-  'en:broths', 'en:stocks', 'en:bone-broth', 'en:chicken-broth', 'en:beef-broth',
+  // NOTE: 'en:broths' and 'en:stocks' were removed here (bare parent tags
+  // OFF also applies to vegetable/mushroom broths and stocks — see the
+  // is_meat false-positive fix below). The specific broth tags are kept.
+  'en:bone-broth', 'en:chicken-broth', 'en:beef-broth',
   'en:eggs', 'en:egg-products', 'en:poultry-eggs',
 ]);
 
@@ -739,7 +743,34 @@ export default async function handler(req, res) {
   const labelsDetected   = normalizeLabelTags(product.labels_tags);
   const categoriesTags   = product.categories_tags ?? [];
   const productCategory  = mapProductCategory(categoriesTags);
-  const isMeat           = isMeatProduct(categoriesTags);
+
+  // is_meat corroboration (PROMPT_VERSION-independent — see CLAUDE.md
+  // changelog): OFF categories_tags alone missed a majority of real meat
+  // products in a scan_cache audit (missing category data, OFF's modern
+  // canonical parent tags not matching our short-form set, or products
+  // filed under an unrelated branch like "en:sandwiches"). Tracked as two
+  // independent signals, OR'd for the actual isMeat used by the decision
+  // tree. Both are persisted to scan_cache (is_meat_category,
+  // is_meat_ingredient — Phase 2) so a cached row's meat classification is
+  // auditable without re-scanning. The console.log below is kept
+  // deliberately even though the values are now persisted — it gives an
+  // immediate, real-time signal for the rollout of this exact fix (and any
+  // future rules-engine session) without needing a DB round-trip, and per
+  // the olive_caveat incident (see the Phase 2 migration file), verifying
+  // this specific write path actually succeeds post-deploy is worth the
+  // redundancy.
+  const isMeatCategory   = isMeatProduct(categoriesTags);
+  const isMeatIngredient = ingredientsText
+    ? containsMeatIngredient(maskIgnoredIngredients(ingredientsText.toLowerCase()))
+    : false;
+  const isMeat = isMeatCategory || isMeatIngredient;
+  console.log('[scan] meat detection signals:', {
+    barcode,
+    isMeatCategory,
+    isMeatIngredient,
+    isMeat,
+  });
+
   let unverifiedReason = !ingredientsText ? 'no_ingredients' : null;
 
   // ── Run the rules engine ──────────────────────────────────────────────────
@@ -1154,6 +1185,8 @@ export default async function handler(req, res) {
             product_name:           productName,
             product_category:       productCategory,
             is_meat:                isMeat,
+            is_meat_category:       isMeatCategory,
+            is_meat_ingredient:     isMeatIngredient,
 
             prompt_version:         PROMPT_VERSION,
             last_accessed_at:       new Date().toISOString(),
