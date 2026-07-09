@@ -573,7 +573,7 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 30 — confirmed deployed to production July 10, 2026** (not just committed — empirically verified via a live PostgREST query against `scan_cache` after a fresh scan returned `prompt_version: 30` directly from the row, following the deploy-gap incident documented below).
+**Current PROMPT_VERSION is 31 — confirmed deployed to production July 10, 2026** (not just committed — empirically verified via a live PostgREST query against `scan_cache` after a fresh scan returned `prompt_version: 31` directly from the row, following the deploy-gap incident documented below).
 
 ### Cache Invalidation
 When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 30. Run `DELETE FROM scan_cache WHERE prompt_version < 30` in Supabase to purge all stale rows before deploying.
@@ -1921,6 +1921,22 @@ statement naming wheat, barley, rye, oats, soybean(s), or egg(s), most severely 
 no organic certification, which previously got an incorrect RED verdict from the advisory sentence
 alone. Run `DELETE FROM scan_cache WHERE prompt_version < 31` in Supabase before/after deploying. The
 `M. PROMPT_VERSION` contract test was updated to assert `31`.
+
+**Confirmed deployed to production July 10, 2026** (not just committed): pushed as commit `2d795d9`,
+Vercel auto-deployed from `origin/mvp-beta` (no manual trigger available or needed — detected via
+polling the live app until a fresh, non-cache-hit scan was observed). `prompt_version: 31` confirmed
+via a direct PostgREST query against a freshly-written `scan_cache` row (barcode 011110101082), not
+inferred from cache-hit behavior. The fix itself was verified two ways: (1) real production
+`scan_cache` data was searched for a bare "Contains wheat/soy/egg" statement with no corresponding
+real ingredient — none exists (every real match found genuinely contains the named allergen elsewhere
+in its ingredient list too, consistent with allergen statements usually being redundant with the real
+list rather than naming something absent); (2) the confirmed repro
+(`'sunflower seeds, dried cranberries, sea salt. Contains wheat.'` → previously a false
+`glyphosate_heavy` reject) was re-run directly against `lib/rulesEngine.js` as it exists in the
+deployed commit (confirmed byte-identical via `git diff HEAD` — zero lines), returning `flags: []`,
+`verdict: 'green'`. No raw-ingredient-text debug path exists on the live `/api/scan` endpoint (it only
+accepts a barcode), so this is the most direct verification available short of finding a real product
+that isolates the bug.
 
 ---
 
