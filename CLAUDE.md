@@ -573,7 +573,7 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 32** — committed locally (see the L1 seafood copy fix changelog entry below), **not yet deployed** as of this writing. PROMPT_VERSION 31 was confirmed deployed to production July 10, 2026 (empirically verified via a live PostgREST query against `scan_cache` after a fresh scan returned `prompt_version: 31` directly from the row, following the deploy-gap incident documented below) — that remains the last *confirmed-live* version until 32 is pushed and verified the same way.
+**Current PROMPT_VERSION is 32 — confirmed deployed to production July 10, 2026** (not just committed — empirically verified via a live PostgREST query against `scan_cache` after a fresh scan returned `prompt_version: 32` directly from the row — both an L1 and L2 row for the same barcode — following the deploy-gap incident documented below).
 
 ### Cache Invalidation
 When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 30. Run `DELETE FROM scan_cache WHERE prompt_version < 30` in Supabase to purge all stale rows before deploying.
@@ -1991,8 +1991,20 @@ those changes genuinely didn't touch anything stored in the `flags` array itself
 `DELETE FROM scan_cache WHERE prompt_version < 32` in Supabase before/after deploying. The
 `M. PROMPT_VERSION` contract test was updated to assert `32`.
 
-**Not yet deployed** — committed locally only, per this session's explicit instruction. Push/deploy is
-a separate step.
+**Confirmed deployed to production July 10, 2026** (not just committed): pushed as commit `96620f8`,
+Vercel auto-deployed from `origin/mvp-beta` (no manual trigger available or needed — detected via
+polling the live app until a fresh, non-cache-hit scan was observed at the new `prompt_version`).
+`prompt_version: 32` confirmed via direct PostgREST queries against freshly-written `scan_cache` rows
+for barcode 099482477929 — both `user_level: 1` and `user_level: 2` — not inferred from cache-hit
+behavior. Fix 1 confirmed live and working on this real product: a fresh L1 scan (`userLevel: 1` is a
+plain request-body parameter) of "Farm-Raised Atlantic Salmon Fillets" returned the new seafood-specific
+`conventional_meat` caution summary verbatim — `"Farmed or unlabeled seafood — Joel explains the
+difference between wild-caught and farmed: sourcing matters as much as ingredients. Look for a
+wild-caught certification, or seafood from a source you trust."` — not the old land-animal
+"grass-fed, pasture-raised" copy. The AI-generated `explanation.details.conventional_meat` for the same
+scan also correctly picked up the seafood framing ("Farm-raised Atlantic salmon typically means fish
+raised in ocean pens..."), confirming the fix propagates through to the Claude-generated explanation
+as well, not just the static flag summary.
 
 ---
 
