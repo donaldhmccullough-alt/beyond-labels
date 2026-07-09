@@ -573,7 +573,7 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 30.**
+**Current PROMPT_VERSION is 30 — confirmed deployed to production July 10, 2026** (not just committed — empirically verified via a live PostgREST query against `scan_cache` after a fresh scan returned `prompt_version: 30` directly from the row, following the deploy-gap incident documented below).
 
 ### Cache Invalidation
 When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 30. Run `DELETE FROM scan_cache WHERE prompt_version < 30` in Supabase to purge all stale rows before deploying.
@@ -1801,6 +1801,44 @@ regressions.
 sub-signals) are not part of the `flags`/`verdict`/`clearedBy` contract `PROMPT_VERSION` gates, and
 are not fed into `buildUserMessage()` in `explain.js`. The `M. PROMPT_VERSION` contract test was
 re-checked and still asserts `30`, unchanged.
+
+---
+
+### Session — deploy gap incident: ~8 sessions of committed-in-documentation work was never actually pushed (July 2026, process learning)
+
+**What happened.** A routine investigation (prompted by a user question about whether a specific
+fix was live) found that local `HEAD` on `mvp-beta` was `PROMPT_VERSION 22`, while this file
+documented 7+ sessions of fixes up through `PROMPT_VERSION 30`, each written up as if shipped. Every
+one of those fixes — including two with a currently-live, user-facing correctness bug (the wild-caught
+Node 5 false-"all clear" bug, and the "-free"/"non-" bare-word guard false-positive bug) — existed
+only in this machine's local working tree. `git log --all -S"<distinctive symbol>"` confirmed several
+of these fixes (`isInFreeOrNonContext`, `parseExplanationResponse`) had **zero commits anywhere** in
+the repository's history, on any branch. The gap was not a wrong-branch problem — `origin/mvp-beta`
+was correctly what Vercel deploys (empirically confirmed via a live API response shape that only
+`mvp-beta`'s code could produce, and via a `prompt_version` field read directly off a live cache-hit
+row) — it was purely "the commits were never made."
+
+**Root cause.** Work across roughly 8 sessions was implemented, tested (1,222+ passing tests each
+time), and documented in this file's changelog, but `git commit`/`git push` was never part of the
+session's own closing steps — each session ended with a fully-tested, correct, but entirely
+uncommitted working tree, and the next session simply continued from there. `supabase/migrations/`
+being untracked (see below) is a symptom of the same pattern.
+
+**Fix.** All accumulated work was committed (5 separate, reviewable commits — see the individual
+changelog entries above for `e4223f7`, `969d237`, `b059710`, `6437b85`, `8dbf62b`) and pushed to
+`origin/mvp-beta`. Deploy was confirmed live via direct empirical checks, not assumed from a push
+succeeding: a fresh scan of barcode 011110101082 returned `prompt_version: 30` read directly from
+the written row (not inferred from cache-hit behavior), and the same scan's `verdict`/`flags`/`isMeat`
+fields matched the new code's expected output, not the old deployed code's.
+
+**Process change going forward: commit and push at the end of every session, not just when
+explicitly asked.** The gap here wasn't caused by any single mistake — it was 8 sessions in a row
+each leaving work uncommitted, compounding invisibly because nothing in the workflow surfaced the
+growing gap until it was directly investigated. A session that ends with passing tests and a clean
+diagnosis but an uncommitted working tree is not actually "done" — CLAUDE.md documentation describing
+a fix as shipped is not a substitute for `git log` showing it. `supabase/migrations/` is now tracked
+in git (see the `6437b85` changelog entry) specifically so migration files can no longer silently sit
+unreviewed and unbacked-up on a single machine the way `olive_caveat`'s did for over a month.
 
 ---
 
