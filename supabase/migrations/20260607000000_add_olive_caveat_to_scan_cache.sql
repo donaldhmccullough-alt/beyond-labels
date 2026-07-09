@@ -1,0 +1,1 @@
+ALTER TABLE scan_cache ADD COLUMN IF NOT EXISTS olive_caveat BOOLEAN DEFAULT false;

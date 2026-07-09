@@ -1,0 +1,29 @@
+-- Phase 2 of the is_meat corroboration fix (see CLAUDE.md changelog).
+-- Persists the two sub-signals already computed and logged in Phase 1
+-- (pages/api/scan.js: isMeatCategory, isMeatIngredient) so they are
+-- queryable/auditable instead of only visible in ephemeral request logs.
+--
+-- Deliberately additive-only:
+--   - Nullable, no DEFAULT — existing rows get NULL (not false) for both
+--     columns, so "never computed" (old row) stays distinguishable from
+--     "computed and false" (rescanned row). No backfill of existing rows
+--     is performed in this migration; they populate naturally on next
+--     scan (cache miss).
+--   - is_meat itself is untouched — still isMeatCategory || isMeatIngredient,
+--     unchanged from Phase 1.
+--
+-- IMPORTANT: this migration must be run against the live Supabase database
+-- BEFORE deploying the pages/api/scan.js changes that reference these
+-- columns in the scan_cache upsert payload. If deployed out of order, the
+-- upsert will throw on every request (PostgREST rejects unknown columns)
+-- and be silently swallowed by the existing try/catch, resulting in zero
+-- scan_cache writes — this exact failure already happened once with
+-- olive_caveat (see the 20260607000000 migration and commit bb3e83e,
+-- "fix: remove olive_caveat from scan_cache upsert — column does not exist
+-- in DB"). Confirmed via a direct PostgREST query against the live database
+-- during this session that the olive_caveat column still does not exist in
+-- production despite that migration file existing in the repo since
+-- June 7, 2026 — i.e. writing the migration file is not sufficient; it must
+-- actually be applied.
+ALTER TABLE scan_cache ADD COLUMN IF NOT EXISTS is_meat_category BOOLEAN;
+ALTER TABLE scan_cache ADD COLUMN IF NOT EXISTS is_meat_ingredient BOOLEAN;
