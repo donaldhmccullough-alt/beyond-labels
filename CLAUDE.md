@@ -573,7 +573,7 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 31 — confirmed deployed to production July 10, 2026** (not just committed — empirically verified via a live PostgREST query against `scan_cache` after a fresh scan returned `prompt_version: 31` directly from the row, following the deploy-gap incident documented below).
+**Current PROMPT_VERSION is 32** — committed locally (see the L1 seafood copy fix changelog entry below), **not yet deployed** as of this writing. PROMPT_VERSION 31 was confirmed deployed to production July 10, 2026 (empirically verified via a live PostgREST query against `scan_cache` after a fresh scan returned `prompt_version: 31` directly from the row, following the deploy-gap incident documented below) — that remains the last *confirmed-live* version until 32 is pushed and verified the same way.
 
 ### Cache Invalidation
 When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 30. Run `DELETE FROM scan_cache WHERE prompt_version < 30` in Supabase to purge all stale rows before deploying.
@@ -1937,6 +1937,62 @@ deployed commit (confirmed byte-identical via `git diff HEAD` — zero lines), r
 `verdict: 'green'`. No raw-ingredient-text debug path exists on the live `/api/scan` endpoint (it only
 accepts a barcode), so this is the most direct verification available short of finding a real product
 that isolates the bug.
+
+---
+
+### Session — L1 seafood copy fix + MEAT_CATEGORIES/SEAFOOD_CATEGORIES drift-risk fix (July 2026, PROMPT_VERSION 32)
+
+Follow-up to a diagnosis session confirming `isConventionalMeat = isMeat && !isSeafood && !isGameMeat`
+correctly routes seafood away from Node 8 at L2 (verified against real production data — no cached
+seafood row shows the wrong "USDA Organic certification" messaging) — but found two smaller, real
+issues in the surrounding code.
+
+**Fix 1 — L1 seafood copy bug (user-facing correctness).** Override 2's injected `conventional_meat`
+caution flag had a single hardcoded `summary` string with land-animal-only wording ("grass-fed,
+pasture-raised... a farm you trust"), even though the code's own pre-existing comment ("Conventional
+meat **or non-wild seafood**: inject educational caution") already acknowledged this branch also
+catches farmed/unlabeled seafood. A farmed salmon or unlabeled seafood product at Level 1 was getting
+land-animal sourcing copy. L2 already has correct, seafood-aware wording for the equivalent case
+(`"Farmed or unlabeled seafood — wild-caught certification not found"`, confirmed live on barcode
+099482477929). Fix: branch the summary text on `l1IsSeafood` (already computed, already used to gate
+the wild-caught check one line above — no new signal needed), adapted to this file's L1 "Joel
+explains..." educational tone (matching Override 3's `conventional_dairy` caution phrasing) rather
+than L2's more direct reject-severity wording. The land-animal branch's original copy is completely
+unchanged.
+
+**Fix 2 — MEAT_CATEGORIES/SEAFOOD_CATEGORIES drift risk (defensive, not a live bug).** The two Sets
+held identical seafood-related OFF tags today, but as two *separately* hardcoded literals with no
+structural link — a future session editing one without remembering the other would silently
+reintroduce a real gap (a fish/seafood product with `isMeatCategory: true` but `isSeafood: false`,
+incorrectly routing to Node 8). Fixed by declaring `SEAFOOD_CATEGORIES` first and having
+`MEAT_CATEGORIES` spread `...SEAFOOD_CATEGORIES` directly, mirroring the `LEVEL_1_YELLOW_TRIGGERS`
+pattern in `lib/rulesEngine.js` (built from the actual category arrays specifically so it can't drift
+from them). Confirmed zero behavior change: a drift-guard test asserts every `SEAFOOD_CATEGORIES`
+entry is present in `MEAT_CATEGORIES`, and both Sets were exported from `pages/api/scan.js`
+(test-only named exports, alongside the existing default `handler` export) specifically to make this
+assertion possible — this is the first place in the codebase two "same tags, different lists" Sets are
+checked for consistency directly rather than by inspection.
+
+**Tests added:** 3 — a drift-guard test (Suite H) asserting `SEAFOOD_CATEGORIES ⊆ MEAT_CATEGORIES`;
+an extension of the existing Suite S `S2` farmed-seafood-at-L1 test asserting the injected flag's
+`summary` now contains "wild-caught" and does NOT contain "grass-fed"/"pasture-raised"; and a new
+regression test confirming a genuine land-animal product (`en:beef`) at L1 still gets the original,
+unchanged grass-fed/pasture-raised copy. Full suite: 1,262 passing (1,057 rulesEngine + 194 scan + 11
+explain), up from 1,260.
+
+**PROMPT_VERSION bumped 31 → 32** — for Fix 1 only; Fix 2 is confirmed zero-behavior-change (verified
+by the drift-guard test and by direct comparison of the resulting Set contents before/after), so it
+would not independently require a bump. Fix 1 changes the literal `summary` string stored in the
+`flags` JSONB array within `scan_cache` for L1 farmed/unlabeled seafood scans — a cached row from
+before this fix would keep serving the wrong land-animal copy on every future cache hit if the version
+weren't bumped, the same reasoning already applied to every prior flags/verdict-content fix in this
+file (v23 through v31). Note this differs from the `is_meat` Phase 1/2 sessions' "no bump" reasoning —
+those changes genuinely didn't touch anything stored in the `flags` array itself; this one does. Run
+`DELETE FROM scan_cache WHERE prompt_version < 32` in Supabase before/after deploying. The
+`M. PROMPT_VERSION` contract test was updated to assert `32`.
+
+**Not yet deployed** — committed locally only, per this session's explicit instruction. Push/deploy is
+a separate step.
 
 ---
 

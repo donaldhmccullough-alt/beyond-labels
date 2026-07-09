@@ -114,12 +114,36 @@ function normalizeLabelTags(labelsTags) {
   return result;
 }
 
+// ── Seafood category detection ────────────────────────────────────────────
+// Single source of truth for seafood-related OFF tags — used both to
+// identify products where wild-caught vs. farmed is the key safety
+// distinction, AND as the seafood component of MEAT_CATEGORIES below.
+// Declared first (not as a "subset" comment on a second, separately
+// hardcoded literal) so MEAT_CATEGORIES can spread from it directly —
+// two independently maintained literal lists happening to match today
+// would drift silently the moment either one is edited without the other.
+const SEAFOOD_CATEGORIES = new Set([
+  'en:fish',
+  'en:seafood',
+  'en:shellfish',
+  'en:crustaceans',
+  'en:molluscs',
+  'en:salmon',
+  'en:tuna',
+  'en:cod',
+  'en:tilapia',
+  'en:shrimp',
+]);
+
 // ── Meat product detection ────────────────────────────────────────────────
+// Seafood entries are spread in from SEAFOOD_CATEGORIES (single source of
+// truth, above) rather than re-listed as separate literal strings — mirrors
+// the LEVEL_1_YELLOW_TRIGGERS pattern in lib/rulesEngine.js, built from the
+// actual category arrays so the two lists can't silently diverge.
 const MEAT_CATEGORIES = new Set([
   'en:meats', 'en:meat', 'en:beef', 'en:ground-beef', 'en:pork', 'en:chicken',
   'en:turkey', 'en:lamb', 'en:veal', 'en:poultry', 'en:game-meats',
-  'en:fish', 'en:seafood', 'en:shellfish', 'en:crustaceans', 'en:molluscs',
-  'en:salmon', 'en:tuna', 'en:cod', 'en:tilapia', 'en:shrimp',
+  ...SEAFOOD_CATEGORIES,
   'en:deli-meats', 'en:cold-cuts', 'en:sausages', 'en:hot-dogs',
   'en:charcuterie', 'en:bacon', 'en:ham', 'en:salami', 'en:pepperoni',
   'en:smoked-meats', 'en:cured-meats',
@@ -141,22 +165,6 @@ function isMeatProduct(categoriesTags) {
   return categoriesTags.some(t => MEAT_CATEGORIES.has(String(t).toLowerCase()));
 }
 
-// ── Seafood category detection ────────────────────────────────────────────
-// Subset of MEAT_CATEGORIES — used to identify products where wild-caught
-// vs. farmed is the key safety distinction.
-const SEAFOOD_CATEGORIES = new Set([
-  'en:fish',
-  'en:seafood',
-  'en:shellfish',
-  'en:crustaceans',
-  'en:molluscs',
-  'en:salmon',
-  'en:tuna',
-  'en:cod',
-  'en:tilapia',
-  'en:shrimp',
-]);
-
 /**
  * Returns true if the product is a seafood/fish product.
  * @param {string[]} categoriesTags
@@ -166,6 +174,12 @@ function isSeafoodProduct(categoriesTags) {
   if (!Array.isArray(categoriesTags) || categoriesTags.length === 0) return false;
   return categoriesTags.some(t => SEAFOOD_CATEGORIES.has(String(t).toLowerCase()));
 }
+
+// Named exports for test use only (drift-guard: confirms MEAT_CATEGORIES's
+// seafood entries and SEAFOOD_CATEGORIES stay in sync — see
+// __tests__/api/scan.test.js). Not used by any other module; the handler
+// itself remains the default export.
+export { MEAT_CATEGORIES, SEAFOOD_CATEGORIES };
 
 // ── Game meat category detection ──────────────────────────────────────────
 // Game meats are wild-harvested by nature — no certification required.
@@ -818,11 +832,20 @@ export default async function handler(req, res) {
         // Mirror L2 node 6: game meat → leave verdict and flags unchanged.
       } else {
         // Conventional meat or non-wild seafood: inject educational caution.
+        // Summary text branches on l1IsSeafood so a farmed/unlabeled seafood
+        // product doesn't get land-animal "grass-fed, pasture-raised" copy —
+        // mirrors L2 Node 5b's seafood-aware wording ("Farmed or unlabeled
+        // seafood — wild-caught certification not found"), softened to this
+        // file's L1 educational tone (see Override 3's conventional_dairy
+        // caution for the same "Joel explains..." phrasing convention).
+        const summary = l1IsSeafood
+          ? 'Farmed or unlabeled seafood — Joel explains the difference between wild-caught and farmed: sourcing matters as much as ingredients. Look for a wild-caught certification, or seafood from a source you trust.'
+          : 'Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed, pasture-raised, or meat from a farm you trust.';
         flags = [{
           category:          'conventional_meat',
           severity:          'caution',
           matchedIngredient: '',
-          summary:           'Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed, pasture-raised, or meat from a farm you trust.',
+          summary,
         }, ...flags];
         // A caution flag can upgrade green → yellow, but cannot override red.
         if (verdict === 'green') verdict = 'yellow';

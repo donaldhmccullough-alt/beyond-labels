@@ -48,6 +48,7 @@ jest.mock('../../lib/supabaseServer', () => ({
 const { getSupabaseServer } = require('../../lib/supabaseServer');
 
 const handler = require('../../pages/api/scan').default;
+const { MEAT_CATEGORIES, SEAFOOD_CATEGORIES } = require('../../pages/api/scan');
 
 // ─── Realistic OFF response fixtures ────────────────────────────────────────
 
@@ -692,6 +693,20 @@ describe('G. Response shape — structural contract', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('H. Meat verdict logic', () => {
+  // ── Drift guard: MEAT_CATEGORIES's seafood entries must match ────────────
+  //    SEAFOOD_CATEGORIES exactly. MEAT_CATEGORIES spreads ...SEAFOOD_CATEGORIES
+  //    directly (see pages/api/scan.js), so this should be structurally
+  //    impossible to fail today — this test exists to catch a FUTURE session
+  //    re-introducing separately hardcoded literals (the shape that created
+  //    the original drift risk this fix closed) rather than editing the
+  //    shared source.
+
+  test('drift guard: every SEAFOOD_CATEGORIES entry is present in MEAT_CATEGORIES', () => {
+    for (const tag of SEAFOOD_CATEGORIES) {
+      expect(MEAT_CATEGORIES.has(tag)).toBe(true);
+    }
+  });
+
   // ── Shared OFF fixture builder ────────────────────────────────────────────
 
   /** Build a minimal OFF product response with the given categories_tags / labels_tags. */
@@ -1320,6 +1335,19 @@ describe('J. Level 1 explicit overrides', () => {
     expect(flag.severity).toBe('caution');
   });
 
+  test('regression: L1 land-animal meat (not seafood) still gets the original grass-fed/pasture-raised copy, unchanged by the seafood-branching fix', async () => {
+    mockFetchOnce(l1OffResp({
+      ingredientsText: 'beef, water, salt',
+      categoriesTags:  ['en:beef'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000104106', userLevel: 1 }), res);
+    const flag = res.body.flags.find(f => f.category === 'conventional_meat');
+    expect(flag.summary).toMatch(/grass-fed/i);
+    expect(flag.summary).toMatch(/pasture-raised/i);
+    expect(flag.summary).not.toMatch(/seafood/i);
+  });
+
   test('L1: meat product with clean ingredients → verdict is yellow (caution from meat flag)', async () => {
     mockFetchOnce(l1OffResp({
       ingredientsText: 'beef, water, salt',
@@ -1763,10 +1791,10 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 31 (v31: bare "Contains X." allergen-statement false-flag fix — glyphosate_heavy/conventional_crops/conventional_eggs reject flags no longer trigger from allergen-advisory text alone; "less than X% of the following" qualifier stripped without hiding real ingredients after it; "(VEGAN):"-style cert-prefix labels stripped)', () => {
+  test('PROMPT_VERSION is 32 (v32: L1 seafood copy fix — farmed/unlabeled seafood at Level 1 no longer gets land-animal "grass-fed, pasture-raised" copy; MEAT_CATEGORIES/SEAFOOD_CATEGORIES drift-risk fix, zero behavior change)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(31);
+    expect(PROMPT_VERSION).toBe(32);
   });
 });
 
@@ -2429,6 +2457,12 @@ describe('S. L1 seafood / game-meat / dairy overrides', () => {
     const flag = res.body.flags.find(f => f.category === 'conventional_meat');
     expect(flag).toBeDefined();
     expect(flag.severity).toBe('caution');
+    // Seafood-specific copy — must NOT be the land-animal grass-fed/pasture-raised
+    // wording. Confirms the diagnosis-session bug fix: farmed/unlabeled seafood at
+    // L1 previously got Joel's land-animal sourcing copy verbatim.
+    expect(flag.summary).toMatch(/wild-caught/i);
+    expect(flag.summary).not.toMatch(/grass-fed/i);
+    expect(flag.summary).not.toMatch(/pasture-raised/i);
   });
 
   // ── S3: game meat → GREEN, no conventional_meat flag ─────────────────────
