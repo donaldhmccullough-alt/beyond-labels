@@ -1791,10 +1791,10 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 34 (v34: bare "oats"/"corn"/"rice" collision-word guards — fixes false-positive glyphosate_heavy/RED verdict on "goat milk"/"goats\' milk yogurt", and false-positive gluten_grains on "acorn squash" and "price")', () => {
+  test('PROMPT_VERSION is 35 (v35: allowlist-based redesign of the collision-word guard — fixes false-positive gluten_grains on "licorice"/"licorice root extract"/"black licorice" via the \'rice\' trigger, and auto-closes "unicorn"/corn and "coats"/oats without per-letter enumeration)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(34);
+    expect(PROMPT_VERSION).toBe(35);
   });
 });
 
