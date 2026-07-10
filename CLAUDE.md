@@ -573,7 +573,7 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 33** (bare `'ada'` trigger word-boundary guard — see the "bare 'ada' trigger word-boundary guard" changelog entry below). Committed and pushed this session; not yet empirically re-confirmed live against production `scan_cache` the way v32 was — per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until a fresh live scan is checked post-deploy.
+**Current PROMPT_VERSION is 34** (`'oats'`/`'corn'`/`'rice'` collision-word guards — see the "'oats'/'corn'/'rice' collision-word guards" changelog entry below). Committed and pushed this session; not yet empirically re-confirmed live against production `scan_cache` the way v32 was — per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until a fresh live scan is checked post-deploy.
 
 ### Cache Invalidation
 When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 30. Run `DELETE FROM scan_cache WHERE prompt_version < 30` in Supabase to purge all stale rows before deploying.
@@ -2098,6 +2098,97 @@ Canada" manufacturer statement) previously carried an incorrect reject-severity 
 if that was the product's only concern, an incorrect RED verdict. Run
 `DELETE FROM scan_cache WHERE prompt_version < 33` in Supabase before/after deploying. The
 `M. PROMPT_VERSION` contract test was updated to assert `33`.
+
+---
+
+### Session — 'oats'/'corn'/'rice' collision-word guards: "goat milk" / "acorn squash" / "price" false-positive fix (July 2026, PROMPT_VERSION 34)
+
+Follow-up to the `'ada'` fix session above: the "additional findings" audit from that session flagged
+three more real false positives of the same bug class (a short bare trigger substring-matching inside
+an unrelated word), left unfixed at the time pending review. This session fixes the most severe one
+(`'oats'` inside `"goats"` — verdict-changing) plus the two lower-priority ones batched in, per
+instruction.
+
+**Root cause.** `GLYPHOSATE_HEAVY` and `GLUTEN_GRAINS` (`lib/rulesEngine.js`) have bare `'oats'`
+triggers with no word-boundary guard (`GLYPHOSATE_HEAVY` also has `'oat milk'`/`'oatmilk'`, both of
+which share the same collision). `GLUTEN_GRAINS` also has bare `'corn'` and `'rice'` triggers, likewise
+unguarded. All four collide with a real word that happens to start with the trigger preceded by exactly
+one collision letter:
+
+- `'oats'`/`'oat milk'`/`'oatmilk'` inside **"goat"** + suffix — `"goats' milk yogurt"` and `"goat
+  milk"` both matched, producing a reject-severity `glyphosate_heavy` flag (**verdict-changing** — no
+  clearance available on a goat-dairy product, since there are no actual oats to certify
+  organic/glyphosate-free) plus a `gluten_grains` caution, on products containing zero oats. Reproduced
+  directly: `analyzeIngredients("Goats' milk yogurt, sea salt.", [], 2)` returned `verdict: 'red'`
+  before this fix.
+- `'corn'` inside **"acorn"** — `"acorn squash"` matched, producing a `gluten_grains` caution
+  (does not change verdict — gluten_grains is excluded from verdict calculation and stripped from
+  both L1/L2 display).
+- `'rice'` inside **"price"** — `"suggested retail price may vary"` matched, producing a
+  `gluten_grains` caution. Lower real-world likelihood than the other two (`ingredients_text` from Open
+  Food Facts is a literal ingredient list, not marketing copy), fixed anyway per instruction since it's
+  the same guard mechanism.
+
+**A blanket adjacent-letter guard (the same style used for the `'ada'` fix) is not safe here** — unlike
+`'ada'`, which has no legitimate word it's a real suffix of, bare `'corn'` is legitimately a suffix of
+**"popcorn"** (`analyzeIngredients('Popcorn, sea salt, water.', [], 2)` correctly produces
+`gluten_grains:corn` today, and must keep doing so — popcorn genuinely is corn). A guard that skips any
+letter-adjacent `'corn'` match would silently break this real, intended match. Confirmed the same risk
+exists for `'rice'` (e.g. "licorice" also contains the substring "rice") and for `'oats'` (e.g. "coats"
+also contains "oats") — see "Residual, out-of-scope collisions found" below.
+
+**Fix.** Added a new shared helper, `isImmediatelyPrecededByLetter(text, index, letter)`
+(`lib/rulesEngine.js`, alongside `isInFreeOrNonContext()`), that checks whether the single character
+immediately before the match equals a specific `letter` AND that letter itself begins a word (the
+character before *it* is not a letter). This distinguishes `"acorn"` (the `'a'` of "acorn" is
+word-initial, immediately preceding `'corn'`) from `"popcorn"` (the `'p'` of "pop" precedes `'corn'`,
+not `'a'`) without a blanket rule. Applied at four call sites: `GLYPHOSATE_HEAVY`'s loop (for
+`'oats'`/`'oat milk'`/`'oatmilk'`, guarding against a preceding `'g'`) and `GLUTEN_GRAINS`'s loop (for
+`'oats'` guarding `'g'`, `'corn'` guarding `'a'`, `'rice'` guarding `'p'`). Confirmed via direct testing
+that every currently-correct match survives unchanged: bare `"oats"`, `"rolled oats"`, a real
+`"Oat milk"` product, bare `"corn"`, `"popcorn"`, bare `"rice"`, and `"brown rice"` all still flag
+exactly as before.
+
+**Residual, out-of-scope collisions found during this fix — NOT fixed, reported per this project's
+"don't silently expand scope" convention (same as the `'ada'` session's malt-guard note):** while
+verifying the `'popcorn'` non-regression above, three more real collisions of the identical bug class
+were found, all involving a *different* collision letter than the one just fixed, so they fall outside
+the narrow `isImmediatelyPrecededByLetter()` calls added this session:
+
+- **`'corn'` inside "unicorn"** (`'u-n-i-corn'`, collision letter `'i'`) — e.g. "unicorn sprinkles," a
+  real novelty-food ingredient descriptor. `analyzeIngredients('unicorn sprinkles, sugar, salt.', [],
+  2)` still produces `gluten_grains:corn`.
+- **`'rice'` inside "licorice"** (`'l-i-c-o-rice'`, collision letter `'o'`) — licorice is a common,
+  plausible real ingredient. `analyzeIngredients('licorice, sugar, salt.', [], 2)` still produces
+  `gluten_grains:rice`.
+- **`'oats'` inside "coats"** (collision letter `'c'`) — lower real-world relevance (a coating
+  descriptor, e.g. "chocolate coats," is less commonly how it would appear verbatim in
+  `ingredients_text`, but the mechanism is identical). Still produces `glyphosate_heavy:oats` and
+  `gluten_grains:oats`.
+
+Each would need its own `isImmediatelyPrecededByLetter(text, index, '<letter>')` call added at the same
+two call sites — cheap to add, but deliberately left for a separate pass so each can get the same
+"does this change real output" review the `'ada'`/`'oats'`/`'corn'`/`'rice'` fixes went through, per
+instruction.
+
+**Tests added (`lib/rulesEngine.test.js`, new "SESSION FIX" describe block):** 11 tests — `"goat
+milk"` and `"goats' milk yogurt"` no longer trigger `glyphosate_heavy`/`gluten_grains`; regression
+checks confirming bare `"oats"`, `"rolled oats"`, and a real `"Oat milk"` product still correctly
+flag; `"acorn squash"` no longer triggers `gluten_grains`; regression checks confirming bare `"corn"`
+and `"popcorn"` still correctly flag; `"suggested retail price"` no longer triggers anything from the
+`'rice'` trigger; regression checks confirming bare `"rice"` and `"brown rice"` still correctly flag.
+Full suite: 1295 passing / 1 known pre-existing failure (the previous session's cross-list
+contradiction test, unchanged — still only the same 8 out-of-scope "dead entry" findings), up from
+1284 passing / 1 failing before this session's fix.
+
+**PROMPT_VERSION bumped 33 → 34.** This changes real `flags`/`verdict` output for a class of
+previously-cached products — most severely, any goat-dairy product (goat milk, goat's milk yogurt,
+goat cheese made with goat milk as a listed ingredient) previously carried an incorrect reject-severity
+`glyphosate_heavy` flag and, since goat dairy has no oats to certify organic/glyphosate-free, an
+incorrect RED verdict with no available clearance path. Also affects any product containing "acorn"
+(acorn squash) or the word "price" in its ingredient text, though those are caution-only and do not
+flip the verdict. Run `DELETE FROM scan_cache WHERE prompt_version < 34` in Supabase before/after
+deploying. The `M. PROMPT_VERSION` contract test was updated to assert `34`.
 
 ---
 
