@@ -573,7 +573,7 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 35** (allowlist-based redesign of the collision-word guard — see the "allowlist-based redesign of the collision-word guard" changelog entry below). Committed and pushed this session; not yet empirically re-confirmed live against production `scan_cache` the way v32 was — per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until a fresh live scan is checked post-deploy.
+**Current PROMPT_VERSION is 36** (`'spelt'`/`'peas'`/`'hing'` collision guards — see the "'spelt'/'peas'/'hing' collision guards" changelog entry below). Committed and pushed this session; not yet empirically re-confirmed live against production `scan_cache` the way v32 was — per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until a fresh live scan is checked post-deploy.
 
 ### Cache Invalidation
 When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 30. Run `DELETE FROM scan_cache WHERE prompt_version < 30` in Supabase to purge all stale rows before deploying.
@@ -2290,6 +2290,86 @@ licorice root extract in herbal/tea products) previously carried an incorrect `g
 flag from zero actual rice content. Also closes "unicorn"/corn and "coats"/oats, both caution-only and
 lower real-world frequency. Run `DELETE FROM scan_cache WHERE prompt_version < 35` in Supabase
 before/after deploying. The `M. PROMPT_VERSION` contract test was updated to assert `35`.
+
+---
+
+### Session — 'spelt'/'peas'/'hing' collision guards: "misspelt"/"peasant bread"/"something" family false-positive fix (July 2026, PROMPT_VERSION 36)
+
+Follow-up to the guard-redesign session above, which left three confirmed collisions from the ongoing
+bare-trigger audit unfixed pending review: `'spelt'` inside `"misspelt"`, `'peas'` inside `"peasant"`,
+`'hing'` inside the `"-thing"` word family. This session fixes all three.
+
+**Wiring check (per instruction — confirm before assuming).** None of the three triggers had
+`isPrecededByLetterUnlessAllowlisted()` (as it was named at the start of this session) wired to their
+call sites yet — the guard was only applied to `'oats'`/`'oat milk'`/`'oatmilk'` (`GLYPHOSATE_HEAVY`)
+and `'oats'`/`'corn'`/`'rice'` (`GLUTEN_GRAINS`). `'spelt'` needed the guard added in **both** loops
+(it's a trigger in both `GLYPHOSATE_HEAVY` and `GLUTEN_GRAINS`); `'peas'` only in `GLYPHOSATE_HEAVY`
+(not a `GLUTEN_GRAINS` trigger — peas aren't a gluten grain); `'hing'` only in `GLUTEN_GRAINS`
+(asafoetida alternative name, not in `GLYPHOSATE_HEAVY`).
+
+**`'hing'` verified before fixing, per instruction.** Confirmed `'hing'` is the alternative name for
+asafoetida (`GLUTEN_GRAINS`'s own inline comment: `// alternative name for asafoetida`). Checked every
+plausible real-world `"hing"` label form before applying the guard: bare `"Hing"` as its own ingredient,
+`"hing powder"` (space-separated), and parenthetical `"hing (asafoetida)"` — all either stand alone or
+are separated by whitespace/punctuation, so none has a letter immediately adjacent to the match. No
+legitimate letter-adjacent `"hing"` compound was found, so — unlike `'corn'`/"popcorn" and
+`'oats'`/"groats" — no `TRIGGER_ADJACENCY_ALLOWLIST` entry was needed for `'hing'`.
+
+**A new collision shape found while fixing `'peas'`: PREFIX, not SUFFIX.** Every collision fixed so far
+(oats/goats, corn/acorn, rice/price, corn/unicorn, rice/licorice, oats/coats, spelt/misspelt) has the
+same shape — the collision word *ends with* the trigger, so a letter immediately *precedes* the match.
+`'peas'` inside `"peasant"` is the mirror image: `"peasant"` *starts with* `"peas"` — no letter precedes
+the match, but letters follow it (`"ant"`). `isPrecededByLetterUnlessAllowlisted()`'s before-only check
+could not catch this at all — confirmed directly: applying the existing guard unchanged left
+`"peasant bread, sugar, salt."` still producing a false `glyphosate_heavy:peas` reject flag.
+
+**Fix required extending the guard, not just wiring it up.** Renamed
+`isPrecededByLetterUnlessAllowlisted()` → `isAdjacentToLetterUnlessAllowlisted(text, index, end,
+checkAfter = false)` (`lib/rulesEngine.js`) — `checkAfter` is an opt-in parameter, default `false`,
+preserving the existing before-only behavior for every other guarded trigger. Only the `'peas'` call
+site passes `checkAfter: true`. This distinction is load-bearing, not cosmetic: extending the check to
+the "after" side for `'corn'`/`'rice'` too (rather than opt-in per trigger) was tested directly and
+would have broken real no-space label variants — `"cornstarch"` (bare `'corn'` followed by `'s'`) and
+`"ricecake"` (bare `'rice'` followed by `'c'`) are both genuine corn/rice ingredients that rely on the
+suffix-only match to correctly flag; a blanket "after" check would have silently reintroduced a false
+negative on both. Confirmed via direct testing that both continue to flag correctly with the opt-in
+design.
+
+**Tests added (`lib/rulesEngine.test.js`, new "SESSION FIX" describe block):** 16 tests — `"misspelt"`
+no longer triggers via `'spelt'`; real `"spelt"`/`"spelt flour"` still trigger both categories;
+`"peasant bread"` no longer triggers via `'peas'`; real `"peas"`/`"green peas"` still trigger;
+`"chickpeas"` (its own distinct, longer trigger) confirmed unaffected; a parameterized check
+(`test.each`) confirming `"something"`/`"anything"`/`"everything"`/`"nothing"` no longer trigger via
+`'hing'`; real `"hing"`, `"asafoetida"`, and parenthetical `"hing (asafoetida)"` still trigger; and two
+regression guards confirming `"cornstarch"`/`"ricecake"` (no-space variants) still correctly flag,
+proving `checkAfter` was correctly scoped to `'peas'` only. Full suite: 1322 passing / 1 known
+pre-existing failure (the cross-list contradiction test, unchanged — still only the same 8
+out-of-scope "dead entry" findings), up from 1306 passing / 1 failing before this session's fix.
+
+**Audit pattern flagged, not silently fixed, per instruction.** This is now the second consecutive
+session in which a request to fix a small, specific set of confirmed collisions surfaced yet another
+gap in how thoroughly the trigger lists have actually been checked: two sessions ago, `'oats'`/`'corn'`/
+`'rice'` were fixed but `'spelt'`/`'peas'`/`'hing'` were found in the *same* audit pass and left for
+"a separate session" — this session. The recurring theme across all four sessions in this series is
+that each audit has been a **spot-check** (brainstorming plausible collision candidates and testing
+them one at a time), not an exhaustive pass over every remaining bare short trigger against a real
+word corpus — and every single spot-check so far has found at least one real collision the previous
+one missed. One item from two sessions ago remains open and unfixed for the same reason: `'olean'`
+(`SYNTHETIC_ADDITIVES`, always reject) inside `"oleander"` — mechanically confirmed, reported, never
+wired to the guard (no call site exists for it at all yet). Recommend a fourth session that applies
+`isAdjacentToLetterUnlessAllowlisted()` systematically to *every* remaining bare short trigger across
+`SYNTHETIC_ADDITIVES`/`GLUTEN_GRAINS`/`GLYPHOSATE_HEAVY` in one pass (checking each against a real
+dictionary or word-frequency list rather than hand-picked candidates), instead of continuing to close
+one hand-found collision per session.
+
+**PROMPT_VERSION bumped 35 → 36.** This changes real `flags`/`verdict` output for a class of
+previously-cached products — most directly, any product whose ingredient text or product name contains
+"misspelt" or "peasant" (e.g. "peasant bread," a real bread product/style name) previously carried an
+incorrect reject-severity `glyphosate_heavy` flag and, if that was the product's only concern, an
+incorrect RED verdict. Also closes the `'hing'`/`"-thing"` family — caution-only, does not change
+verdict, but by far the highest-frequency collision found across this entire audit series. Run
+`DELETE FROM scan_cache WHERE prompt_version < 36` in Supabase before/after deploying. The
+`M. PROMPT_VERSION` contract test was updated to assert `36`.
 
 ---
 
