@@ -573,7 +573,7 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 37** (systematic bare-trigger audit batch — see the "systematic bare-trigger audit batch" changelog entry below). Committed and pushed this session; not yet empirically re-confirmed live against production `scan_cache` the way v32 was — per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until a fresh live scan is checked post-deploy.
+**Current PROMPT_VERSION is 38** (false-negative sweep fix — cowpeas/broadbeans/horsebeans — see the "false-negative sweep fix" changelog entry below). Committed and pushed this session; not yet empirically re-confirmed live against production `scan_cache` the way v32 was — per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until a fresh live scan is checked post-deploy.
 
 ### Cache Invalidation
 When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 30. Run `DELETE FROM scan_cache WHERE prompt_version < 30` in Supabase to purge all stale rows before deploying.
@@ -2472,6 +2472,49 @@ Also closes the `hing`/hinge family (caution-only) and fixes the `sweetcorn` fal
 corn product that was incorrectly showing zero flags). Run
 `DELETE FROM scan_cache WHERE prompt_version < 37` in Supabase before/after deploying. The
 `M. PROMPT_VERSION` contract test was updated to assert `37`.
+
+---
+
+### Session — false-negative sweep fix: cowpeas/broadbeans/horsebeans (July 2026, PROMPT_VERSION 38)
+
+Follow-up to a systematic false-negative sweep (the mirror image of the bare-trigger audit — checking
+every guarded trigger's dictionary hits for a legitimate compound now silently losing its flag, instead
+of an unrelated word gaining one). Found and fixed two confirmed gaps:
+
+- **`'peas'` inside `"cowpeas"`** (black-eyed peas, a common edible legume) — was producing **zero
+  flags** (should be a reject-severity `glyphosate_heavy` flag, same as the spaced `"black eyed peas"`
+  form, which already correctly flagged).
+- **`'beans'` inside `"broadbeans"`/`"horsebeans"`** (fava beans and a horse-feed bean variety) — same
+  gap; the spaced two-word forms `"broad beans"`/`"horse beans"` already correctly flagged (confirmed
+  in the previous session).
+
+All three are one-word compounds where a letter immediately precedes the trigger ("cow", "broad",
+"horse"), silently blocked by the SUFFIX-collision guard ever since it was first added — the same bug
+class as `'corn'`/`"sweetcorn"`. Fixed via `TRIGGER_ADJACENCY_ALLOWLIST`, the same mechanism as
+`'popcorn'`/`'groats'`/`'sweetcorn'`. Re-ran the full false-negative sweep on `'peas'` and `'beans'`
+specifically after the fix (not just the three words) — confirmed no other word in either trigger's
+full dictionary hit list changed behavior; everything else remains correctly unflagged (`peasant`,
+`chickpeas` via its own separate trigger, `jellybeans`, `soybeans` via its own separate trigger, etc.).
+
+**`'pease'` (archaic/dialectal, e.g. "pease pudding") and `'maltol'` (a synthesized flavor compound,
+chemically distinct from actual barley malt — a genuine policy question, not a confirmed bug) were
+found by the same sweep but intentionally NOT fixed** — deferred alongside `wheat`/`"wheatless"` for a
+future decision, per instruction not to fix them as a side effect of this batch.
+
+**Tests added (`lib/rulesEngine.test.js`, new "SESSION FIX" describe block):** 7 tests — the three
+one-word forms now correctly trigger; the three spaced forms confirmed still correctly trigger
+(regression guard); and a combined regression guard confirming `"peasant bread"`/`"jellybeans"`
+(previous sessions' fixes) and `"chickpeas"`/`"soybeans"` (their own separate, longer triggers) are all
+unaffected by the allowlist addition. Full suite: 1378 passing / 1 known pre-existing failure (the
+cross-list contradiction test, unchanged — still only the same 8 out-of-scope "dead entry" findings),
+up from 1371 passing / 1 failing before this session's fix.
+
+**PROMPT_VERSION bumped 37 → 38.** This changes real `flags`/`verdict` output for a class of
+previously-cached products — any product listing `"cowpeas"`, `"broadbeans"`, or `"horsebeans"` as a
+one-word ingredient previously showed an incorrect GREEN verdict with zero flags, when it should have
+been RED (`glyphosate_heavy` reject, no clearance available). Run
+`DELETE FROM scan_cache WHERE prompt_version < 38` in Supabase before/after deploying. The
+`M. PROMPT_VERSION` contract test was updated to assert `38`.
 
 ---
 

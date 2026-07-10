@@ -1791,10 +1791,10 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 37 (v37: systematic bare-trigger audit batch — closes out the 4-session audit series: corn/malt/farro/bha/beans/olean/rye/flax/miso/hing collision fixes, plus the "sweetcorn" false-negative fix)', () => {
+  test('PROMPT_VERSION is 38 (v38: false-negative sweep fix — "cowpeas"/"broadbeans"/"horsebeans" one-word forms now correctly trigger glyphosate_heavy)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(37);
+    expect(PROMPT_VERSION).toBe(38);
   });
 });
 
