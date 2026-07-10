@@ -573,7 +573,7 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 32 — confirmed deployed to production July 10, 2026** (not just committed — empirically verified via a live PostgREST query against `scan_cache` after a fresh scan returned `prompt_version: 32` directly from the row — both an L1 and L2 row for the same barcode — following the deploy-gap incident documented below).
+**Current PROMPT_VERSION is 33** (bare `'ada'` trigger word-boundary guard — see the "bare 'ada' trigger word-boundary guard" changelog entry below). Committed and pushed this session; not yet empirically re-confirmed live against production `scan_cache` the way v32 was — per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until a fresh live scan is checked post-deploy.
 
 ### Cache Invalidation
 When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 30. Run `DELETE FROM scan_cache WHERE prompt_version < 30` in Supabase to purge all stale rows before deploying.
@@ -2005,6 +2005,99 @@ wild-caught certification, or seafood from a source you trust."` — not the old
 scan also correctly picked up the seafood framing ("Farm-raised Atlantic salmon typically means fish
 raised in ocean pens..."), confirming the fix propagates through to the Claude-generated explanation
 as well, not just the static flag summary.
+
+---
+
+### Session — bare 'ada' trigger word-boundary guard: "macadamia nuts" / "Canada" false-positive fix (July 2026, PROMPT_VERSION 33)
+
+Follow-up to the previous session's safety-net testing work (see the two "SAFETY NET" test blocks
+appended to `lib/rulesEngine.test.js` and `__tests__/api/scan.test.js`): the cross-list contradiction
+guard test (Test 3 of that session) surfaced a real, previously-undiscovered bug alongside 8 harmless
+"dead list entry" findings. This session fixes the one real bug; the 8 dead entries are explicitly
+out of scope, being handled in a separate pass.
+
+**Root cause.** `SYNTHETIC_ADDITIVES` (`lib/rulesEngine.js`) has a bare `'ada'` trigger (abbreviation
+for azodicarbonamide, a Texas SB 25 dough-conditioner disclosure). Unlike `CONVENTIONAL_EGGS` (which
+applies a letter-adjacency word-boundary guard to every trigger in its loop) or the bare `'malt'`
+trigger in `GLYPHOSATE_HEAVY` (which guards its trailing letter), the bare `'ada'` trigger had no
+boundary guard at all — `findMatches()` does plain substring matching, so `'ada'` matched inside any
+word containing that three-letter sequence. Confirmed two real false positives: **"macadamia nuts"**
+(`m-a-c-ADA-mia`) and **"Canada"** (`C-ADA...`, e.g. a "Product of Canada" manufacturer statement) —
+both produced a phantom `additives` reject flag and a false RED verdict with no azodicarbonamide
+anywhere in the product. Reproduced directly: `analyzeIngredients('Almonds, macadamia nuts, cashews,
+sea salt.', [], 2)` returned a reject-severity `additives` flag (`matchedIngredient: 'ada'`) and
+`verdict: 'red'` before this fix.
+
+**Fix.** Added a word-boundary guard for the bare `'ada'` trigger only, inside the existing
+`SYNTHETIC_ADDITIVES` matching loop in `analyzeIngredients()` — mirrors the `CONVENTIONAL_EGGS`
+letter-adjacency guard (checks the characters immediately before and after the match; skips if either
+is a letter) rather than the bare `'flavor'` trigger's two-back check just above it in the same loop,
+since `'ada'` is a mid-word substring risk on both sides, not a "`<word> flavor`" compound-descriptor
+risk. Confirmed via direct testing that true positives are unaffected: bare standalone `"ADA"`,
+the full chemical name `"azodicarbonamide"`, and a comma-adjacent `"Flour,ADA,salt."` (no surrounding
+whitespace — the guard checks adjacent characters, not just whitespace) all still correctly flag.
+
+**Other short bare triggers audited — two more real false-positive collisions found, NOT fixed this
+session (reported per instruction, awaiting a separate decision):**
+Systematically reviewed every bare (no-space), ≤4-character trigger across every substring-matched
+category in `lib/rulesEngine.js` (excluding categories already protected by construction — anything
+matched via `matchesWholePhrase()`, i.e. `MILK_DERIVED_INGREDIENTS`, `EGG_DERIVED_INGREDIENTS`,
+`MEAT_DERIVED_INGREDIENTS`, `MEAT_INGREDIENT_TERMS`; anything in `CONVENTIONAL_EGGS`, which already
+has its own loop-level word-boundary guard; and anything in the Set-based exact-match display-only
+lists `WHOLE_FOOD_TOKENS_L2`, `REVIEWED_CLEAN_INGREDIENTS`, `ARTIFACT_PHRASES`, none of which do
+substring matching at all). Two confirmed, reproducible false positives of the same bug class:
+
+1. **`'oats'` (`GLYPHOSATE_HEAVY` and `GLUTEN_GRAINS`) inside `"goats"`** — `analyzeIngredients("goats'
+   milk yogurt, sea salt.", [], 2)` produces `glyphosate_heavy:oats` (**reject severity — verdict-
+   changing**) and `gluten_grains:oats`. "Goat milk," "goat cheese," and "goats' milk" are common real
+   ingredient declarations with zero oat content. This is the more severe of the two — it flips the
+   verdict RED via a `glyphosate_heavy` reject flag with no clearance available (no oats to certify
+   organic/glyphosate-free), unlike the `gluten_grains` case which is caution-only and paywall-hidden.
+2. **`'corn'` (`GLUTEN_GRAINS`) inside `"acorn"`** — `analyzeIngredients('acorn squash, sea salt,
+   water.', [], 2)` produces `gluten_grains:corn`. Caution-only, does not change verdict (gluten_grains
+   is excluded from verdict calculation and stripped from both L1/L2 display), but still incorrect data
+   in the returned `flags` array.
+
+A third candidate, **`'rice'` (`GLUTEN_GRAINS`) inside `"price"`**, was also confirmed mechanically
+(`analyzeIngredients('suggested retail price may vary, salt.', [], 2)` → `gluten_grains:rice`) but is
+lower priority — `ingredients_text` from Open Food Facts is the literal ingredient list, not marketing
+copy, so this exact collision is unlikely to occur in a real product's ingredient text the way "goat
+milk" or "acorn squash" routinely would.
+
+Reviewed and found **no confirmed real-word collision** (kept as-is, no action needed): `'tvp'`,
+`'miso'` (`CONVENTIONAL_CROPS`); `'msg'`, `'tbhq'`, `'bha'`, `'bht'`, all bare E-number triggers like
+`'e330'`/`'e924'` (`SYNTHETIC_ADDITIVES` — alphanumeric E-number codes are not plausible accidental
+substrings of English words); `'wonf'` (`NATURAL_FLAVORS`); `'gmo'` (`BIOENGINEERING_TERMS` — already
+has the shared `isInFreeOrNonContext()` guard for the `"non-gmo"` case, though not a general
+letter-adjacency guard); `'iron'` (`FORTIFIED_VITAMINS`); `'teff'`, `'masa'` (`GLUTEN_GRAINS`). Also
+noted: the existing bare `'malt'` guard (`GLYPHOSATE_HEAVY`) only checks the trailing character
+(protects `'maltodextrin'`/`'maltose'`) and has no leading-character check — no real collision found on
+this pass, but it's an incomplete guard by the same reasoning as the `'ada'` fix above, worth revisiting
+if a leading-letter collision ever surfaces.
+
+Per instruction, **none of the `'oats'`/`'acorn'`/`'price'` findings were fixed in this session** —
+each needs its own judgment call on the same "does this change real output" basis the `'ada'` fix went
+through, and the user asked to review them separately before any change.
+
+**Tests added (`lib/rulesEngine.test.js`, new "SESSION FIX" describe block):** 5 tests — `"macadamia
+nuts"` no longer flags `additives`; a `"Product of Canada"` manufacturer statement no longer flags
+`additives`; bare standalone `"ADA"` (true positive) still flags; the full chemical name
+`"azodicarbonamide"` (true positive) still flags; a comma-adjacent `"Flour,ADA,salt."` (no surrounding
+whitespace) still flags, confirming the guard is punctuation-aware rather than whitespace-only. The
+previous session's cross-list contradiction safety-net test was re-run and confirmed: `"macadamia
+nuts"` no longer appears in its failure output; the test still fails, but only with the 8 pre-existing,
+out-of-scope "dead entry" findings (`coconut sugar`, `date sugar`, `flax seeds`, `sweet potato`,
+`quinoa`, `amaranth`, `teff`, `lactic acid starter culture`) — untouched, per instruction, and being
+handled in a separate pass. Full suite: 1284 passing / 1 known pre-existing failure, up from 1279
+passing / 1 failing before this session's fix.
+
+**PROMPT_VERSION bumped 32 → 33.** This changes real `flags`/`verdict` output for a class of
+previously-cached products — any product whose ingredient text or product name contains "macadamia"
+(nuts, oil, etc.) or the word "Canada" anywhere (most commonly a "Product of Canada" or "Made in
+Canada" manufacturer statement) previously carried an incorrect reject-severity `additives` flag and,
+if that was the product's only concern, an incorrect RED verdict. Run
+`DELETE FROM scan_cache WHERE prompt_version < 33` in Supabase before/after deploying. The
+`M. PROMPT_VERSION` contract test was updated to assert `33`.
 
 ---
 

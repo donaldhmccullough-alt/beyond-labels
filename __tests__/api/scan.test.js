@@ -1791,10 +1791,10 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 32 (v32: L1 seafood copy fix — farmed/unlabeled seafood at Level 1 no longer gets land-animal "grass-fed, pasture-raised" copy; MEAT_CATEGORIES/SEAFOOD_CATEGORIES drift-risk fix, zero behavior change)', () => {
+  test('PROMPT_VERSION is 33 (v33: bare "ada" trigger word-boundary guard — fixes false-positive additives/RED verdict on "macadamia nuts" and manufacturer statements containing "Canada")', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(32);
+    expect(PROMPT_VERSION).toBe(33);
   });
 });
 
@@ -2623,4 +2623,98 @@ describe('T. fetchExplanation() — Claude response parsing', () => {
       expect.objectContaining({ max_tokens: 2000 })
     );
   });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// SAFETY NET — every reject-severity category has a downstream handler
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Guards against the exact bug pattern documented in CLAUDE.md's "Keeping the
+// tree in sync with the engine" callout: a category that analyzeIngredients()
+// can emit with severity 'reject' needs an explicit handler in the L2 tree
+// (pages/api/scan.js) — otherwise it silently falls through to Node 14's
+// default YELLOW. The glyphosate_heavy fix (PROMPT_VERSION 24, Node 11b) and
+// the wild-caught Node 5 fix (PROMPT_VERSION 29) were both real production
+// bugs of this shape.
+//
+// For each category, an isolated single-flag product (no organic cert, no
+// OFF category tags, no confounding ingredients) is run through the actual
+// /api/scan handler:
+//   - At userLevel 2, every reject-severity category must produce verdict 'red'.
+//   - At userLevel 1, LEVEL_1_YELLOW_CATEGORIES members downgrade to 'yellow'
+//     (caution); the two categories NOT in that set (trans_fats, additives)
+//     must still produce 'red' — confirming the L1 overrides block never
+//     accidentally clobbers a still-reject verdict.
+describe('SAFETY NET — reject-severity categories have L2 tree / L1 override handlers', () => {
+  const { LEVEL_1_YELLOW_CATEGORIES } = require('../../lib/rulesEngine');
+
+  /**
+   * One isolated trigger per reject-eligible category (gluten_grains excluded
+   * — it is never reject-severity at either level, by design). Verified
+   * directly to produce exactly one non-gluten flag category each, with no
+   * organic/meat/dairy/seafood signals that could route through an unrelated
+   * tree node first.
+   */
+  const REJECT_CATEGORY_FIXTURES = {
+    trans_fats:          'Partially hydrogenated oil, Salt, Water.',
+    additives:           'Yellow 5, Salt, Water.',
+    seed_oils:           'Canola oil, Salt, Water.',
+    conventional_crops:  'Citric acid, Salt, Water.',
+    conventional_eggs:   'Egg whites, Salt, Water.',
+    glyphosate_heavy:    'Oats, Salt, Water.',
+    bioengineering:      'Bioengineered ingredient, Salt, Water.',
+    natural_flavors:     'Natural flavors, Salt, Water.',
+  };
+
+  function offResponseFor(ingredientsText, barcode) {
+    return {
+      status: 1,
+      product: {
+        product_name: `Safety Net Test Product ${barcode}`,
+        ingredients_text: ingredientsText,
+        labels_tags: [],
+        categories_tags: [],
+      },
+    };
+  }
+
+  let safetyNetBarcodeCounter = 900000000000;
+  function nextSafetyNetBarcode() {
+    safetyNetBarcodeCounter += 1;
+    return String(safetyNetBarcodeCounter);
+  }
+
+  for (const [category, ingredientsText] of Object.entries(REJECT_CATEGORY_FIXTURES)) {
+    test(`Level 2: "${category}" reject flag produces a RED verdict through the real /api/scan handler`, async () => {
+      const barcode = nextSafetyNetBarcode();
+      mockFetchOnce(offResponseFor(ingredientsText, barcode));
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode, userLevel: 2 }), res);
+
+      if (res.body.verdict !== 'red') {
+        throw new Error(
+          `Category "${category}" produced a reject-severity flag from analyzeIngredients() ` +
+          `but the L2 decision tree in pages/api/scan.js did not turn it into a RED verdict ` +
+          `(got "${res.body.verdict}"). This is the exact bug pattern documented in CLAUDE.md's ` +
+          `"Keeping the tree in sync with the engine" callout — add a tree node/check for "${category}".`
+        );
+      }
+    });
+
+    test(`Level 1: "${category}" ${LEVEL_1_YELLOW_CATEGORIES.has(category) ? 'downgrades to YELLOW (caution)' : 'still produces RED (not downgraded)'} through the real /api/scan handler`, async () => {
+      const barcode = nextSafetyNetBarcode();
+      mockFetchOnce(offResponseFor(ingredientsText, barcode));
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode, userLevel: 1 }), res);
+
+      const expected = LEVEL_1_YELLOW_CATEGORIES.has(category) ? 'yellow' : 'red';
+      if (res.body.verdict !== expected) {
+        throw new Error(
+          `Category "${category}" at Level 1 was expected to produce verdict "${expected}" ` +
+          `(per LEVEL_1_YELLOW_CATEGORIES in lib/rulesEngine.js) but the L1 overrides block in ` +
+          `pages/api/scan.js produced "${res.body.verdict}" instead.`
+        );
+      }
+    });
+  }
 });
