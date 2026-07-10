@@ -1791,10 +1791,10 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 36 (v36: \'spelt\'/\'peas\'/\'hing\' collision guards — fixes false-positive glyphosate_heavy/RED verdict on "misspelt" and "peasant bread", and false-positive gluten_grains on "something"/"anything"/"everything"/"nothing")', () => {
+  test('PROMPT_VERSION is 37 (v37: systematic bare-trigger audit batch — closes out the 4-session audit series: corn/malt/farro/bha/beans/olean/rye/flax/miso/hing collision fixes, plus the "sweetcorn" false-negative fix)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(36);
+    expect(PROMPT_VERSION).toBe(37);
   });
 });
 

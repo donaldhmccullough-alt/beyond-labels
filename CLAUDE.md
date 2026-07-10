@@ -573,7 +573,7 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 36** (`'spelt'`/`'peas'`/`'hing'` collision guards — see the "'spelt'/'peas'/'hing' collision guards" changelog entry below). Committed and pushed this session; not yet empirically re-confirmed live against production `scan_cache` the way v32 was — per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until a fresh live scan is checked post-deploy.
+**Current PROMPT_VERSION is 37** (systematic bare-trigger audit batch — see the "systematic bare-trigger audit batch" changelog entry below). Committed and pushed this session; not yet empirically re-confirmed live against production `scan_cache` the way v32 was — per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until a fresh live scan is checked post-deploy.
 
 ### Cache Invalidation
 When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 30. Run `DELETE FROM scan_cache WHERE prompt_version < 30` in Supabase to purge all stale rows before deploying.
@@ -2373,6 +2373,108 @@ verdict, but by far the highest-frequency collision found across this entire aud
 
 ---
 
+### Session — systematic bare-trigger audit batch: closes out the 4-session collision-word audit series (July 2026, PROMPT_VERSION 37)
+
+Four consecutive sessions had each found "one more" bare-trigger substring collision by hand
+(`'ada'`/macadamia+Canada → `'oats'`/`'corn'`/`'rice'` → `'rice'`/licorice + auto-closed unicorn/coats →
+`'spelt'`/`'peas'`/`'hing'`), leaving `'olean'`/oleander still open. This session replaced hand-picked
+candidate testing with a systematic tool: every bare (single-word) trigger in `SYNTHETIC_ADDITIVES`,
+`GLUTEN_GRAINS`, and `GLYPHOSATE_HEAVY` was extracted from source and checked against a 274,137-word
+English dictionary (the `word-list` npm package, installed in scratch space only — not a project
+dependency) for substring collisions in both directions, then every hit was run through the real
+engine to confirm live false positives before anything was reported or fixed.
+
+**Full batch fixed this session:**
+
+| Trigger | List(s) | Collision word(s) | Severity impact |
+|---|---|---|---|
+| `corn` | `GLUTEN_GRAINS` + `CONVENTIONAL_CROPS`'s `STANDALONE_CORN_RE` regex | `corner`, `cornea`, `cornet`, `cornice`, `cornichon`, `corned` (as in corned beef), `scorn`, `peppercorn`, `cornflower`, `cornrow(s)` | **Verdict-changing** (`conventional_crops` is reject) — "corner" is one of the most common words in English |
+| `malt` | `GLYPHOSATE_HEAVY` + `GLUTEN_GRAINS` | `smalt` (a blue pigment/cobalt glass) | Verdict-changing (`glyphosate_heavy` reject) |
+| `farro` | `GLYPHOSATE_HEAVY` + `GLUTEN_GRAINS` | `farrow`, `farrowing` (pig-birthing terminology) | Verdict-changing |
+| `bha` | `SYNTHETIC_ADDITIVES` | `bhaji`, `bhajia`, `sambhar` (South Asian culinary terms) | Verdict-changing (always reject) |
+| `beans` | `GLYPHOSATE_HEAVY` | `jellybeans` | Verdict-changing |
+| `olean` | `SYNTHETIC_ADDITIVES` | `oleander` — **carried over from an earlier session, confirmed again** | Verdict-changing (always reject) |
+| `rye` | `GLYPHOSATE_HEAVY` + `GLUTEN_GRAINS` | `fryer` (as in "fryer chicken") | Verdict-changing |
+| `flax` | `GLYPHOSATE_HEAVY` | `toadflax` | Verdict-changing |
+| `miso` | `GLUTEN_GRAINS` + its separate `CONVENTIONAL_CROPS` entry (both fixed) | `semisoft` (a real cheese classification term) | Verdict-changing (`conventional_crops` reject) |
+| `hing` | `GLUTEN_GRAINS` | `hinge`, `hinges`, `hinged` | Caution-only, does not change verdict |
+
+**Plus one true-positive regression found during verification, not the audit itself.** The wordlist
+audit only searches for false *positives* (words that incorrectly flag) — it cannot surface a
+legitimate compound being incorrectly *suppressed*. While re-verifying every fix's true-positive cases
+(the same "does this change real output" diligence as `popcorn`/`groats`/`oat groats`), `"sweetcorn"`
+was found returning zero flags: `GLUTEN_GRAINS` has no dedicated `'sweetcorn'` trigger of its own, so
+it relied entirely on bare `'corn'` — which the SUFFIX-collision guard (added two sessions ago) has
+been silently over-blocking ever since, since "sweetcorn" has a letter immediately before ('t') and
+was never allowlisted. Added to `TRIGGER_ADJACENCY_ALLOWLIST` alongside `'popcorn'`/`'groats'`.
+
+**`corn` uses a new mechanism: a denylist, not checkAfter+allowlist.** Every other PREFIX-shape
+collision this session (`bha`, `olean`, `farro`, `malt`, `hing`) was fixed with
+`isAdjacentToLetterUnlessAllowlisted(text, index, end, true)` — block by default, allowlist the rare
+legitimate exception. `corn` breaks this pattern: legitimate PREFIX-shape corn compounds (cornbread,
+cornmeal, cornstarch, cornflakes, corncob, cornstalk, cornhusk, cornfield, sweetcorn, popcorn...)
+vastly outnumber genuine collisions (corner, cornea, cornet, cornice, cornichon, corned, scorn,
+peppercorn, cornflower, cornrow), so blocking by default would need dozens of allowlist entries instead
+of a dozen denylist ones. Added `CORN_COLLISION_DENYLIST` and `isDenylistedCornCollision()`
+(`lib/rulesEngine.js`) — the inverse of `TRIGGER_ADJACENCY_ALLOWLIST` — checked in both `GLUTEN_GRAINS`'s
+bare `'corn'` loop and `CONVENTIONAL_CROPS`'s `STANDALONE_CORN_RE` regex handling. Deliberately not
+exhaustive — omits extremely obscure heraldry/entomology/geology dictionary entries
+(`cornigerous`, `cornuted`, `lamellicorn`, `cornbrash`) vanishingly unlikely to appear in real product
+text; extend if a genuine false positive surfaces.
+
+**The `STANDALONE_CORN_RE` regex fix specifically:** its negative lookahead only excluded "corn"
+followed by whitespace+letter (`"corn starch"` as two words) — not "corn" followed *directly* by more
+letters. Tightening the lookahead itself (rather than denylisting) was considered and rejected: it
+would also have broken legitimate no-space compounds this exact regex is relied on to catch (e.g.
+`"cornstarch"`, `"cornmeal"` written as one word). The denylist check runs as an additional condition
+on the existing match instead.
+
+**Other guard extensions, all verified against real true-positive cases before locking in (same
+diligence as `popcorn`/`groats`):**
+- `malt`'s existing guard only checked the character *after* the match (protecting `maltodextrin`/
+  `maltose`). Extended to `isAdjacentToLetterUnlessAllowlisted(..., true)` — checks both sides at once,
+  closing the `smalt` gap while still protecting `maltodextrin`/`maltose` exactly as before. Confirmed:
+  `barley malt`, `malted milk` (separate triggers) unaffected.
+- `miso` exists as two separate bare entries — one in `GLUTEN_GRAINS`, one in `CONVENTIONAL_CROPS` —
+  confirmed both needed the identical fix rather than assuming; `semisoft` was leaking through
+  `GLUTEN_GRAINS`'s copy even after `CONVENTIONAL_CROPS`'s was fixed, caught during verification.
+- `beans`: confirmed `soybeans` (its own separate `conventional_crops` trigger) and space-separated
+  `"broad beans"`/`"horse beans"` are unaffected by the new suffix-collision guard.
+
+**`wheat`/`"wheatless"` intentionally excluded from this batch — deferred to its own session.** Found
+during the same audit but a structurally different bug: `"wheatless"` is a semantic-negation false
+positive (a product labeled wheat-free would falsely flag as *containing* wheat), not a random-word
+substring collision. It needs an extension to the existing `isInFreeOrNonContext()` "-free"/"non-"
+guard to also cover "-less", not `isAdjacentToLetterUnlessAllowlisted()`. See "Pending Policy
+Decisions" below — this is the next item in the series.
+
+**Tests added (`lib/rulesEngine.test.js`, new "SESSION FIX" describe block with 10 nested
+sub-`describe`s, one per trigger): 49 tests** covering every false positive fixed and every
+true-positive case re-verified (including the `sweetcorn` false-negative fix, and the `soybeans`/`broad
+beans`/`horse beans`/`barley malt`/`maltodextrin`/`maltose`/`olestra`/`flaxseed`/`rye flour`/`asafoetida`
+regression guards). Full suite: 1371 passing / 1 known pre-existing failure (the cross-list
+contradiction test, unchanged — still only the same 8 out-of-scope "dead entry" findings), up from
+1322 passing / 1 failing before this session's fix.
+
+**This closes out the bare-trigger substring-collision audit series.** All confirmed collisions from
+the systematic wordlist audit have been fixed or explicitly deferred (`wheat`/`wheatless`, next up).
+Any *new* collision discovered later is a fresh, one-off finding — not evidence the audit missed
+something, since this pass was exhaustive against every bare trigger in the three lists as they existed
+at the time.
+
+**PROMPT_VERSION bumped 36 → 37.** This changes real `flags`/`verdict` output for a large class of
+previously-cached products — most severely, any product whose ingredient text or product name contains
+any of "corner", "cornea", "cornet", "cornice", "cornichon", "corned" (corned beef), "scorn",
+"peppercorn", "cornflower", a cornrow reference, "smalt", "farrow"/"farrowing", "bhaji"/"sambhar",
+"jellybeans", "oleander", "fryer" (chicken), "toadflax", or "semisoft" (cheese) previously carried an
+incorrect reject-severity flag and, if that was the product's only concern, an incorrect RED verdict.
+Also closes the `hing`/hinge family (caution-only) and fixes the `sweetcorn` false negative (a real
+corn product that was incorrectly showing zero flags). Run
+`DELETE FROM scan_cache WHERE prompt_version < 37` in Supabase before/after deploying. The
+`M. PROMPT_VERSION` contract test was updated to assert `37`.
+
+---
+
 ## Pending Policy Decisions
 
 Items deferred from the June 2026 unverified ingredients audit — pending team review before adding to the engine.
@@ -2385,6 +2487,7 @@ Items deferred from the June 2026 unverified ingredients audit — pending team 
 - **Organic seed oils policy** — currently flagged red at L2 regardless of organic status; worth revisiting whether organic high-oleic sunflower or organic canola should be caution rather than reject
 - **Vitamin D3 mandatory fortification in organic milk** — FORTIFIED_VITAMINS caution flag fires on organic dairy products that use D3 as required by organic standards; may confuse users who expect a green for organic milk
 - **Node 8 vs Node 8b ordering for `en:eggs`** — found during the `is_meat` corroboration design review (July 2026): `'en:eggs'` is in `MEAT_CATEGORIES`, and in the L2 tree Node 8 (conventional meat) is evaluated before Node 8b (conventional eggs). An OFF-tagged egg product may be getting generic conventional-meat messaging instead of the dedicated egg messaging Node 8b was built for. The existing `isMeat is true for en:eggs` test (Suite H) only asserts the `isMeat` boolean, not which node actually fires or what flag/message the user sees, so this wasn't caught. Needs investigation before deciding on a fix.
+- **NEXT UP — `wheat`/`"wheatless"` semantic-negation false positive** (found during the July 2026 systematic bare-trigger audit, PROMPT_VERSION 37 session, deliberately excluded from that batch): a product labeled `"wheatless"` currently flags as *containing* wheat — the exact opposite of what the label claims. This is a structurally different bug than every collision fixed in that session (`corn`/`malt`/`farro`/`bha`/`beans`/`olean`/`rye`/`flax`/`miso`/`hing`) — those are all *unrelated-word* substring collisions fixed via `isAdjacentToLetterUnlessAllowlisted()`; `wheatless` is a *semantic negation* suffix, the same class of problem `isInFreeOrNonContext()` already solves for `"-free"`/`"non-"` (e.g. `"egg-free"`, `"canola-free"`). The fix is almost certainly extending that existing guard to also recognize `"-less"`, not adding a new letter-adjacency check. Needs its own session: confirm the fix doesn't accidentally suppress a real "wheat" declaration that happens to end in "less" for an unrelated reason (none currently known, but verify), add regression tests, and bump `PROMPT_VERSION` per the usual pattern since it changes real `flags`/`verdict` output.
 
 ---
 
