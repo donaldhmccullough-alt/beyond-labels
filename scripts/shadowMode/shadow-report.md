@@ -1,6 +1,6 @@
 # Shadow-Mode Comparison — Stage 4/5a Summary
 
-Generated: 2026-07-11T17:35:04.687Z
+Generated: 2026-07-11T17:58:49.450Z
 
 - Total cases: 135
 - Matching (no diff): 133

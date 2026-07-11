@@ -71,6 +71,9 @@ const {
   SEAFOOD_CATEGORIES,
 } = scanHelpers;
 
+import verdictEngineModule from '../../lib/verdictEngine';
+const { computeCorrectedVerdict } = verdictEngineModule;
+
 import { getSupabaseServer } from '../../lib/supabaseServer';
 import Anthropic from '@anthropic-ai/sdk';
 import { PROMPT_VERSION } from '../../lib/cacheVersion';
@@ -598,6 +601,43 @@ function computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags,
 }
 
 /**
+ * Stage 5b of the L1/L2 unification project: parses
+ * VERDICT_ENGINE_SHADOW_SAMPLE_RATE (0-100), defaulting to 10 when unset,
+ * empty, or non-numeric — start cautious; ramp up manually once real
+ * divergence data looks sane. Clamped to [0, 100] for safety. Guards
+ * against the empty-string env-var gotcha explicitly: Number('') is 0 (not
+ * NaN) in JavaScript, which would otherwise silently mean "never sample"
+ * instead of falling back to the documented default.
+ *
+ * @returns {number} 0-100
+ */
+function getShadowSampleRate() {
+  const envValue = process.env.VERDICT_ENGINE_SHADOW_SAMPLE_RATE;
+  if (envValue === undefined || envValue === '') return 10;
+  const rate = Number(envValue);
+  if (!Number.isFinite(rate)) return 10;
+  return Math.min(100, Math.max(0, rate));
+}
+
+/**
+ * Reduces a flags array to the shape used for shadow-mode comparison and
+ * storage: category + severity + matchedIngredient, summary text omitted
+ * (presentation, not logic — same convention as Stage 4's shadow-mode
+ * comparison script, scripts/shadowMode/compareVerdicts.js). Sorted so
+ * array-order differences (e.g. which injected flag got prepended first)
+ * don't themselves register as a divergence unless the actual member sets
+ * differ.
+ *
+ * @param {object[]} flags
+ * @returns {Array<{category: string, severity: string, matchedIngredient: string}>}
+ */
+function reduceFlagsForShadowComparison(flags) {
+  return flags
+    .map(f => ({ category: f.category, severity: f.severity, matchedIngredient: f.matchedIngredient }))
+    .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+}
+
+/**
  * Next.js API route handler.
  *
  * @param {import('next').NextApiRequest}  req
@@ -781,12 +821,111 @@ export default async function handler(req, res) {
 
   let verdictResult;
   if (VERDICT_ENGINE_MODE === 'shadow') {
-    // Stage 5b will replace this branch with: run computeVerdictLegacy() AND
-    // lib/verdictEngine.js's computeCorrectedVerdict(), log the diff, and
-    // still return the legacy result (shadow mode never changes what users
-    // see). For now (Stage 5a), this branch is dormant and behaves
-    // identically to 'legacy'.
+    // Stage 5b: computeVerdictLegacy() runs first and unconditionally —
+    // verdictResult is bound to its output before the corrected engine is
+    // ever touched, and nothing below this point may reassign it. Shadow
+    // mode never changes what the user sees.
     verdictResult = computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags, productName, userLevel, isMeat });
+
+    // Sampled, not run on every request — see getShadowSampleRate()'s doc
+    // comment. Only a fraction of requests also run the corrected engine.
+    const shadowSampleRate = getShadowSampleRate();
+    if (Math.random() < shadowSampleRate / 100) {
+      // Own try/catch, fully separate from the legacy path's error handling.
+      // A throw anywhere in here is caught, console.error'd, and the request
+      // proceeds with the already-computed legacy verdictResult, unaffected —
+      // shadow mode must be able to fail silently even if
+      // computeCorrectedVerdict() has a bug neither engine's author has
+      // found yet.
+      try {
+        // IMPORTANT: computeCorrectedVerdict() normalizes labels itself, so
+        // it must receive the RAW OFF labels_tags (product.labels_tags) —
+        // never the already-normalized `labelsDetected` used by the legacy
+        // path above. Passing the normalized array here would silently
+        // double-normalize (normalizeLabelTags() finds no match for e.g.
+        // 'usda-organic', since OFF_LABEL_MAP's keys are the raw
+        // 'en:usda-organic' form) and produce a wrong-but-plausible
+        // corrected result with no error thrown. See
+        // __tests__/api/scan.test.js's shadow-mode suite and
+        // lib/verdictEngine.test.js for the regression tests guarding this.
+        const correctedResult = computeCorrectedVerdict({
+          ingredientText: ingredientsText,
+          productLabels: product.labels_tags,
+          categoriesTags,
+          productName,
+          userLevel,
+        });
+
+        const divergingFields = [];
+        if (correctedResult.verdict !== verdictResult.verdict) divergingFields.push('verdict');
+        if (
+          JSON.stringify(reduceFlagsForShadowComparison(correctedResult.flags)) !==
+          JSON.stringify(reduceFlagsForShadowComparison(verdictResult.flags))
+        ) {
+          divergingFields.push('flags');
+        }
+        if (correctedResult.clearedBy !== verdictResult.clearedBy) divergingFields.push('clearedBy');
+        if (correctedResult.isMeat !== isMeat) divergingFields.push('isMeat');
+        if (correctedResult.oliveCaveat !== verdictResult.oliveCaveat) divergingFields.push('oliveCaveat');
+
+        // Only log/persist on an actual mismatch — agreement produces
+        // nothing, so log/table volume scales with real divergence, not
+        // with sampled traffic volume.
+        if (divergingFields.length > 0) {
+          console.warn('[scan] shadow mode divergence:', {
+            barcode: cleanBarcode,
+            userLevel,
+            divergingFields,
+            legacy: {
+              verdict: verdictResult.verdict,
+              clearedBy: verdictResult.clearedBy,
+              isMeat,
+              oliveCaveat: verdictResult.oliveCaveat,
+            },
+            corrected: {
+              verdict: correctedResult.verdict,
+              clearedBy: correctedResult.clearedBy,
+              isMeat: correctedResult.isMeat,
+              oliveCaveat: correctedResult.oliveCaveat,
+            },
+          });
+
+          // Awaited before res.json() — this file's existing documented
+          // discipline for Supabase writes on Vercel serverless (see the
+          // captureUnverifiedIngredients / scan_cache upsert calls below):
+          // the execution context freezes the moment res.json() is called,
+          // so an un-awaited write here would be silently dropped.
+          if (sb) {
+            try {
+              await sb.from('verdict_shadow_diffs').insert({
+                barcode:                cleanBarcode,
+                user_level:             userLevel,
+                product_name:           productName,
+                ingredients:            ingredientsText,
+                labels_detected:        product.labels_tags ?? [],
+                categories_tags:        categoriesTags,
+                legacy_verdict:         verdictResult.verdict,
+                legacy_flags:           reduceFlagsForShadowComparison(verdictResult.flags),
+                legacy_cleared_by:      verdictResult.clearedBy,
+                legacy_is_meat:         isMeat,
+                legacy_olive_caveat:    verdictResult.oliveCaveat,
+                corrected_verdict:      correctedResult.verdict,
+                corrected_flags:        reduceFlagsForShadowComparison(correctedResult.flags),
+                corrected_cleared_by:   correctedResult.clearedBy,
+                corrected_is_meat:      correctedResult.isMeat,
+                corrected_olive_caveat: correctedResult.oliveCaveat,
+                diverging_fields:       divergingFields,
+                prompt_version:        PROMPT_VERSION,
+              });
+            } catch (err) {
+              console.error('verdict_shadow_diffs write failed:', err);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[scan] shadow mode computeCorrectedVerdict failed:', err);
+      }
+    }
   } else if (VERDICT_ENGINE_MODE === 'live') {
     // Stage 5c will replace this branch with: return lib/verdictEngine.js's
     // computeCorrectedVerdict() result directly. For now (Stage 5a), this

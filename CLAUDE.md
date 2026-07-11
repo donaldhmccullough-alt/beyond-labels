@@ -2757,6 +2757,83 @@ log disagreement, still serve the legacy result to users) and Stage 5c (full cut
 
 ---
 
+### Session — L1/L2 unification Stage 5b: shadow mode in production (July 2026)
+
+**⚠️ Shadow mode is built but NOT YET ACTIVE.** The migration has not been run against Supabase and
+`VERDICT_ENGINE_MODE` has not been set in Vercel — both are manual steps pending review. Do not assume
+shadow mode is running on real traffic just because this code has shipped. See "Stage 5b — pending
+activation steps" below.
+
+**`pages/api/scan.js`**: the `'shadow'` branch (dormant since Stage 5a) now genuinely runs
+`lib/verdictEngine.js`'s `computeCorrectedVerdict()` alongside the legacy path on real traffic, gated
+by both `VERDICT_ENGINE_MODE=shadow` and a new `VERDICT_ENGINE_SHADOW_SAMPLE_RATE` env var (0-100,
+**defaults to 10** — a conservative canary rollout, not 100%, by deliberate choice, so real divergence
+data can be reviewed before ramping up). `verdictResult` stays bound to `computeVerdictLegacy()`'s
+output unconditionally — confirmed via `git diff` that `computeVerdictLegacy`'s body and the `'live'`/
+`else` branches are byte-for-byte untouched by this session. The corrected engine's output is used
+**only** for comparison — never passed to `fetchExplanation`, `captureUnverifiedIngredients`, or the
+`scan_cache` upsert.
+
+**Silent-wrong-answer bug closed with a dedicated regression test.** `computeCorrectedVerdict()`
+normalizes labels internally, so it must receive the **raw** `product.labels_tags`, never the
+already-normalized `labelsDetected` the legacy path uses — passing the normalized array would silently
+double-normalize (`normalizeLabelTags()` finds no match for e.g. `'usda-organic'`, since
+`OFF_LABEL_MAP`'s keys are the raw `'en:usda-organic'` form) and produce a wrong-but-plausible
+corrected result with no error thrown. `lib/verdictEngine.test.js` (new) proves, on a real fixture
+(`"Oats, salt, water."` + `usda-organic`), that raw vs. normalized labels produce **genuinely
+different** `computeCorrectedVerdict()` output (green/`organic` vs. red/`null`) — not just an
+"argument was called with X" check, which wouldn't catch a silent-wrong-answer class of bug.
+`__tests__/api/scan.test.js` Suite U's regression test exercises the real handler end-to-end on this
+same fixture and asserts no divergence is recorded — which is only possible if the raw label was
+actually used.
+
+**Logging**: on mismatch only — `console.warn('[scan] shadow mode divergence:', {...})` plus an
+**awaited**, try/caught insert into a new `verdict_shadow_diffs` Supabase table (migration written in
+`supabase/migrations/20260712000000_create_verdict_shadow_diffs.sql`, **not yet run**). Agreement logs
+nothing, so log/table volume scales with real divergence, not with sampled traffic volume. Comparison
+scope matches Stage 4's convention: `verdict`, `flags` (category+severity+matchedIngredient, summary
+text omitted), `clearedBy`, `isMeat`, `oliveCaveat`.
+
+**Failure isolation**: the corrected-engine call and the Supabase insert each have independent
+`try`/`catch` blocks. A throw in either is caught, `console.error`'d, and the request proceeds with
+the already-computed legacy `verdictResult` — confirmed with two dedicated tests (a throwing
+`computeCorrectedVerdict()`, and a throwing Supabase insert), both showing the legacy response
+untouched. Shadow mode can fail silently even if `computeCorrectedVerdict()` has a bug nobody has
+found yet.
+
+**Verification**: full suite **1463 passing** (up from 1453, all 10 new — 3 in
+`lib/verdictEngine.test.js`, 7 in Suite U), same one known pre-existing dead-entry failure, unchanged.
+Dormancy re-confirmed two ways: `git diff` showing the legacy/live code paths literally unedited, and
+a runtime probe (built, run, and deleted within the session — never committed) showing `legacy`,
+`unset`, and `shadow` with sample rate `0` all produce byte-identical handler output today.
+`lib/verdictEngine.js` and `lib/scanHelpers.js` confirmed untouched (`git diff --stat` empty for both);
+`scripts/shadowMode/compareVerdicts.js` re-run shows the same **135 total / 133 matching / 2 expected
+diffs / 0 unexpected** result as the Stage 5a run.
+
+**No `PROMPT_VERSION` bump** — shadow mode never changes what a real user sees, regardless of sampling
+rate, until someone deliberately activates it.
+
+#### Stage 5b — pending activation steps
+
+Shadow mode ships in this session's commit but does nothing on real traffic until both of these are
+done, in order:
+
+1. **Run the migration** — `supabase/migrations/20260712000000_create_verdict_shadow_diffs.sql`
+   against the live Supabase database. If skipped, divergences still get `console.warn`'d but every
+   Supabase insert attempt fails (caught, logged as `"verdict_shadow_diffs write failed:"`, never
+   crashes a request) — so nothing breaks, but nothing gets persisted for later review either.
+2. **Set `VERDICT_ENGINE_MODE=shadow`** in Vercel (and optionally `VERDICT_ENGINE_SHADOW_SAMPLE_RATE`
+   if a different canary percentage than the 10% default is wanted).
+
+Both are manual, deliberate steps — not part of this commit. A future session should not assume
+shadow mode is actually observing production traffic without first confirming these were done.
+
+**Next steps, still open**: once real divergence data has been reviewed and looks sane, ramp
+`VERDICT_ENGINE_SHADOW_SAMPLE_RATE` toward 100, then Stage 5c (full cutover — `VERDICT_ENGINE_MODE=live`
+actually wired to return `computeCorrectedVerdict()`'s result directly) remains unbuilt.
+
+---
+
 ## Golden Master Snapshot (L1/L2 Unification Project — Stage 1)
 
 The rules engine (`lib/rulesEngine.js`) and the L1/L2 post-processing logic in `pages/api/scan.js`

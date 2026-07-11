@@ -47,6 +47,24 @@ jest.mock('../../lib/supabaseServer', () => ({
 }));
 const { getSupabaseServer } = require('../../lib/supabaseServer');
 
+// lib/verdictEngine's computeCorrectedVerdict is wrapped in a jest.fn() that
+// calls through to the REAL implementation by default (Stage 5b shadow-mode
+// tests need genuine behavioral divergence, not a mocked stand-in) — every
+// pre-existing test in this file is unaffected, since none of them set
+// VERDICT_ENGINE_MODE, so scan.js's shadow/live branches (and this function)
+// are never reached. Only Suite U's failure-isolation test overrides this
+// once, via mockImplementationOnce(), to simulate a bug in the corrected
+// engine without touching the real module.
+jest.mock('../../lib/verdictEngine', () => {
+  const actual = jest.requireActual('../../lib/verdictEngine');
+  return {
+    ...actual,
+    computeCorrectedVerdict: jest.fn(actual.computeCorrectedVerdict),
+  };
+});
+const verdictEngineModule = require('../../lib/verdictEngine');
+const { PROMPT_VERSION } = require('../../lib/cacheVersion');
+
 const handler = require('../../pages/api/scan').default;
 const { MEAT_CATEGORIES, SEAFOOD_CATEGORIES } = require('../../pages/api/scan');
 
@@ -2772,4 +2790,255 @@ describe('SAFETY NET — reject-severity categories have L2 tree / L1 override h
       }
     });
   }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// U. Shadow mode (Stage 5b — VERDICT_ENGINE_MODE=shadow)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Shadow mode must NEVER change what a real user sees — every test in this
+// suite that exercises the shadow branch still asserts the response is the
+// LEGACY verdict. The suite covers: legacy/unset stay fully dormant, the
+// sample-rate gate actually gates, a genuine divergence gets logged AND
+// persisted with the right shape, a throwing corrected engine can't affect
+// the response, and — the specific regression this stage was built to
+// prevent — the shadow branch passes RAW product.labels_tags into
+// computeCorrectedVerdict(), never the already-normalized labelsDetected.
+
+describe('U. Shadow mode (VERDICT_ENGINE_MODE=shadow)', () => {
+  const ORIGINAL_ENV = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  /** Minimal OFF response builder for Suite U tests. */
+  function shadowOffResp({
+    ingredientsText,
+    labelsTags     = [],
+    categoriesTags = [],
+    productName    = 'Test Product',
+  } = {}) {
+    return {
+      status: 1,
+      product: {
+        product_name:     productName,
+        ingredients_text: ingredientsText,
+        labels_tags:      labelsTags,
+        categories_tags:  categoriesTags,
+      },
+    };
+  }
+
+  /**
+   * Fake Supabase client for shadow-mode tests. scan_cache always misses on
+   * read (forces a fresh scan) and no-ops on write; unverified_ingredients
+   * is a no-op success; verdict_shadow_diffs.insert is the provided spy (or
+   * a no-op success if none given) so the divergence payload is inspectable.
+   */
+  function makeFakeSbForShadow(shadowInsertSpy) {
+    return {
+      from: jest.fn((table) => {
+        if (table === 'verdict_shadow_diffs') {
+          return { insert: shadowInsertSpy ?? jest.fn().mockResolvedValue({ error: null }) };
+        }
+        const chain = {
+          select:      jest.fn(() => chain),
+          eq:          jest.fn(() => chain),
+          maybeSingle: jest.fn().mockResolvedValue({ data: null }),
+          update:      jest.fn(() => chain),
+          upsert:      jest.fn().mockResolvedValue({ error: null }),
+          insert:      jest.fn().mockResolvedValue({ error: null }),
+          then:        jest.fn(),
+          catch:       jest.fn(),
+        };
+        return chain;
+      }),
+    };
+  }
+
+  test('legacy mode (VERDICT_ENGINE_MODE unset) never calls computeCorrectedVerdict or writes to verdict_shadow_diffs', async () => {
+    const shadowInsertSpy = jest.fn().mockResolvedValue({ error: null });
+    getSupabaseServer.mockReturnValueOnce(makeFakeSbForShadow(shadowInsertSpy));
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    mockFetchOnce(shadowOffResp({ ingredientsText: 'Oats, salt, water.', labelsTags: ['en:usda-organic'] }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000900', userLevel: 2 }), res);
+
+    expect(res.body.verdict).toBe('green');
+    expect(verdictEngineModule.computeCorrectedVerdict).not.toHaveBeenCalled();
+    expect(shadowInsertSpy).not.toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+  });
+
+  test('VERDICT_ENGINE_SHADOW_SAMPLE_RATE=0 → shadow mode never calls computeCorrectedVerdict, even for a fixture that would otherwise diverge', async () => {
+    process.env.VERDICT_ENGINE_MODE = 'shadow';
+    process.env.VERDICT_ENGINE_SHADOW_SAMPLE_RATE = '0';
+    const shadowInsertSpy = jest.fn().mockResolvedValue({ error: null });
+    getSupabaseServer.mockReturnValueOnce(makeFakeSbForShadow(shadowInsertSpy));
+
+    mockFetchOnce(shadowOffResp({
+      productName:     'Chicken Noodle Soup',
+      ingredientsText: 'chicken broth, egg noodles, eggs, chicken, salt',
+      categoriesTags:  ['en:broths', 'en:soups'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000901', userLevel: 2 }), res);
+
+    expect(verdictEngineModule.computeCorrectedVerdict).not.toHaveBeenCalled();
+    expect(shadowInsertSpy).not.toHaveBeenCalled();
+  });
+
+  test('a genuine divergence (correction #4: eggs vs. generic conventional_meat) is logged and persisted, and the response is still the LEGACY verdict', async () => {
+    process.env.VERDICT_ENGINE_MODE = 'shadow';
+    process.env.VERDICT_ENGINE_SHADOW_SAMPLE_RATE = '100';
+    const shadowInsertSpy = jest.fn().mockResolvedValue({ error: null });
+    getSupabaseServer.mockReturnValueOnce(makeFakeSbForShadow(shadowInsertSpy));
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // Same fixture Stage 4 used for this exact correction: legacy's Node 8
+    // (conventional meat) fires before Node 8b (conventional_eggs), so the
+    // response carries a generic conventional_meat flag; the corrected
+    // engine gives conventional_eggs priority. Verdict is red either way —
+    // only `flags` should diverge.
+    mockFetchOnce(shadowOffResp({
+      productName:     'Chicken Noodle Soup',
+      ingredientsText: 'chicken broth, egg noodles, eggs, chicken, salt',
+      categoriesTags:  ['en:broths', 'en:soups'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000902', userLevel: 2 }), res);
+
+    // User-facing response is still the legacy result.
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(true);
+
+    expect(warnSpy).toHaveBeenCalledWith('[scan] shadow mode divergence:', expect.objectContaining({
+      barcode: '000000000902',
+      divergingFields: expect.arrayContaining(['flags']),
+    }));
+
+    expect(shadowInsertSpy).toHaveBeenCalledTimes(1);
+    const payload = shadowInsertSpy.mock.calls[0][0];
+    expect(payload.legacy_verdict).toBe('red');
+    expect(payload.corrected_verdict).toBe('red');
+    expect(payload.diverging_fields).toContain('flags');
+    expect(payload.legacy_flags.some(f => f.category === 'conventional_meat')).toBe(true);
+    expect(payload.corrected_flags.some(f => f.category === 'conventional_eggs')).toBe(true);
+    expect(payload.prompt_version).toBe(PROMPT_VERSION);
+
+    warnSpy.mockRestore();
+  });
+
+  test('agreement produces no log and no Supabase write', async () => {
+    process.env.VERDICT_ENGINE_MODE = 'shadow';
+    process.env.VERDICT_ENGINE_SHADOW_SAMPLE_RATE = '100';
+    const shadowInsertSpy = jest.fn().mockResolvedValue({ error: null });
+    getSupabaseServer.mockReturnValueOnce(makeFakeSbForShadow(shadowInsertSpy));
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // Plain, uncontroversial product with no known divergence — both
+    // engines should agree completely.
+    mockFetchOnce(shadowOffResp({ ingredientsText: 'Canola oil, salt, water.' }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000905', userLevel: 2 }), res);
+
+    expect(verdictEngineModule.computeCorrectedVerdict).toHaveBeenCalledTimes(1);
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(shadowInsertSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+  });
+
+  test('REGRESSION GUARD — shadow branch passes RAW product.labels_tags into computeCorrectedVerdict(), never the normalized labelsDetected', async () => {
+    // lib/verdictEngine.test.js independently proves this exact fixture
+    // ("Oats, salt, water." + label 'en:usda-organic') produces
+    // GREEN/clearedBy:'organic' from computeCorrectedVerdict() when given
+    // the RAW label, and RED/clearedBy:null if instead given the
+    // already-normalized 'usda-organic' (no match in OFF_LABEL_MAP, so
+    // organic clearance silently never applies). The real legacy path for
+    // this fixture is ALSO green/organic (confirmed directly against
+    // analyzeIngredients() during development of this test), so if scan.js's
+    // shadow branch is wired correctly, the two engines AGREE and nothing is
+    // logged. If a future edit ever swaps in labelsDetected instead of
+    // product.labels_tags, the corrected engine silently produces red/null,
+    // the two engines DISAGREE, and every assertion below fails.
+    process.env.VERDICT_ENGINE_MODE = 'shadow';
+    process.env.VERDICT_ENGINE_SHADOW_SAMPLE_RATE = '100';
+    const shadowInsertSpy = jest.fn().mockResolvedValue({ error: null });
+    getSupabaseServer.mockReturnValueOnce(makeFakeSbForShadow(shadowInsertSpy));
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    mockFetchOnce(shadowOffResp({
+      ingredientsText: 'Oats, salt, water.',
+      labelsTags:      ['en:usda-organic'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000903', userLevel: 2 }), res);
+
+    // Sanity: the label really was recognized on the legacy side (otherwise
+    // this fixture wouldn't be diagnostic at all).
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.clearedBy).toBe('organic');
+
+    // The actual regression guard: no divergence means the corrected engine
+    // ALSO produced green/organic, which is only possible if it received
+    // the raw 'en:usda-organic' label, not the normalized 'usda-organic'.
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(shadowInsertSpy).not.toHaveBeenCalled();
+
+    // Direct confirmation of what was actually passed, for good measure —
+    // not a substitute for the behavioral proof above, but pins down intent.
+    expect(verdictEngineModule.computeCorrectedVerdict).toHaveBeenCalledWith(
+      expect.objectContaining({ productLabels: ['en:usda-organic'] })
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  test('a throwing computeCorrectedVerdict() is caught, logged, and never affects the legacy response', async () => {
+    process.env.VERDICT_ENGINE_MODE = 'shadow';
+    process.env.VERDICT_ENGINE_SHADOW_SAMPLE_RATE = '100';
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    verdictEngineModule.computeCorrectedVerdict.mockImplementationOnce(() => {
+      throw new Error('simulated bug in computeCorrectedVerdict');
+    });
+
+    mockFetchOnce(shadowOffResp({ ingredientsText: 'Oats, salt, water.', labelsTags: ['en:usda-organic'] }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000904', userLevel: 2 }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.verdict).toBe('green'); // legacy result, unaffected by the thrown error
+    expect(res.body.clearedBy).toBe('organic');
+    expect(errorSpy).toHaveBeenCalledWith('[scan] shadow mode computeCorrectedVerdict failed:', expect.any(Error));
+
+    errorSpy.mockRestore();
+  });
+
+  test('a throwing verdict_shadow_diffs insert is caught and never affects the legacy response', async () => {
+    process.env.VERDICT_ENGINE_MODE = 'shadow';
+    process.env.VERDICT_ENGINE_SHADOW_SAMPLE_RATE = '100';
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const shadowInsertSpy = jest.fn().mockRejectedValue(new Error('simulated Supabase failure'));
+    getSupabaseServer.mockReturnValueOnce(makeFakeSbForShadow(shadowInsertSpy));
+
+    mockFetchOnce(shadowOffResp({
+      productName:     'Chicken Noodle Soup',
+      ingredientsText: 'chicken broth, egg noodles, eggs, chicken, salt',
+      categoriesTags:  ['en:broths', 'en:soups'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000906', userLevel: 2 }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.verdict).toBe('red'); // legacy result, unaffected
+    expect(shadowInsertSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith('verdict_shadow_diffs write failed:', expect.any(Error));
+
+    errorSpy.mockRestore();
+  });
 });
