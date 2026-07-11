@@ -2856,6 +2856,28 @@ Vercel once enough real-world divergence data has accumulated, per the original 
 to (or re-confirm) a sampled rate, then Stage 5c (full cutover — `VERDICT_ENGINE_MODE=live` actually
 wired to return `computeCorrectedVerdict()`'s result directly) remains unbuilt.
 
+#### Stage 5b — real-traffic review: zero divergences observed (July 2026)
+
+After running shadow mode (`VERDICT_ENGINE_SHADOW_SAMPLE_RATE=100`) against roughly 100 real
+production scans (~50 products, both `userLevel` 1 and 2, deliberately varied categories),
+`verdict_shadow_diffs` was queried directly (read-only, service-role key — the table has RLS enabled
+with zero policies, so the anon key cannot see it at all) and returned **zero rows**. This confirms
+the mechanism itself works (already independently verified end-to-end in the July 11 activation
+check above) but that real traffic simply hasn't yet produced a case matching any of the three known
+corrections — including, specifically, neither of the two coverage gaps flagged in Stage 4 (game meat
++ a separate reject-severity flag; bioengineering + a `usda-organic` label). Zero rows is not evidence
+those gaps are closed — it only means neither has been observed yet; both remain genuinely untested by
+real traffic to date.
+
+**Explicit product decision, made 2026-07-11**: proceed toward Stage 5c cutover
+without first closing these two coverage gaps via a deliberately constructed test case. Weighed the
+cost of waiting for a rare real-world case to naturally occur (unknown, possibly long, timeline) against
+the safety of keeping the legacy code path available as a dormant fallback after cutover — `scan.js`'s
+`VERDICT_ENGINE_MODE` gate is not removed by Stage 5c, only its default target changes, so `legacy`
+remains one env var away at any point if `live` mode ever misbehaves on one of these untested
+combinations in production. This is a documented risk acceptance, not a claim that the gaps don't
+matter — see the "Known coverage gaps" note under "Golden Master Snapshot" below, which remains open.
+
 ---
 
 ## Golden Master Snapshot (L1/L2 Unification Project — Stage 1)
@@ -2959,6 +2981,12 @@ doesn't cover these two scenarios yet:
    (`"venison, water, salt"`) with zero flags in either category — so the actual discriminating
    behavior of the gated-green correction (`DESIGN_DECISIONS.correctedGameMeatGatedGreenAtL2`) —
    leaving a real reject flag alone instead of discarding it — has never been exercised by a real case.
+
+**Still open as of July 2026, and knowingly so.** Roughly 100 real production shadow-mode scans (see
+"Stage 5b — real-traffic review" above) produced zero divergence rows of any kind, so neither gap has
+been closed by real traffic either. The explicit 2026-07-11 decision to proceed toward Stage 5c cutover
+without closing these gaps first is documented there — this note is not stale, it's the same open item
+viewed from the Stage 1 side.
 
 ---
 
