@@ -51,11 +51,25 @@ const {
   analyzeIngredients,
   containsFortifiedVitamins,
   containsNaturalColorants,
-  ALWAYS_IGNORE_INGREDIENTS,
   containsMilkDerived,
   containsMeatDerived,
   containsMeatIngredient,
 } = rulesEngine;
+
+import scanHelpers from '../../lib/scanHelpers';
+const {
+  normalizeLabelTags,
+  isMeatProduct,
+  isSeafoodProduct,
+  isGameMeatProduct,
+  detectWildCaught,
+  allIngredientsPrefixedOrganic,
+  allIngredientsAreWaterSafe,
+  maskIgnoredIngredients,
+  mapProductCategory,
+  MEAT_CATEGORIES,
+  SEAFOOD_CATEGORIES,
+} = scanHelpers;
 
 import { getSupabaseServer } from '../../lib/supabaseServer';
 import Anthropic from '@anthropic-ai/sdk';
@@ -65,466 +79,13 @@ import { ANTHROPIC_MODEL } from '../../lib/aiConfig';
 
 const OFF_BASE = 'https://world.openfoodfacts.org/api/v0/product';
 
-/**
- * Conservative mapping from Open Food Facts labels_tags values to the
- * internal certification strings recognised by the rules engine.
- *
- * Only verified certification labels are mapped.
- * Generic brand claims ("en:no-artificial-flavors", etc.) are intentionally
- * excluded — they have no effect on Cat 2 clearance.
- */
-const OFF_LABEL_MAP = {
-  'en:usda-organic':              'usda-organic',
-  'en:organic':                   'usda-organic',
-  'en:non-gmo-project-verified':  'non-gmo-project-verified',
-  'en:glyphosate-free':           'glyphosate-free',
-  'en:glyphosate-residue-free':   'glyphosate-free',
-  'en:wild-caught':               'wild-caught',
-  'en:wild-fish':                 'wild-caught',
-  'en:wild-caught-fish':          'wild-caught',
-  'en:wild-caught-seafood':       'wild-caught',
-  'en:farmed':                    'farmed',
-  'en:farm-raised':               'farmed',
-  'en:glyphosate-heavy':          'glyphosate-heavy',
-  // "en:no-gmos" is a self-declared claim, not a third-party certification;
-  // we do NOT map it to non-gmo-project-verified to avoid false clearance.
-};
-
-/**
- * Convert an OFF labels_tags array into our deduplicated internal label array.
- * Unknown or unmapped tags are silently ignored.
- *
- * @param {unknown} labelsTags — value of product.labels_tags from OFF
- * @returns {string[]}
- */
-function normalizeLabelTags(labelsTags) {
-  if (!Array.isArray(labelsTags)) return [];
-
-  const seen = new Set();
-  const result = [];
-
-  for (const tag of labelsTags) {
-    const mapped = OFF_LABEL_MAP[String(tag).toLowerCase()];
-    if (mapped && !seen.has(mapped)) {
-      seen.add(mapped);
-      result.push(mapped);
-    }
-  }
-
-  return result;
-}
-
-// ── Seafood category detection ────────────────────────────────────────────
-// Single source of truth for seafood-related OFF tags — used both to
-// identify products where wild-caught vs. farmed is the key safety
-// distinction, AND as the seafood component of MEAT_CATEGORIES below.
-// Declared first (not as a "subset" comment on a second, separately
-// hardcoded literal) so MEAT_CATEGORIES can spread from it directly —
-// two independently maintained literal lists happening to match today
-// would drift silently the moment either one is edited without the other.
-const SEAFOOD_CATEGORIES = new Set([
-  'en:fish',
-  'en:seafood',
-  'en:shellfish',
-  'en:crustaceans',
-  'en:molluscs',
-  'en:salmon',
-  'en:tuna',
-  'en:cod',
-  'en:tilapia',
-  'en:shrimp',
-]);
-
-// ── Meat product detection ────────────────────────────────────────────────
-// Seafood entries are spread in from SEAFOOD_CATEGORIES (single source of
-// truth, above) rather than re-listed as separate literal strings — mirrors
-// the LEVEL_1_YELLOW_TRIGGERS pattern in lib/rulesEngine.js, built from the
-// actual category arrays so the two lists can't silently diverge.
-const MEAT_CATEGORIES = new Set([
-  'en:meats', 'en:meat', 'en:beef', 'en:ground-beef', 'en:pork', 'en:chicken',
-  'en:turkey', 'en:lamb', 'en:veal', 'en:poultry', 'en:game-meats',
-  ...SEAFOOD_CATEGORIES,
-  'en:deli-meats', 'en:cold-cuts', 'en:sausages', 'en:hot-dogs',
-  'en:charcuterie', 'en:bacon', 'en:ham', 'en:salami', 'en:pepperoni',
-  'en:smoked-meats', 'en:cured-meats',
-  // NOTE: 'en:broths' and 'en:stocks' were removed here (bare parent tags
-  // OFF also applies to vegetable/mushroom broths and stocks — see the
-  // is_meat false-positive fix below). The specific broth tags are kept.
-  'en:bone-broth', 'en:chicken-broth', 'en:beef-broth',
-  'en:eggs', 'en:egg-products', 'en:poultry-eggs',
-]);
-
-/**
- * Returns true if any OFF categories_tags value matches a known meat/fish/egg category.
- *
- * @param {string[]} categoriesTags — product.categories_tags from OFF
- * @returns {boolean}
- */
-function isMeatProduct(categoriesTags) {
-  if (!Array.isArray(categoriesTags) || categoriesTags.length === 0) return false;
-  return categoriesTags.some(t => MEAT_CATEGORIES.has(String(t).toLowerCase()));
-}
-
-/**
- * Returns true if the product is a seafood/fish product.
- * @param {string[]} categoriesTags
- * @returns {boolean}
- */
-function isSeafoodProduct(categoriesTags) {
-  if (!Array.isArray(categoriesTags) || categoriesTags.length === 0) return false;
-  return categoriesTags.some(t => SEAFOOD_CATEGORIES.has(String(t).toLowerCase()));
-}
-
 // Named exports for test use only (drift-guard: confirms MEAT_CATEGORIES's
 // seafood entries and SEAFOOD_CATEGORIES stay in sync — see
-// __tests__/api/scan.test.js). Not used by any other module; the handler
+// __tests__/api/scan.test.js). Both now live in lib/scanHelpers.js (Stage 5a
+// extraction) and are re-exported here unchanged so the existing test's
+// import path needs no changes. Not used by any other module; the handler
 // itself remains the default export.
 export { MEAT_CATEGORIES, SEAFOOD_CATEGORIES };
-
-// ── Game meat category detection ──────────────────────────────────────────
-// Game meats are wild-harvested by nature — no certification required.
-const GAME_MEAT_CATEGORIES = new Set([
-  'en:game-meats',
-  'en:game',
-  'en:wild-game',
-]);
-
-/**
- * Returns true if the product is a game meat product.
- * @param {string[]} categoriesTags
- * @returns {boolean}
- */
-function isGameMeatProduct(categoriesTags) {
-  if (!Array.isArray(categoriesTags) || categoriesTags.length === 0) return false;
-  return categoriesTags.some(t => GAME_MEAT_CATEGORIES.has(String(t).toLowerCase()));
-}
-
-// ── Wild-caught detection ─────────────────────────────────────────────────
-
-/**
- * Returns true if the product is reliably identified as wild-caught fish.
- * Combines OFF label data with product name signals, then applies exclusion
- * guards for known farmed indicators.
- *
- * Positive signals (checked in order):
- *   (1) OFF label 'wild-caught' (normalised from labels_tags via normalizeLabelTags)
- *   (2) Product name contains "wild-caught" or "wild caught" (case-insensitive)
- *   (3) Product name contains standalone word "wild" (word-boundary safe — will not
- *       match "wildlife" or "wilderness"; covers "ALBACORE WILD TUNA", etc.)
- *   (4) Ingredients text contains standalone word "wild" (same constraint; covers
- *       products like "Wild pink salmon" in the ingredient list)
- *
- * Farmed exclusions (take precedence over all positive signals):
- *   - Product name contains "farm-raised", "farmed", or "atlantic salmon"
- *     ('atlantic salmon' is an aquaculture proxy — virtually all atlantic salmon
- *     sold commercially is farmed)
- *   - Ingredients text contains "astaxanthin" (a synthetic color additive used in
- *     farmed salmon to simulate the pink pigment of wild fish)
- *
- * @param {string}      productName    — product name from OFF
- * @param {string[]}    labelsDetected — normalised labels from normalizeLabelTags()
- * @param {string|null} ingredientsText — raw ingredients text
- * @returns {boolean}
- */
-function detectWildCaught(productName, labelsDetected, ingredientsText) {
-  const nameLower = (productName || '').toLowerCase();
-  const ingLower  = (ingredientsText || '').toLowerCase();
-
-  // ── Farmed exclusions take precedence over all positive signals ───────────
-  const FARMED_NAME_SIGNALS = ['farm-raised', 'farmed', 'atlantic salmon'];
-  if (FARMED_NAME_SIGNALS.some(s => nameLower.includes(s))) return false;
-  if (ingLower.includes('astaxanthin')) return false;
-
-  // Word-boundary regex for the standalone word "wild" — matches "wild" surrounded
-  // by non-letter characters (spaces, punctuation, start/end of string), but not
-  // inside compound words like "wildlife" or "wilderness".
-  const STANDALONE_WILD = /\bwild\b/;
-
-  // ── Positive wild-caught signals ──────────────────────────────────────────
-  // Signal 1: OFF label (already normalised from labels_tags)
-  if (labelsDetected.includes('wild-caught')) return true;
-
-  // Signal 2: Product name contains "wild-caught" or "wild caught"
-  const WILD_NAME_SIGNALS = ['wild-caught', 'wild caught'];
-  if (WILD_NAME_SIGNALS.some(s => nameLower.includes(s))) return true;
-
-  // Signal 3: Product name contains standalone word "wild"
-  if (STANDALONE_WILD.test(nameLower)) return true;
-
-  // Signal 4: Ingredients text contains standalone word "wild"
-  if (ingLower && STANDALONE_WILD.test(ingLower)) return true;
-
-  return false;
-}
-
-// ── Cert-unconfirmed detection ────────────────────────────────────────────
-
-/**
- * Trivial ingredients that do not require organic certification and should
- * not block the all-organic-prefix determination. These are simple processing
- * necessities: water variants and salt variants.
- */
-const CERT_UNCONFIRMED_TRIVIAL = new Set([
-  'water', 'filtered water', 'purified water', 'spring water',
-  'sea salt', 'salt', 'himalayan salt', 'himalayan pink salt',
-  'pink himalayan salt',
-]);
-
-/**
- * Returns true when every non-trivial ingredient token in the ingredient text
- * is prefixed with "organic" (case-insensitive). Used to detect products that
- * appear fully organic from their ingredient list even though no USDA cert tag
- * was found in the Open Food Facts database.
- *
- * Trivial ingredients (water and salt variants) are excluded from the check —
- * they are never organically certified and their presence should not block
- * the detection.
- *
- * Returns false when:
- *   - ingredientsText is empty/null
- *   - only trivial ingredients exist (e.g., "water, sea salt")
- *   - any non-trivial ingredient is NOT prefixed with "organic"
- *
- * @param {string|null} ingredientsText — raw ingredient string from OFF
- * @returns {boolean}
- */
-function allIngredientsPrefixedOrganic(ingredientsText) {
-  if (!ingredientsText) return false;
-
-  // Strip parenthetical sub-ingredient lists so nested ingredients inside
-  // a compound entry don't produce spurious tokens.
-  // e.g. "Organic broth (organic carrots, water)" → "Organic broth "
-  const stripped = ingredientsText.replace(/\([^)]*\)/g, '');
-
-  // Split on commas; normalise each token (strip trailing punctuation/symbols)
-  const tokens = stripped
-    .split(',')
-    .map(t => t.trim().replace(/[.*†‡]/g, '').trim().toLowerCase())
-    .filter(t => t.length > 0);
-
-  if (tokens.length === 0) return false;
-
-  // Remove trivial ingredients before the organic-prefix check
-  const nonTrivial = tokens.filter(t => !CERT_UNCONFIRMED_TRIVIAL.has(t));
-
-  // No non-trivial ingredients (e.g., "water, sea salt") — never flag
-  if (nonTrivial.length === 0) return false;
-
-  return nonTrivial.every(t => t.startsWith('organic'));
-}
-
-// ── Pure-water detection ──────────────────────────────────────────────────
-
-/**
- * Ingredients that are safe and expected in natural water products.
- * Covers all standard water forms and the minerals/gases that naturally
- * occur in spring, artesian, and mineral waters.
- *
- * Used by allIngredientsAreWaterSafe() to upgrade default-YELLOW water
- * products to GREEN — organic certification is inapplicable to geological
- * water sources, so the absence of a cert label is not a concern.
- */
-const WATER_SAFE_INGREDIENTS = new Set([
-  // Water forms
-  'water', 'spring water', 'artesian water', 'mineral water', 'sparkling water',
-  'carbonated water', 'purified water', 'distilled water', 'reverse osmosis water',
-  'deionized water', 'filtered water',
-  // Naturally occurring minerals (from geological water sources)
-  'silica', 'calcium', 'magnesium', 'bicarbonates', 'bicarbonate', 'sodium',
-  'potassium', 'fluoride', 'sulfate', 'sulfates', 'chloride', 'chlorides',
-  'iron', 'zinc', 'manganese', 'chromium', 'selenium', 'lithium', 'strontium',
-  'phosphate', 'phosphates',
-  // CO2 (carbonation)
-  'carbon dioxide', 'co2', 'natural carbon dioxide',
-]);
-
-/**
- * Returns true when every ingredient token in the text is found in the
- * WATER_SAFE_INGREDIENTS set. Used to identify pure natural water products
- * (spring water, artesian water, mineral water, etc.) that should receive a
- * GREEN verdict even though they cannot hold USDA organic certification.
- *
- * Strips parenthetical sub-ingredient lists before tokenising, exactly
- * as allIngredientsPrefixedOrganic() does.
- *
- * Returns false when:
- *   - ingredientsText is empty/null
- *   - any token is NOT in WATER_SAFE_INGREDIENTS (e.g. "coconut water", "natural flavor")
- *
- * @param {string|null} ingredientsText — raw ingredient string from OFF
- * @returns {boolean}
- */
-function allIngredientsAreWaterSafe(ingredientsText) {
-  if (!ingredientsText) return false;
-
-  const stripped = ingredientsText.replace(/\([^)]*\)/g, '');
-
-  const tokens = stripped
-    .split(',')
-    .map(t => t.trim().replace(/[.*†‡]/g, '').trim().toLowerCase())
-    .filter(t => t.length > 0);
-
-  if (tokens.length === 0) return false;
-
-  return tokens.every(t => WATER_SAFE_INGREDIENTS.has(t));
-}
-
-/**
- * Replace each ALWAYS_IGNORE_INGREDIENTS term in the already-lowercased
- * `text` with same-length spaces. Prevents false positives in ingredient-
- * level helper functions (e.g. 'calcium carbonate' matching FORTIFIED_VITAMINS,
- * or 'cultures' being confused with dairy). The longest-first ordering in
- * ALWAYS_IGNORE_INGREDIENTS ensures 'himalayan pink salt' is masked before
- * the shorter 'salt' sub-string match would fire.
- *
- * @param {string} text — already lowercased ingredient string
- * @returns {string}
- */
-function maskIgnoredIngredients(text) {
-  let masked = text;
-  for (const term of ALWAYS_IGNORE_INGREDIENTS) {
-    const replacement = ' '.repeat(term.length);
-    let idx = masked.indexOf(term);
-    while (idx !== -1) {
-      masked = masked.slice(0, idx) + replacement + masked.slice(idx + term.length);
-      idx = masked.indexOf(term, idx + replacement.length);
-    }
-  }
-  return masked;
-}
-
-// ── Product category mapping ──────────────────────────────────────────────
-const CATEGORY_TAG_MAP = [
-  { category: 'cereal', tags: [
-    'en:cereals-and-their-products',
-    'en:cereals',
-    'en:breakfast-cereals',
-    'en:granolas',
-    'en:oatmeals',
-    'en:mueslis',
-    'en:porridges',
-    'en:hot-cereals',
-  ]},
-  { category: 'dairy', tags: [
-    'en:dairy-products',
-    'en:yogurts',
-    'en:milks',
-    'en:butters',
-    'en:creams',
-    'en:cheeses',
-    'en:kefirs',
-    'en:dairy-alternatives',
-    'en:plant-based-milks',
-    'en:oat-milks',
-    'en:almond-milks',
-  ]},
-  { category: 'bread', tags: [
-    'en:breads',
-    'en:english-muffins',
-    'en:bagels',
-    'en:baked-products',
-    'en:muffins',
-    'en:tortillas',
-    'en:flatbreads',
-    'en:wraps',
-    'en:rolls',
-    'en:pitas',
-  ]},
-  { category: 'beverages', tags: [
-    'en:beverages',
-    'en:drinks',
-    'en:juices',
-    'en:sodas',
-    'en:waters',
-    'en:teas',
-    'en:coffees',
-    'en:smoothies',
-    'en:energy-drinks',
-    'en:plant-based-beverages',
-    'en:kombuchas',
-    'en:coconut-waters',
-    'en:cold-brew-coffees',
-  ]},
-  { category: 'frozen', tags: [
-    'en:frozen-foods',
-    'en:frozen-meals',
-    'en:frozen-vegetables',
-    'en:frozen-desserts',
-    'en:frozen-meat',
-    'en:frozen-fish',
-    'en:frozen-waffles',
-    'en:frozen-pizza',
-  ]},
-  { category: 'cooking_oils', tags: [
-    'en:oils',
-    'en:cooking-oils',
-    'en:olive-oils',
-    'en:coconut-oils',
-    'en:avocado-oils',
-    'en:vegetable-oils',
-    'en:fats',
-    'en:cooking-fats',
-  ]},
-  { category: 'condiments', tags: [
-    'en:condiments',
-    'en:sauces',
-    'en:dressings',
-    'en:ketchups',
-    'en:mustards',
-    'en:mayonnaises',
-    'en:vinegars',
-    'en:hot-sauces',
-    'en:salad-dressings',
-    'en:marinades',
-    'en:spreads',
-    'en:dips',
-    'en:salsas',
-  ]},
-  { category: 'chips', tags: [
-    'en:chips-and-fries',
-    'en:crisps',
-  ]},
-  { category: 'snacks', tags: [
-    'en:snacks',
-    'en:salty-snacks',
-    'en:popcorn',
-    'en:pretzels',
-    'en:crackers',
-    'en:nuts',
-    'en:seeds',
-    'en:dried-fruits',
-    'en:fruit-snacks',
-    'en:energy-bars',
-    'en:meat-snacks',
-    'en:jerky',
-    'en:rice-cakes',
-  ]},
-  { category: 'meat', tags: [
-    'en:meats',
-    'en:fresh-meats',
-    'en:frozen-meats',
-    'en:poultry',
-    'en:beef',
-    'en:pork',
-    'en:chicken',
-    'en:turkey',
-    'en:ground-meat',
-    'en:sausages',
-    'en:deli-meats',
-    'en:bacon',
-  ]},
-];
-
-function mapProductCategory(categoriesTags) {
-  if (!Array.isArray(categoriesTags) || categoriesTags.length === 0) return null;
-  const normalized = new Set(categoriesTags.map(t => String(t).toLowerCase()));
-  for (const { category, tags } of CATEGORY_TAG_MAP) {
-    if (tags.some(t => normalized.has(t))) {
-      return category;
-    }
-  }
-  return null;
-}
 
 /**
  * Persist unverified ingredients to Supabase for team review.
@@ -615,176 +176,23 @@ async function fetchExplanation(verdict, flags, productName, ingredientsText, us
 }
 
 /**
- * Next.js API route handler.
+ * Computes verdict/flags/clearedBy/oliveCaveat/unverifiedReason for a scan
+ * using TODAY'S live decision logic — the L1 explicit overrides plus the L2
+ * universal decision tree, unchanged from before the Stage 5a extraction.
+ * This is a pure relocation of that existing logic into its own function
+ * (previously inline in the handler) so it can be selected by
+ * VERDICT_ENGINE_MODE below — no behavior change of any kind.
  *
- * @param {import('next').NextApiRequest}  req
- * @param {import('next').NextApiResponse} res
+ * @param {Object} input
+ * @param {string|null} input.ingredientsText
+ * @param {string[]} input.labelsDetected
+ * @param {string[]} input.categoriesTags
+ * @param {string} input.productName
+ * @param {1|2} input.userLevel
+ * @param {boolean} input.isMeat
+ * @returns {{verdict: string, flags: object[], clearedBy: string|null, oliveCaveat: boolean, unverifiedReason: string|null, unverifiedIngredients: string[]}}
  */
-export default async function handler(req, res) {
-  // ── Method guard ──────────────────────────────────────────────────────────
-  if (req.method !== 'POST') {
-    return res.status(405).json({
-      error: 'Method not allowed. Send a POST request with { barcode } in the body.',
-    });
-  }
-
-  // ── Input validation ──────────────────────────────────────────────────────
-  const { barcode, userLevel: rawUserLevel } = req.body ?? {};
-  const userLevel = rawUserLevel === 1 || rawUserLevel === 2 ? rawUserLevel : 2;
-
-  if (barcode === undefined || barcode === null || barcode === '') {
-    return res.status(400).json({
-      error: '`barcode` is required in the JSON request body.',
-    });
-  }
-
-  // Strip everything that isn't a digit (hyphens, spaces, check-digit separators).
-  // Leading zeros are preserved because barcodes like 021000025350 are valid.
-  const cleanBarcode = String(barcode).trim().replace(/[^0-9]/g, '');
-
-  if (!cleanBarcode) {
-    return res.status(400).json({
-      error: '`barcode` must contain at least one digit.',
-    });
-  }
-
-  // ── Cache lookup ──────────────────────────────────────────────────────────
-  const sb = getSupabaseServer();
-  if (sb) {
-    try {
-      const { data: cached } = await sb
-        .from('scan_cache')
-        .select('*')
-        .eq('barcode', cleanBarcode)
-        .eq('user_level', userLevel)
-        .eq('prompt_version', PROMPT_VERSION)
-        .maybeSingle();
-
-      if (cached) {
-        // Touch last_accessed_at fire-and-forget — don't delay response.
-        sb.from('scan_cache')
-          .update({ last_accessed_at: new Date().toISOString() })
-          .eq('id', cached.id)
-          .then(() => {}).catch(() => {});
-
-        return res.status(200).json({
-          verdict:               cached.verdict,
-          flags:                 cached.flags ?? [],
-          clearedBy:             cached.cleared_by ?? null,
-          productName:           cached.product_name,
-          ingredients:           cached.ingredients ?? null,
-          barcode:               cleanBarcode,
-          source:                'cache',
-          found:                 true,
-          labelsDetected:        [],
-          unverifiedIngredients: cached.unverified_ingredients ?? [],
-          explanation:           cached.explanation ?? null,
-          productCategory:       cached.product_category ?? null,
-          unverifiedReason:      cached.unverified_reason ?? null,
-          isMeat:                cached.is_meat ?? false,
-          oliveCaveat:           cached.olive_caveat ?? false,
-        });
-      }
-    } catch {
-      // Cache read failure is non-fatal — fall through to normal scan flow.
-    }
-  }
-
-  // ── Fetch from Open Food Facts ────────────────────────────────────────────
-  let offData;
-
-  try {
-    const response = await fetch(`${OFF_BASE}/${cleanBarcode}.json`, {
-      headers: {
-        // OFF requests a meaningful User-Agent for non-trivial integrations.
-        'User-Agent': 'BeyondLabels/1.0 (session-2-prototype)',
-      },
-    });
-
-    if (!response.ok) {
-      return res.status(502).json({
-        error: 'Upstream error from Open Food Facts.',
-        detail: `HTTP ${response.status} ${response.statusText}`,
-      });
-    }
-
-    offData = await response.json();
-  } catch (err) {
-    return res.status(502).json({
-      error: 'Failed to reach Open Food Facts. Check network connectivity.',
-      detail: err.message,
-    });
-  }
-
-  // ── Product not found in OFF database ─────────────────────────────────────
-  // OFF returns { status: 0 } when a barcode is not in their database.
-  if (!offData || offData.status === 0 || !offData.product) {
-    const { verdict, flags, clearedBy } = analyzeIngredients(null);
-
-    return res.status(404).json({
-      verdict,          // always 'unverified'
-      flags,            // always []
-      clearedBy,        // always null
-      productName:           null,
-      ingredients:           null,
-      barcode:               cleanBarcode,
-      source:                'open-food-facts',
-      found:                 false,
-      labelsDetected:        [],
-      unverifiedIngredients: [],
-      explanation:           null,
-      productCategory:       null,
-      unverifiedReason:      'not_found',
-      isMeat:                false,
-      oliveCaveat:           false,
-    });
-  }
-
-  // ── Extract fields from OFF product object ────────────────────────────────
-  const { product } = offData;
-
-  // Prefer English names/ingredients when available.
-  const productName =
-    product.product_name_en ||
-    product.product_name    ||
-    'Unknown Product';
-
-  const ingredientsText =
-    product.ingredients_text_en ||
-    product.ingredients_text    ||
-    null;
-
-  const labelsDetected   = normalizeLabelTags(product.labels_tags);
-  const categoriesTags   = product.categories_tags ?? [];
-  const productCategory  = mapProductCategory(categoriesTags);
-
-  // is_meat corroboration (PROMPT_VERSION-independent — see CLAUDE.md
-  // changelog): OFF categories_tags alone missed a majority of real meat
-  // products in a scan_cache audit (missing category data, OFF's modern
-  // canonical parent tags not matching our short-form set, or products
-  // filed under an unrelated branch like "en:sandwiches"). Tracked as two
-  // independent signals, OR'd for the actual isMeat used by the decision
-  // tree. Both are persisted to scan_cache (is_meat_category,
-  // is_meat_ingredient — Phase 2) so a cached row's meat classification is
-  // auditable without re-scanning. The console.log below is kept
-  // deliberately even though the values are now persisted — it gives an
-  // immediate, real-time signal for the rollout of this exact fix (and any
-  // future rules-engine session) without needing a DB round-trip, and per
-  // the olive_caveat incident (see the Phase 2 migration file), verifying
-  // this specific write path actually succeeds post-deploy is worth the
-  // redundancy.
-  const isMeatCategory   = isMeatProduct(categoriesTags);
-  const isMeatIngredient = ingredientsText
-    ? containsMeatIngredient(maskIgnoredIngredients(ingredientsText.toLowerCase()))
-    : false;
-  const isMeat = isMeatCategory || isMeatIngredient;
-  console.log('[scan] meat detection signals:', {
-    barcode,
-    isMeatCategory,
-    isMeatIngredient,
-    isMeat,
-  });
-
+function computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags, productName, userLevel, isMeat }) {
   let unverifiedReason = !ingredientsText ? 'no_ingredients' : null;
 
   // ── Run the rules engine ──────────────────────────────────────────────────
@@ -1185,6 +593,210 @@ export default async function handler(req, res) {
     verdict   = 'green';
     clearedBy = 'pure_water';
   }
+
+  return { verdict, flags, clearedBy, oliveCaveat, unverifiedReason, unverifiedIngredients };
+}
+
+/**
+ * Next.js API route handler.
+ *
+ * @param {import('next').NextApiRequest}  req
+ * @param {import('next').NextApiResponse} res
+ */
+export default async function handler(req, res) {
+  // ── Method guard ──────────────────────────────────────────────────────────
+  if (req.method !== 'POST') {
+    return res.status(405).json({
+      error: 'Method not allowed. Send a POST request with { barcode } in the body.',
+    });
+  }
+
+  // ── Input validation ──────────────────────────────────────────────────────
+  const { barcode, userLevel: rawUserLevel } = req.body ?? {};
+  const userLevel = rawUserLevel === 1 || rawUserLevel === 2 ? rawUserLevel : 2;
+
+  if (barcode === undefined || barcode === null || barcode === '') {
+    return res.status(400).json({
+      error: '`barcode` is required in the JSON request body.',
+    });
+  }
+
+  // Strip everything that isn't a digit (hyphens, spaces, check-digit separators).
+  // Leading zeros are preserved because barcodes like 021000025350 are valid.
+  const cleanBarcode = String(barcode).trim().replace(/[^0-9]/g, '');
+
+  if (!cleanBarcode) {
+    return res.status(400).json({
+      error: '`barcode` must contain at least one digit.',
+    });
+  }
+
+  // ── Cache lookup ──────────────────────────────────────────────────────────
+  const sb = getSupabaseServer();
+  if (sb) {
+    try {
+      const { data: cached } = await sb
+        .from('scan_cache')
+        .select('*')
+        .eq('barcode', cleanBarcode)
+        .eq('user_level', userLevel)
+        .eq('prompt_version', PROMPT_VERSION)
+        .maybeSingle();
+
+      if (cached) {
+        // Touch last_accessed_at fire-and-forget — don't delay response.
+        sb.from('scan_cache')
+          .update({ last_accessed_at: new Date().toISOString() })
+          .eq('id', cached.id)
+          .then(() => {}).catch(() => {});
+
+        return res.status(200).json({
+          verdict:               cached.verdict,
+          flags:                 cached.flags ?? [],
+          clearedBy:             cached.cleared_by ?? null,
+          productName:           cached.product_name,
+          ingredients:           cached.ingredients ?? null,
+          barcode:               cleanBarcode,
+          source:                'cache',
+          found:                 true,
+          labelsDetected:        [],
+          unverifiedIngredients: cached.unverified_ingredients ?? [],
+          explanation:           cached.explanation ?? null,
+          productCategory:       cached.product_category ?? null,
+          unverifiedReason:      cached.unverified_reason ?? null,
+          isMeat:                cached.is_meat ?? false,
+          oliveCaveat:           cached.olive_caveat ?? false,
+        });
+      }
+    } catch {
+      // Cache read failure is non-fatal — fall through to normal scan flow.
+    }
+  }
+
+  // ── Fetch from Open Food Facts ────────────────────────────────────────────
+  let offData;
+
+  try {
+    const response = await fetch(`${OFF_BASE}/${cleanBarcode}.json`, {
+      headers: {
+        // OFF requests a meaningful User-Agent for non-trivial integrations.
+        'User-Agent': 'BeyondLabels/1.0 (session-2-prototype)',
+      },
+    });
+
+    if (!response.ok) {
+      return res.status(502).json({
+        error: 'Upstream error from Open Food Facts.',
+        detail: `HTTP ${response.status} ${response.statusText}`,
+      });
+    }
+
+    offData = await response.json();
+  } catch (err) {
+    return res.status(502).json({
+      error: 'Failed to reach Open Food Facts. Check network connectivity.',
+      detail: err.message,
+    });
+  }
+
+  // ── Product not found in OFF database ─────────────────────────────────────
+  // OFF returns { status: 0 } when a barcode is not in their database.
+  if (!offData || offData.status === 0 || !offData.product) {
+    const { verdict, flags, clearedBy } = analyzeIngredients(null);
+
+    return res.status(404).json({
+      verdict,          // always 'unverified'
+      flags,            // always []
+      clearedBy,        // always null
+      productName:           null,
+      ingredients:           null,
+      barcode:               cleanBarcode,
+      source:                'open-food-facts',
+      found:                 false,
+      labelsDetected:        [],
+      unverifiedIngredients: [],
+      explanation:           null,
+      productCategory:       null,
+      unverifiedReason:      'not_found',
+      isMeat:                false,
+      oliveCaveat:           false,
+    });
+  }
+
+  // ── Extract fields from OFF product object ────────────────────────────────
+  const { product } = offData;
+
+  // Prefer English names/ingredients when available.
+  const productName =
+    product.product_name_en ||
+    product.product_name    ||
+    'Unknown Product';
+
+  const ingredientsText =
+    product.ingredients_text_en ||
+    product.ingredients_text    ||
+    null;
+
+  const labelsDetected   = normalizeLabelTags(product.labels_tags);
+  const categoriesTags   = product.categories_tags ?? [];
+  const productCategory  = mapProductCategory(categoriesTags);
+
+  // is_meat corroboration (PROMPT_VERSION-independent — see CLAUDE.md
+  // changelog): OFF categories_tags alone missed a majority of real meat
+  // products in a scan_cache audit (missing category data, OFF's modern
+  // canonical parent tags not matching our short-form set, or products
+  // filed under an unrelated branch like "en:sandwiches"). Tracked as two
+  // independent signals, OR'd for the actual isMeat used by the decision
+  // tree. Both are persisted to scan_cache (is_meat_category,
+  // is_meat_ingredient — Phase 2) so a cached row's meat classification is
+  // auditable without re-scanning. The console.log below is kept
+  // deliberately even though the values are now persisted — it gives an
+  // immediate, real-time signal for the rollout of this exact fix (and any
+  // future rules-engine session) without needing a DB round-trip, and per
+  // the olive_caveat incident (see the Phase 2 migration file), verifying
+  // this specific write path actually succeeds post-deploy is worth the
+  // redundancy.
+  const isMeatCategory   = isMeatProduct(categoriesTags);
+  const isMeatIngredient = ingredientsText
+    ? containsMeatIngredient(maskIgnoredIngredients(ingredientsText.toLowerCase()))
+    : false;
+  const isMeat = isMeatCategory || isMeatIngredient;
+  console.log('[scan] meat detection signals:', {
+    barcode,
+    isMeatCategory,
+    isMeatIngredient,
+    isMeat,
+  });
+
+  // ── Verdict computation — gated by VERDICT_ENGINE_MODE ───────────────────
+  // Stage 5a of the L1/L2 unification project: the flag and branch point
+  // exist now so Stage 5b (shadow) and Stage 5c (live) don't require
+  // touching this control flow again — but only 'legacy' does anything
+  // different from 'legacy' today. Defaults to 'legacy' when unset, so
+  // production behavior is unchanged until someone explicitly sets this in
+  // Vercel. See CLAUDE.md's "Unified Verdict Rule Table" / Stage 5 sections.
+  const VERDICT_ENGINE_MODE = ['shadow', 'live'].includes(process.env.VERDICT_ENGINE_MODE)
+    ? process.env.VERDICT_ENGINE_MODE
+    : 'legacy';
+
+  let verdictResult;
+  if (VERDICT_ENGINE_MODE === 'shadow') {
+    // Stage 5b will replace this branch with: run computeVerdictLegacy() AND
+    // lib/verdictEngine.js's computeCorrectedVerdict(), log the diff, and
+    // still return the legacy result (shadow mode never changes what users
+    // see). For now (Stage 5a), this branch is dormant and behaves
+    // identically to 'legacy'.
+    verdictResult = computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags, productName, userLevel, isMeat });
+  } else if (VERDICT_ENGINE_MODE === 'live') {
+    // Stage 5c will replace this branch with: return lib/verdictEngine.js's
+    // computeCorrectedVerdict() result directly. For now (Stage 5a), this
+    // branch is dormant and behaves identically to 'legacy'.
+    verdictResult = computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags, productName, userLevel, isMeat });
+  } else {
+    verdictResult = computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags, productName, userLevel, isMeat });
+  }
+
+  const { verdict, flags, clearedBy, oliveCaveat, unverifiedReason, unverifiedIngredients } = verdictResult;
 
   // ── Capture unverified ingredients ───────────────────────────────────────
   // Awaited so Vercel doesn't terminate the function before the write lands.

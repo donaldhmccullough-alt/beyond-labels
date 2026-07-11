@@ -2679,9 +2679,81 @@ discriminating scenario the gated-green fix exists to handle is unverified by an
 case tests bioengineering's one remaining clearance path (the `usda-organic` label) now that the
 non-GMO path no longer clears it.
 
-**Still true, unchanged**: `lib/verdictRules.js` is not wired into any live path — `pages/api/scan.js`
-does not reference it, enforced by a drift-guard test. `scripts/shadowMode/` is a standalone dev
-analysis tool, not part of the deployed app. No `PROMPT_VERSION` bump.
+**Still true, unchanged**: `lib/verdictRules.js` itself (the data table) is not wired into any live
+path — `pages/api/scan.js` does not reference it, enforced by a drift-guard test. No `PROMPT_VERSION`
+bump. `scripts/shadowMode/compareVerdicts.js` was a standalone dev analysis tool with its own
+hand-mirrored copy of the corrected interpreter as of this session — see the Stage 5a entry
+immediately below for how that duplication was resolved.
+
+---
+
+### Session — L1/L2 unification Stage 5a: shared helper extraction + dormant gated engine (July 2026)
+
+First session in this project to touch `pages/api/scan.js` itself — treated with the same care as
+every prior read-only stage. Goal: extract the corrected decision logic into a real, callable
+production module, gated behind a flag that defaults to today's existing behavior, with zero verdict
+change for any real user. Investigated and planned before writing any code; built only after explicit
+sign-off.
+
+**`lib/scanHelpers.js` created.** All 9 of `pages/api/scan.js`'s private helpers —
+`normalizeLabelTags`, `isMeatProduct`, `isSeafoodProduct`, `isGameMeatProduct`, `detectWildCaught`,
+`allIngredientsPrefixedOrganic`, `allIngredientsAreWaterSafe`, `maskIgnoredIngredients`,
+`mapProductCategory` — plus `MEAT_CATEGORIES`/`SEAFOOD_CATEGORIES`/`GAME_MEAT_CATEGORIES` and their
+supporting literals (`OFF_LABEL_MAP`, `CERT_UNCONFIRMED_TRIVIAL`, `WATER_SAFE_INGREDIENTS`,
+`CATEGORY_TAG_MAP`), extracted verbatim. None of the nine closed over any `handler`-local state
+(`req`/`res`/`sb`/etc.) — each depended only on its own parameters and sibling module-level constants,
+confirmed before extraction, so this was a pure relocation with zero logic changes. CommonJS on
+purpose (`module.exports`, matching `lib/rulesEngine.js`/`lib/verdictRules.js`), so the file is
+`require()`-able directly from plain Node scripts as well as `import`-able from `scan.js`.
+
+**`pages/api/scan.js` updated.** Now imports all of the above from `lib/scanHelpers.js` instead of
+defining them locally, and re-exports `MEAT_CATEGORIES`/`SEAFOOD_CATEGORIES` unchanged — so
+`__tests__/api/scan.test.js`'s existing drift-guard test needed **zero** modifications. The existing
+L1-override / L2-tree decision logic (previously inline in the handler) was relocated verbatim into a
+new local function, `computeVerdictLegacy(...)` — same code, new location, callable from a branch
+point instead of always running inline.
+
+**New `VERDICT_ENGINE_MODE` gate.** Reads `process.env.VERDICT_ENGINE_MODE` once at the top of the
+handler; recognizes `'shadow'` and `'live'`, defaults to `'legacy'` for anything else (including
+unset — the common case in production today). All three branches currently call
+`computeVerdictLegacy(...)` identically — the branch *shape* exists now so Stage 5b/5c don't need to
+touch `scan.js`'s control flow again, but nothing diverges yet. Verified this is truly inert: full
+test suite passes unchanged, and a throwaway probe (built, run, and deleted within the session — never
+committed) confirmed `legacy`, `shadow`, `live`, and unset all produce byte-identical handler output
+for the same input today.
+
+**`lib/verdictEngine.js` created** — `computeCorrectedVerdict()`, a cleaned-up production port of the
+Stage 4 shadow interpreter (previously hand-written inside `compareVerdicts.js`), built on the new
+shared helpers plus `lib/rulesEngine.js` and `lib/verdictRules.js`'s `CROSS_CUTTING_RULES`. Encodes the
+three Stage 3 corrections (bioengineering organic-label-only clearance, gated-green game meat,
+conventional_eggs priority over the generic conventional_meat injection). Deliberately hand-written
+control flow, not dynamically driven by iterating `VERDICT_RULES` row-by-row — Stage 2 already
+established the rule table intentionally doesn't encode full control flow, only per-category facts,
+so a data-driven engine would have been a bigger, riskier redesign than this stage called for; porting
+the already-validated interpreter was judged lower-risk than a fourth reimplementation of the same
+tree. **Standalone as of this session** — built and usable, but not yet wired into `scan.js`'s
+shadow/live branches (that's explicitly Stage 5b/5c's job).
+
+**`scripts/shadowMode/compareVerdicts.js` updated** — deleted every hand-mirrored "will drift" helper
+copy from Stage 4 and its own local interpreter function; now genuinely `require()`s
+`lib/scanHelpers.js` (transitively, via `lib/verdictEngine.js`) and `lib/verdictEngine.js`'s
+`computeCorrectedVerdict()` directly. The duplication Stage 4 flagged as a standing drift risk no
+longer exists anywhere in the codebase.
+
+**Verification**: full suite **1453 passing**, same one known pre-existing dead-entry failure,
+unchanged. Re-ran the shadow-mode comparison after the extraction — **135 total / 133 matching / 2
+expected diffs / 0 unexpected**, byte-identical to the pre-extraction run, same two cases
+(`multi-eggs-and-meat-l1`/`-l2`, correction #4) as before. This is the load-bearing proof: since the
+"live" side of every diff comes from the frozen `snapshot-baseline.json` and the "corrected" side is
+recomputed through the now-shared helpers, any behavior drift introduced by the extraction would have
+shown up as a numeric change here — it didn't.
+
+**No `PROMPT_VERSION` bump** — the legacy path (what every real user hits today, regardless of the new
+env var) is byte-for-byte unchanged; this is infrastructure/refactor, not a verdict-logic change.
+
+**Next steps, still open**: Stage 5b (shadow mode in production — run both engines on real traffic,
+log disagreement, still serve the legacy result to users) and Stage 5c (full cutover to
+`lib/verdictEngine.js`) remain unbuilt.
 
 ---
 
