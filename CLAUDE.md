@@ -2694,6 +2694,69 @@ Node 6, reported there pending a separate decision).
 
 ---
 
+## Unified Verdict Rule Table (L1/L2 Unification Project — Stage 3)
+
+**Location**: [lib/verdictRules.js](lib/verdictRules.js), tested by [lib/verdictRules.test.js](lib/verdictRules.test.js).
+
+**What it is**: a standalone data structure — one entry per flag category (all 14: `trans_fats`,
+`seed_oils`, `conventional_crops`, `bioengineering`, `natural_flavors`, `additives`,
+`glyphosate_heavy`, `gluten_grains`, `conventional_eggs`, `conventional_meat`, `conventional_dairy`,
+`fortified_vitamins`, `natural_colorants`, `olive_oil_adulteration`) — plus cross-cutting rules that
+don't fit a per-category shape (instant-red priority tier, gluten-strip mechanism, cert_unconfirmed,
+pure-water path, inconclusive-verdict check, the `oliveCaveat` side effect, shared input signals) and
+a design-decisions log. It is the design output of Stage 2 (a full report reading `pages/api/scan.js`
+and `lib/rulesEngine.js` line-by-line and cataloguing every place L1 and L2 disagree) and Stage 3
+(this table), built toward eventually replacing the two separately-evolved L1-override/L2-tree code
+paths with one unified system.
+
+**⚠️ NOT YET CONNECTED TO LIVE TRAFFIC.** This file is imported by nothing in production —
+`pages/api/scan.js` does not reference it (enforced by a drift-guard test in
+`lib/verdictRules.test.js` Suite J). It exists purely as a reviewed, tested source of truth for a
+future cutover session.
+
+**⚠️ Deliberately disagrees with today's live `scan.js` in three places — this is intentional, not
+a bug in the table.** Per explicit instruction, three rows encode CORRECTED target behavior instead
+of transcribing what `scan.js` currently does, so the eventual cutover fixes these by construction
+rather than needing a separate patch first:
+
+1. **`bioengineering`** — the table gives it organic/non-gmo/prefix clearance (matching
+   `conventional_crops`'s pattern). Today's live `lib/rulesEngine.js` has **no** such clearance for
+   this category at all, which is the root cause of the live L2 Node 4 bug (a `usda-organic`-labeled
+   product with a bioengineering disclosure gets a false GREEN, silently discarding the reject flag).
+2. **`conventional_meat`** — the table treats game-meat detection as a no-op at L2 (leave existing
+   flags/verdict alone), matching L1's already-correct behavior. Today's live L2 Node 6
+   unconditionally overrides verdict to GREEN with no reject-flag gate — the same bug shape already
+   fixed for Node 5 (PROMPT_VERSION 29) and Node 7 (PROMPT_VERSION 39), but never fixed at Node 6.
+3. **`conventional_eggs`** — the table gives it strict priority over the generic `conventional_meat`
+   injection at both levels. Today's live L2 Node 8 (conventional meat) fires before Node 8b
+   (conventional eggs) for any OFF-tagged egg product, and the equivalent ordering gap exists in the
+   L1 override too — see the Stage 2 report for the full mechanism.
+
+**One intentional non-fix, documented not applied:** `conventional_eggs` is deliberately **not**
+cleared by `non-gmo-project-verified` in the table, unlike `conventional_crops` — reasoning captured
+directly in `DESIGN_DECISIONS.intentionalEggsNonGmoExclusion`: Non-GMO Project Verification is
+fundamentally a crop-genetics certification; applied to eggs it's really a claim about hen feed, a
+materially narrower/different claim than what the label means on a plant crop.
+
+**One dead-code note, not carried forward:** today's live L2 tree has a post-waterfall step that
+strips any surviving `conventional_crops` flag when `clearedBy==='organic'`. Stage 2 traced every
+`clearedBy` assignment and believes this line is unreachable given `conventional_crops`'s existing
+engine-level organic clearance — but wasn't asserted with total certainty. It is **not** represented
+anywhere in the table (per explicit instruction — the table only encodes active, real rules); the
+reasoning and a reminder to double-check before deletion live in
+`DESIGN_DECISIONS.deadCodePostTreeConventionalCropsStrip` for whoever eventually retires the old
+`scan.js` L2 tree.
+
+**If you land in this file confused about why it "disagrees" with `scan.js`: it's supposed to.**
+Do not try to reconcile the table to match live `scan.js` — the divergences are the point. Each
+diverging row has `level2.divergesFromLiveScanJs: true` with a `divergenceReason` explaining exactly
+what changed and why; `lib/verdictRules.test.js` has a dedicated sanity-check test
+(`CORRECTION #1 — today's live rulesEngine.js truly has no such clearance`) that calls the real
+engine directly to confirm the divergence is still real and hasn't been separately fixed elsewhere in
+the meantime.
+
+---
+
 ## Pending Policy Decisions
 
 Items deferred from the June 2026 unverified ingredients audit — pending team review before adding to the engine.
