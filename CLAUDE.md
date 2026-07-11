@@ -573,7 +573,7 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 39** (L2 tree Node 7 reject-flag gate — see the "Node 7 non-gmo-project-verified reject-flag gate" changelog entry below). Committed and pushed this session; not yet empirically re-confirmed live against production `scan_cache` the way v32 was — per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until a fresh live scan is checked post-deploy.
+**Current PROMPT_VERSION is 40** (L1/L2 unification Stage 5c — `VERDICT_ENGINE_MODE=live` wired to `lib/verdictEngine.js`'s `computeCorrectedVerdict()` — see the "Session — L1/L2 unification Stage 5c" changelog entry below). Committed and pushed this session; **`VERDICT_ENGINE_MODE` has NOT yet been set to `live` in Vercel and `scan_cache` has NOT yet been invalidated** — this bump ships the cutover code, it does not activate it. See that changelog entry's "Stage 5c — pending activation steps" for the exact remaining manual sequence. Per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until verified live.
 
 ### Cache Invalidation
 When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 30. Run `DELETE FROM scan_cache WHERE prompt_version < 30` in Supabase to purge all stale rows before deploying.
@@ -2878,6 +2878,148 @@ remains one env var away at any point if `live` mode ever misbehaves on one of t
 combinations in production. This is a documented risk acceptance, not a claim that the gaps don't
 matter — see the "Known coverage gaps" note under "Golden Master Snapshot" below, which remains open.
 
+**Superseded note**: the coverage-gap risk acceptance above was the plan going into Stage 5c. In
+practice, Stage 5c (immediately below) closed both gaps via direct unit fixtures instead of carrying
+them forward again — the "Known coverage gaps" note under "Golden Master Snapshot" has been updated
+to reflect this; it is no longer an open item as of this session.
+
+---
+
+### Session — L1/L2 unification Stage 5c: full cutover wiring (July 2026, PROMPT_VERSION 40)
+
+Wires `VERDICT_ENGINE_MODE=live` to actually return `lib/verdictEngine.js`'s `computeCorrectedVerdict()`
+result — the first stage in this whole project that changes real, user-facing verdict output (every
+prior stage was read-only analysis or a dormant/shadow code path). Treated with the caution that
+implies: investigated and reported a written plan first (exact wiring mechanism, rollout mechanism,
+PROMPT_VERSION impact, test-suite impact, rollback plan), got explicit sign-off on every open judgment
+call, then implemented.
+
+**`pages/api/scan.js`**: the `'live'` branch (dormant since Stage 5a — see that entry above) now calls
+`computeCorrectedVerdict()` for real, using the same raw-label-passing pattern already regression-tested
+in the `'shadow'` branch: `productLabels: product.labels_tags` (raw OFF form, e.g. `'en:usda-organic'`),
+never the already-normalized `labelsDetected` — `computeCorrectedVerdict()` calls `normalizeLabelTags()`
+internally, so passing the normalized array would silently double-normalize and produce a
+wrong-but-plausible result with no error thrown (the same failure class Stage 5b's regression test
+exists to catch). Wrapped in a `try`/`catch` that falls back to `computeVerdictLegacy()` on any error,
+logged via `console.error('[scan] live mode computeCorrectedVerdict failed, falling back to legacy:', err)`
+— unlike shadow mode, live mode has no already-computed legacy result sitting around to keep serving if
+the corrected engine throws, so without this fallback a bug there would 500 the endpoint instead of
+degrading to today's known-good behavior. **Scoped diff confirmed single-hunk** via `git diff
+pages/api/scan.js` — `computeVerdictLegacy()`'s definition, the full L1-override block and L2 tree
+inside it, and the `'shadow'` branch are byte-identical to before this change; nothing outside the
+`'live'` branch body was touched.
+
+**Rollout decision: binary flip, not sample-rate-gated.** `VERDICT_ENGINE_MODE=live` is a straight
+on/off switch for everyone at once — no `VERDICT_ENGINE_SHADOW_SAMPLE_RATE`-style gradual ramp was
+built for live mode, and none is planned. Reasoning: shadow mode's cautious default sample rate exists
+to limit exposure while *validating* a new engine against real traffic without affecting anyone: that
+risk doesn't apply here, since there are no real users yet — affecting users isn't a cost to manage at
+this stage, it's the entire point of shipping this. The corrected engine already cleared a materially
+higher bar than shadow mode's own validation required before this cutover was considered: 133/135
+golden-master exact matches (2 known, understood diffs, both attributable to correction #4) plus
+roughly 100 real production shadow-mode scans with zero unexpected divergence (see "Stage 5b —
+real-traffic review" above). A sample-rate-gated live mode would also introduce a strictly worse
+property than either extreme: two different users scanning the identical barcode could get two
+different verdicts depending on random chance — non-reproducible and confusing if noticed, for no
+real safety benefit, since the actual safety net here is the rollback mechanism (see below), not a
+slow ramp. A gradual rollout mainly buys time to notice a problem that a config-flip rollback already
+makes instantly and fully reversible — for a zero-user app, that time isn't worth much. The dormant
+`legacy`/`shadow` code paths and the `VERDICT_ENGINE_SHADOW_SAMPLE_RATE` machinery are left completely
+intact and untouched by this decision — they remain available as-is for any future need.
+
+**New "V. Live mode" test suite (5 tests, `__tests__/api/scan.test.js`)**, mirroring Suite U's
+structure (self-contained helpers duplicated locally rather than sharing Suite U's, which are scoped
+inside its own `describe` block — this keeps Suite U itself completely untouched):
+1. Correction #4 (eggs vs. generic `conventional_meat`) is reflected in the **actual response** at
+   `live` mode — `conventional_eggs` present, the generic injected `conventional_meat` flag absent
+   (the same fixture Suite U's shadow-divergence test already proved diagnostic).
+2. A plain, uncontroversial product (`"Canola oil, salt, water."`) still scores correctly at live mode
+   — a sanity check that ordinary products aren't broken by the cutover.
+3. Regression guard — raw `product.labels_tags`, not normalized `labelsDetected`, reaches
+   `computeCorrectedVerdict()` from the `'live'` branch (mirrors Suite U's identically-purposed guard
+   for the `'shadow'` branch).
+4. A throwing `computeCorrectedVerdict()` falls back to the legacy result instead of failing the
+   request — proves the new `try`/`catch` actually works, not just that it was written.
+5. The exact same eggs+meat fixture from test 1, re-run with `VERDICT_ENGINE_MODE` **unset** (legacy
+   default) — confirms the old shape (both flags present) still comes back, proving the change is
+   scoped to `'live'` only and the default production behavior is unaffected until the env var is
+   actually set in Vercel.
+
+**Both previously-open coverage gaps closed via direct unit fixtures — no longer carried forward as
+open questions.** `lib/verdictEngine.test.js` grew from 3 tests to 9:
+- **Correction #1 (bioengineering + `usda-organic` label)**: L2 — organic label clears the
+  bioengineering flag entirely (green, `clearedBy: 'organic'`, no bioengineering flag survives); L2
+  contrast — the identical ingredient text with no label still correctly flags red (proves the fixture
+  is genuinely diagnostic, not just unconditionally green); L1 — the clearance runs before the L1/L2
+  split in `computeCorrectedVerdict()`, so it applies at L1 too (green); L1 contrast — no label
+  produces the ordinary L1 caution (yellow), confirming the flag is real and merely caution-severity
+  absent the label.
+- **Correction #2 (game meat + a co-occurring reject-severity flag)**: game meat (`en:game-meats`)
+  with a real `conventional_crops` reject trigger (bare `"sugar"`, no organic clearance available) →
+  red, flag preserved — the exact discriminating scenario the gated-green fix (vs. a full no-op) exists
+  to handle, and the one no golden-master case or real shadow-mode scan had ever exercised (see Stage 4
+  and the Stage 5b real-traffic review above); contrast — clean game meat with no reject flag still
+  correctly resolves to green (the gated-green behavior, confirming it isn't a regression to the
+  no-op the original Stage 3 draft used before Stage 4's revision).
+
+**PROMPT_VERSION bumped 39 → 40.** This is the largest single verdict-output change in this
+project's PROMPT_VERSION history — not one correction but three activated simultaneously (bioengineering
+organic-label clearance, game-meat gated-green, conventional_eggs priority over the generic
+conventional_meat injection) — consistent with the established convention that any change to real
+`flags`/`verdict`/`clearedBy` output requires a bump. Contract test in `__tests__/api/scan.test.js`
+updated and confirmed passing in isolation.
+
+**Golden master snapshot confirmed untouched — no regeneration needed or performed.** `git status
+--short scripts/goldenMaster/` showed zero changes after this session. Per the snapshot's own
+regeneration rule (see "Golden Master Snapshot" below), regeneration is only required when *pre-refactor
+(legacy) behavior* is intentionally changed — this stage doesn't touch legacy behavior at all, it
+activates a separate, already-validated code path behind a mode flag. The snapshot still faithfully
+represents what it was built to represent.
+
+**Full suite: 1474 passing, 1 known pre-existing failure** — the same long-tracked
+`rulesEngine.test.js` cross-list contradiction test (`coconut sugar`, `flax seeds`, `sweet potato`,
+`quinoa`, `amaranth`, `teff`, `date sugar`, `lactic acid starter culture` — the same 8 out-of-scope
+dead-entry findings tracked across many prior sessions in this file), unrelated to this work and
+unchanged by it.
+
+**Rollback plan, stated explicitly**: revert by setting `VERDICT_ENGINE_MODE` back to `legacy` (or
+removing the env var entirely — the code only recognizes `'shadow'`/`'live'` and falls back to
+`'legacy'` for anything else, including unset) in Vercel. **No code change, no different commit to
+redeploy** — the dormant legacy path ships in the same bundle as `'live'` mode from this commit
+onward, so both are always available; only the env var controls which one actually runs.
+
+#### Stage 5c — pending activation steps (not yet done)
+
+This commit ships the **code** for the full cutover. It does **not** activate it. Same pattern as the
+Stage 5b entry above ("Migration run" / "`VERDICT_ENGINE_MODE=shadow` set in Vercel" as separate,
+explicit, verified steps before that stage was considered "live") — deliberately not doing these out
+of order:
+
+1. **Deploy** this commit to `mvp-beta` (Vercel auto-deploys from the branch, per this project's
+   existing pattern — no manual trigger needed or available).
+2. **Confirm the deploy actually landed** before touching any env var — per the deploy-gap incident
+   documented elsewhere in this file, "pushed" and "deployed" are separate claims; confirm via a live
+   scan showing `prompt_version: 40` read directly off a freshly-written `scan_cache` row, the same
+   verification pattern used for every prior PROMPT_VERSION bump in this project.
+3. **Set `VERDICT_ENGINE_MODE=live`** in Vercel, then **confirm Vercel actually picked up the change**
+   without requiring a manual "Redeploy" click on the existing build — this specific mechanic was
+   flagged as unverified in the Stage 5c investigation report (Vercel env var changes do not always
+   take effect on already-deployed serverless function instances without an explicit redeploy of the
+   same build). Confirm this empirically the first time, the same way the Stage 5b activation was
+   independently verified end-to-end rather than assumed from a push succeeding — do not assume a
+   dashboard save alone is sufficient.
+4. **Invalidate `scan_cache`** — run `DELETE FROM scan_cache WHERE prompt_version < 40;` in Supabase.
+   Per the established convention in this file, this can be run before or after the deploy step, but
+   must happen before real users start hitting cached rows from below `prompt_version: 40` once `live`
+   mode is active, or a cache hit could return stale `flags`/`verdict` computed under the wrong engine
+   for that barcode/user_level pair.
+5. Only after all of the above: `VERDICT_ENGINE_MODE=live` is genuinely active in production, not just
+   committed. Until step 3 is done, this project's real, deployed behavior is unchanged — `legacy`
+   remains the default exactly as it has been since Stage 5a.
+
+None of these five steps were performed as part of this session — they are explicitly deferred to a
+deliberate, separate activation pass, per instruction.
+
 ---
 
 ## Golden Master Snapshot (L1/L2 Unification Project — Stage 1)
@@ -2982,11 +3124,21 @@ doesn't cover these two scenarios yet:
    behavior of the gated-green correction (`DESIGN_DECISIONS.correctedGameMeatGatedGreenAtL2`) —
    leaving a real reject flag alone instead of discarding it — has never been exercised by a real case.
 
-**Still open as of July 2026, and knowingly so.** Roughly 100 real production shadow-mode scans (see
-"Stage 5b — real-traffic review" above) produced zero divergence rows of any kind, so neither gap has
-been closed by real traffic either. The explicit 2026-07-11 decision to proceed toward Stage 5c cutover
-without closing these gaps first is documented there — this note is not stale, it's the same open item
-viewed from the Stage 1 side.
+**Closed by direct unit fixtures, not by a golden-master supplement — see "Session — L1/L2
+unification Stage 5c" above.** Both scenarios are now covered by dedicated tests in
+`lib/verdictEngine.test.js` (6 new fixtures, added as a Stage 5c prerequisite per an explicit
+2026-07-11 decision to close these now rather than defer them again). **Precision on what changed and
+what didn't**: the 135-case golden-master input set itself (`scripts/goldenMaster/inputs.json`) was
+**not** modified — neither gap listed above is technically untrue as a statement about that specific
+file, and the "future Stage 1 supplement" described below remains a valid, still-open piece of
+optional cleanup if someone wants the golden-master set itself to also carry these cases for its own
+completeness. What changed is the broader claim this note used to make: it is no longer accurate to
+say these two scenarios are "genuinely untested by real traffic or by any test" — they are now
+directly, deterministically tested, independent of whether real production traffic ever happens to
+produce a matching product. Roughly 100 real production shadow-mode scans (see "Stage 5b —
+real-traffic review" above) still produced zero divergence rows for either scenario, so real traffic
+still hasn't confirmed either — but that no longer matters the way it did before Stage 5c, since the
+behavior is now pinned down by fixtures instead of waiting on real-world occurrence.
 
 ---
 

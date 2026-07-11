@@ -927,10 +927,30 @@ export default async function handler(req, res) {
       }
     }
   } else if (VERDICT_ENGINE_MODE === 'live') {
-    // Stage 5c will replace this branch with: return lib/verdictEngine.js's
-    // computeCorrectedVerdict() result directly. For now (Stage 5a), this
-    // branch is dormant and behaves identically to 'legacy'.
-    verdictResult = computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags, productName, userLevel, isMeat });
+    // Stage 5c: the corrected engine is now the source of truth for real
+    // user-facing verdicts. Same raw-label-passing requirement as the
+    // shadow branch above — computeCorrectedVerdict() normalizes labels
+    // itself, so it must receive the RAW product.labels_tags, never the
+    // already-normalized labelsDetected (see the shadow branch's own
+    // comment and __tests__/api/scan.test.js's regression test for why).
+    //
+    // Unlike shadow mode, there is no already-computed legacy result to
+    // silently keep serving if this throws — a bug here would otherwise
+    // 500 the endpoint. Fall back to computeVerdictLegacy() on any error so
+    // a defect in the corrected engine degrades to today's known-good
+    // behavior instead of taking the endpoint down.
+    try {
+      verdictResult = computeCorrectedVerdict({
+        ingredientText: ingredientsText,
+        productLabels: product.labels_tags,
+        categoriesTags,
+        productName,
+        userLevel,
+      });
+    } catch (err) {
+      console.error('[scan] live mode computeCorrectedVerdict failed, falling back to legacy:', err);
+      verdictResult = computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags, productName, userLevel, isMeat });
+    }
   } else {
     verdictResult = computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags, productName, userLevel, isMeat });
   }

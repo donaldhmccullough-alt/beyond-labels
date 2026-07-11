@@ -1864,10 +1864,10 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 39 (v39: Node 7 non-gmo-project-verified reject-flag gate — same shape as the Node 5 fix at PROMPT_VERSION 29)', () => {
+  test('PROMPT_VERSION is 40 (v40: L1/L2 unification Stage 5c — VERDICT_ENGINE_MODE=live wired to lib/verdictEngine.js\'s computeCorrectedVerdict(), activating the three corrections designed in Stage 3/4)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(39);
+    expect(PROMPT_VERSION).toBe(40);
   });
 });
 
@@ -3040,5 +3040,164 @@ describe('U. Shadow mode (VERDICT_ENGINE_MODE=shadow)', () => {
     expect(errorSpy).toHaveBeenCalledWith('verdict_shadow_diffs write failed:', expect.any(Error));
 
     errorSpy.mockRestore();
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// V. Live mode (Stage 5c — VERDICT_ENGINE_MODE=live)
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Live mode is the real cutover: the RESPONSE ITSELF must now reflect
+// lib/verdictEngine.js's computeCorrectedVerdict() output, not the legacy
+// tree's. This suite mirrors Suite U's structure and fixtures (duplicated
+// locally rather than sharing Suite U's helpers, which are scoped inside
+// that describe block — this keeps Suite U completely untouched, per the
+// requirement that only the 'live' branch itself changes). No sample-rate
+// gating applies to live mode (approved rollout: binary flip, not gradual) —
+// every request in 'live' mode runs the corrected engine.
+
+describe('V. Live mode (VERDICT_ENGINE_MODE=live)', () => {
+  const ORIGINAL_ENV = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  /** Minimal OFF response builder for Suite V tests — same shape as Suite U's. */
+  function liveOffResp({
+    ingredientsText,
+    labelsTags     = [],
+    categoriesTags = [],
+    productName    = 'Test Product',
+  } = {}) {
+    return {
+      status: 1,
+      product: {
+        product_name:     productName,
+        ingredients_text: ingredientsText,
+        labels_tags:      labelsTags,
+        categories_tags:  categoriesTags,
+      },
+    };
+  }
+
+  /** Fake Supabase client for live-mode tests — scan_cache always misses on read, no-ops on write. */
+  function makeFakeSbForLive() {
+    return {
+      from: jest.fn(() => ({
+        select:      jest.fn(function () { return this; }),
+        eq:          jest.fn(function () { return this; }),
+        maybeSingle: jest.fn().mockResolvedValue({ data: null }),
+        update:      jest.fn(function () { return this; }),
+        upsert:      jest.fn().mockResolvedValue({ error: null }),
+        insert:      jest.fn().mockResolvedValue({ error: null }),
+        then:        jest.fn(),
+        catch:       jest.fn(),
+      })),
+    };
+  }
+
+  test('correction #4 (eggs vs. generic conventional_meat) is REFLECTED IN THE RESPONSE at live mode — conventional_eggs present, generic conventional_meat absent', async () => {
+    process.env.VERDICT_ENGINE_MODE = 'live';
+    getSupabaseServer.mockReturnValueOnce(makeFakeSbForLive());
+
+    // Same fixture Suite U used to prove this divergence exists (line ~2907
+    // above) — legacy injects a generic conventional_meat flag alongside the
+    // engine's own conventional_eggs flag; the corrected engine gives eggs
+    // priority and skips the generic injection entirely.
+    mockFetchOnce(liveOffResp({
+      productName:     'Chicken Noodle Soup',
+      ingredientsText: 'chicken broth, egg noodles, eggs, chicken, salt',
+      categoriesTags:  ['en:broths', 'en:soups'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000910', userLevel: 2 }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'conventional_eggs')).toBe(true);
+    // The key assertion: unlike legacy (and unlike shadow mode's response,
+    // which stays legacy), the generic injected flag must be ABSENT here.
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+  });
+
+  test('plain agreement-case product (no known divergence) still scores correctly at live mode', async () => {
+    process.env.VERDICT_ENGINE_MODE = 'live';
+    getSupabaseServer.mockReturnValueOnce(makeFakeSbForLive());
+
+    mockFetchOnce(liveOffResp({ ingredientsText: 'Canola oil, salt, water.' }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000911', userLevel: 2 }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'seed_oils')).toBe(true);
+  });
+
+  test('REGRESSION GUARD — live branch passes RAW product.labels_tags into computeCorrectedVerdict(), never the normalized labelsDetected', async () => {
+    // Same diagnostic fixture and reasoning as Suite U's identically-named
+    // regression guard: lib/verdictEngine.test.js independently proves
+    // "Oats, salt, water." + 'en:usda-organic' produces GREEN/organic when
+    // computeCorrectedVerdict() receives the raw label, and RED/null if it
+    // instead received the already-normalized 'usda-organic' string (no
+    // match in OFF_LABEL_MAP). If a future edit ever swaps in labelsDetected
+    // here, this test flips from green to red.
+    process.env.VERDICT_ENGINE_MODE = 'live';
+    getSupabaseServer.mockReturnValueOnce(makeFakeSbForLive());
+
+    mockFetchOnce(liveOffResp({
+      ingredientsText: 'Oats, salt, water.',
+      labelsTags:      ['en:usda-organic'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000912', userLevel: 2 }), res);
+
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.clearedBy).toBe('organic');
+
+    expect(verdictEngineModule.computeCorrectedVerdict).toHaveBeenCalledWith(
+      expect.objectContaining({ productLabels: ['en:usda-organic'] })
+    );
+  });
+
+  test('a throwing computeCorrectedVerdict() falls back to the legacy result instead of failing the request', async () => {
+    process.env.VERDICT_ENGINE_MODE = 'live';
+    getSupabaseServer.mockReturnValueOnce(makeFakeSbForLive());
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    verdictEngineModule.computeCorrectedVerdict.mockImplementationOnce(() => {
+      throw new Error('simulated bug in computeCorrectedVerdict');
+    });
+
+    mockFetchOnce(liveOffResp({ ingredientsText: 'Oats, salt, water.', labelsTags: ['en:usda-organic'] }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000913', userLevel: 2 }), res);
+
+    expect(res.statusCode).toBe(200);
+    // Legacy result for this exact fixture (confirmed by Suite U's own
+    // throw-fallback test using the same ingredients/label pair).
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.clearedBy).toBe('organic');
+    expect(errorSpy).toHaveBeenCalledWith('[scan] live mode computeCorrectedVerdict failed, falling back to legacy:', expect.any(Error));
+
+    errorSpy.mockRestore();
+  });
+
+  test('legacy mode (VERDICT_ENGINE_MODE unset) is unaffected by the live wiring — still injects the generic conventional_meat flag alongside conventional_eggs', async () => {
+    // Sanity check that the live-mode change is scoped to the 'live' branch
+    // only — the exact same fixture used in the first test of this suite
+    // produces the OLD (legacy) shape when the mode is left unset.
+    getSupabaseServer.mockReturnValueOnce(makeFakeSbForLive());
+
+    mockFetchOnce(liveOffResp({
+      productName:     'Chicken Noodle Soup',
+      ingredientsText: 'chicken broth, egg noodles, eggs, chicken, salt',
+      categoriesTags:  ['en:broths', 'en:soups'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000914', userLevel: 2 }), res);
+
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'conventional_eggs')).toBe(true);
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(true);
   });
 });
