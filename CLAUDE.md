@@ -2759,16 +2759,17 @@ log disagreement, still serve the legacy result to users) and Stage 5c (full cut
 
 ### Session — L1/L2 unification Stage 5b: shadow mode in production (July 2026)
 
-**⚠️ Shadow mode is built but NOT YET ACTIVE.** The migration has not been run against Supabase and
-`VERDICT_ENGINE_MODE` has not been set in Vercel — both are manual steps pending review. Do not assume
-shadow mode is running on real traffic just because this code has shipped. See "Stage 5b — pending
-activation steps" below.
+**✅ Shadow mode is built AND confirmed active.** The migration has been run against the live Supabase
+database and `VERDICT_ENGINE_MODE=shadow` is set in Vercel — see "Stage 5b — activation confirmed"
+below for the end-to-end verification that proves this, not just that the code shipped.
 
 **`pages/api/scan.js`**: the `'shadow'` branch (dormant since Stage 5a) now genuinely runs
 `lib/verdictEngine.js`'s `computeCorrectedVerdict()` alongside the legacy path on real traffic, gated
 by both `VERDICT_ENGINE_MODE=shadow` and a new `VERDICT_ENGINE_SHADOW_SAMPLE_RATE` env var (0-100,
-**defaults to 10** — a conservative canary rollout, not 100%, by deliberate choice, so real divergence
-data can be reviewed before ramping up). `verdictResult` stays bound to `computeVerdictLegacy()`'s
+**code default is 10** — a conservative canary rollout, not 100%, by deliberate choice, so real
+divergence data can be reviewed before ramping up. **Currently set to 100 in Vercel**, temporarily, for
+the July 11 end-to-end verification below — see "Stage 5b — activation confirmed" for why this needs
+revisiting before real user traffic accumulates). `verdictResult` stays bound to `computeVerdictLegacy()`'s
 output unconditionally — confirmed via `git diff` that `computeVerdictLegacy`'s body and the `'live'`/
 `else` branches are byte-for-byte untouched by this session. The corrected engine's output is used
 **only** for comparison — never passed to `fetchExplanation`, `captureUnverifiedIngredients`, or the
@@ -2813,24 +2814,47 @@ diffs / 0 unexpected** result as the Stage 5a run.
 **No `PROMPT_VERSION` bump** — shadow mode never changes what a real user sees, regardless of sampling
 rate, until someone deliberately activates it.
 
-#### Stage 5b — pending activation steps
+#### Stage 5b — activation confirmed (July 11, 2026)
 
-Shadow mode ships in this session's commit but does nothing on real traffic until both of these are
-done, in order:
+Both prerequisite manual steps are done and independently verified, not just assumed:
 
-1. **Run the migration** — `supabase/migrations/20260712000000_create_verdict_shadow_diffs.sql`
-   against the live Supabase database. If skipped, divergences still get `console.warn`'d but every
-   Supabase insert attempt fails (caught, logged as `"verdict_shadow_diffs write failed:"`, never
-   crashes a request) — so nothing breaks, but nothing gets persisted for later review either.
-2. **Set `VERDICT_ENGINE_MODE=shadow`** in Vercel (and optionally `VERDICT_ENGINE_SHADOW_SAMPLE_RATE`
-   if a different canary percentage than the 10% default is wanted).
+1. **Migration run** — `supabase/migrations/20260712000000_create_verdict_shadow_diffs.sql` applied
+   to the live Supabase database, confirmed reachable via a direct `select 1 from verdict_shadow_diffs
+   limit 1` (success, zero rows, no error) before any verification write.
+2. **`VERDICT_ENGINE_MODE=shadow`** set in Vercel.
 
-Both are manual, deliberate steps — not part of this commit. A future session should not assume
-shadow mode is actually observing production traffic without first confirming these were done.
+**End-to-end verification against the real deployed app and real database**, same day: a throwaway
+probe (built, run, and deleted — never committed) invoked the real `pages/api/scan.js` handler
+in-process against the real Supabase project, using two golden-master fixtures on fresh synthetic
+barcodes.
 
-**Next steps, still open**: once real divergence data has been reviewed and looks sane, ramp
-`VERDICT_ENGINE_SHADOW_SAMPLE_RATE` toward 100, then Stage 5c (full cutover — `VERDICT_ENGINE_MODE=live`
-actually wired to return `computeCorrectedVerdict()`'s result directly) remains unbuilt.
+- **Known-divergent fixture** (Chicken Noodle Soup — `chicken broth, egg noodles, eggs, chicken, salt`,
+  correction #4's eggs-vs-generic-meat case) correctly produced a persisted `verdict_shadow_diffs` row
+  with the exact expected signature: `legacy_flags` containing the generic `conventional_meat` flag
+  alongside `conventional_eggs`, `corrected_flags` with only `conventional_eggs` (the generic flag
+  correctly dropped), `diverging_fields: ["flags"]`, both verdicts agreeing at `red`. `console.warn`
+  fired with the matching payload. The row's `id` was `1` — the first row the table had ever received,
+  confirming no divergence had been silently persisted before this point either.
+- **Agreeing fixture** (`"Canola oil, salt, water."`) correctly produced **no row and no
+  `console.warn`** — confirming silence-on-agreement, not just noise-on-divergence.
+- **In both cases, the response actually returned to the user was the legacy verdict**, unchanged —
+  the thing shadow mode must never affect.
+
+Two real side-effect rows this verification left behind (both in `scan_cache`, both obviously-synthetic
+test barcodes, both cleanup SQL handed to the user directly rather than deleted by the agent) and one
+real `verdict_shadow_diffs` row (`id: 1`, cleanup SQL also handed off) — left in place at the user's
+explicit instruction pending their own review before deletion.
+
+**⚠️ `VERDICT_ENGINE_SHADOW_SAMPLE_RATE` is currently `100` in Vercel, not the code's conservative
+default of `10`** — set deliberately high for this verification so a real divergence would be easy to
+observe on the very small amount of real traffic this app currently sees. **Revisit this once real user
+traffic begins** — 100% means every real scan now runs `computeCorrectedVerdict()` a second time and
+writes to `verdict_shadow_diffs` on every disagreement, not just a 10% sample. Dial it back down in
+Vercel once enough real-world divergence data has accumulated, per the original Stage 5b design intent.
+
+**Next steps, still open**: once real divergence data has been reviewed and looks sane, ramp back down
+to (or re-confirm) a sampled rate, then Stage 5c (full cutover — `VERDICT_ENGINE_MODE=live` actually
+wired to return `computeCorrectedVerdict()`'s result directly) remains unbuilt.
 
 ---
 
