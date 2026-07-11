@@ -11,7 +11,7 @@ Beyond Labels is a mobile-first food ingredient scanner app. Users scan a produc
 - **Database/Auth**: Supabase JS v2 (`@supabase/supabase-js`) — no auth-helpers package
 - **Barcode scanning**: `@zxing/library` 0.21.3
 - **AI explanations**: `@anthropic-ai/sdk` — Claude Sonnet, called from `/pages/api/scan.js` (inline) and `/pages/api/explain.js` (standalone endpoint). Model string is centralized in `lib/aiConfig.js` (`ANTHROPIC_MODEL`) — update it there when upgrading models; do not hardcode the string in individual API files.
-- **Node**: 20.x (pinned in `.nvmrc` and `package.json` engines)
+- **Node**: 24.x (pinned in `.nvmrc` and `package.json` engines). Upgraded from 20.x in July 2026 — Vercel deprecated Node 20.x for builds, with a hard deadline that deployments created on or after 2026-10-01 fail on 20.x. Pure tooling/infra change: confirmed the full test suite (1378 tests) passes unmodified under Node 24, and no dependency in the tree (direct or transitive) declares an upper-bound Node engines constraint that would exclude 24.x.
 - **Deployment**: Vercel, region `iad1`
 - **Testing**: Jest
 
