@@ -1,0 +1,3870 @@
+{
+  "generatedAt": "2026-07-11T01:31:24.026Z",
+  "totalCases": 135,
+  "results": [
+    {
+      "id": "cat-trans-fats-l1",
+      "description": "trans_fats: partially hydrogenated oil (Level 1)",
+      "input": {
+        "ingredientText": "Partially hydrogenated oil, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "trans_fats",
+            "severity": "reject",
+            "matchedIngredient": "partially hydrogenated",
+            "summary": "Contains \"partially hydrogenated\" — a trans fat or hydrogenated oil directly linked to cardiovascular disease and systemic inflammation."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-trans-fats-l2",
+      "description": "trans_fats: partially hydrogenated oil (Level 2)",
+      "input": {
+        "ingredientText": "Partially hydrogenated oil, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "trans_fats",
+            "severity": "reject",
+            "matchedIngredient": "partially hydrogenated",
+            "summary": "Contains \"partially hydrogenated\" — a trans fat or hydrogenated oil directly linked to cardiovascular disease and systemic inflammation."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-seed-oils-l1",
+      "description": "seed_oils: canola oil (Level 1)",
+      "input": {
+        "ingredientText": "Canola oil, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "seed_oils",
+            "severity": "caution",
+            "matchedIngredient": "canola oil",
+            "summary": "Contains \"canola oil\" — a refined seed oil that disrupts omega-6/omega-3 balance and is associated with systemic inflammation."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-seed-oils-l2",
+      "description": "seed_oils: canola oil (Level 2)",
+      "input": {
+        "ingredientText": "Canola oil, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "seed_oils",
+            "severity": "reject",
+            "matchedIngredient": "canola oil",
+            "summary": "Contains \"canola oil\" — a refined seed oil that disrupts omega-6/omega-3 balance and is associated with systemic inflammation."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-conventional-crops-l1",
+      "description": "conventional_crops: citric acid (no clearance) (Level 1)",
+      "input": {
+        "ingredientText": "Citric acid, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "conventional_crops",
+            "severity": "caution",
+            "matchedIngredient": "citric acid",
+            "summary": "Contains conventional \"citric acid\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-conventional-crops-l2",
+      "description": "conventional_crops: citric acid (no clearance) (Level 2)",
+      "input": {
+        "ingredientText": "Citric acid, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "conventional_crops",
+            "severity": "reject",
+            "matchedIngredient": "citric acid",
+            "summary": "Contains conventional \"citric acid\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-bioengineering-l1",
+      "description": "bioengineering: bioengineered disclosure (Level 1)",
+      "input": {
+        "ingredientText": "Bioengineered ingredient, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "bioengineering",
+            "severity": "caution",
+            "matchedIngredient": "bioengineered",
+            "summary": "Product discloses gene modification: \"bioengineered\". Covers both legacy GMO/rDNA transgenics and CRISPR-edited varieties that may fall outside mandatory labeling requirements."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-bioengineering-l2",
+      "description": "bioengineering: bioengineered disclosure (Level 2)",
+      "input": {
+        "ingredientText": "Bioengineered ingredient, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "bioengineering",
+            "severity": "reject",
+            "matchedIngredient": "bioengineered",
+            "summary": "Product discloses gene modification: \"bioengineered\". Covers both legacy GMO/rDNA transgenics and CRISPR-edited varieties that may fall outside mandatory labeling requirements."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-natural-flavors-l1",
+      "description": "natural_flavors: bare natural flavors (Level 1)",
+      "input": {
+        "ingredientText": "Natural flavors, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "natural_flavors",
+            "severity": "caution",
+            "matchedIngredient": "natural flavors",
+            "summary": "Contains \"natural flavors\" — a catch-all term that can mask hundreds of undisclosed chemical compounds derived from natural sources."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-natural-flavors-l2",
+      "description": "natural_flavors: bare natural flavors (Level 2)",
+      "input": {
+        "ingredientText": "Natural flavors, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "natural_flavors",
+            "severity": "reject",
+            "matchedIngredient": "natural flavors",
+            "summary": "Contains \"natural flavors\" — a catch-all term that can mask hundreds of undisclosed chemical compounds derived from natural sources."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-synthetic-additives-l1",
+      "description": "synthetic_additives (\"additives\"): Yellow 5 dye (Level 1)",
+      "input": {
+        "ingredientText": "Yellow 5, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "additives",
+            "severity": "reject",
+            "matchedIngredient": "yellow 5",
+            "summary": "Contains \"yellow 5\" — a synthetic additive with documented links to adverse health effects, including behavioral changes and organ stress."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-synthetic-additives-l2",
+      "description": "synthetic_additives (\"additives\"): Yellow 5 dye (Level 2)",
+      "input": {
+        "ingredientText": "Yellow 5, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "additives",
+            "severity": "reject",
+            "matchedIngredient": "yellow 5",
+            "summary": "Contains \"yellow 5\" — a synthetic additive with documented links to adverse health effects, including behavioral changes and organ stress."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-glyphosate-heavy-l1",
+      "description": "glyphosate_heavy: bare oats (no clearance) (Level 1)",
+      "input": {
+        "ingredientText": "Oats, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "glyphosate_heavy",
+            "severity": "caution",
+            "matchedIngredient": "oats",
+            "summary": "Contains \"oats\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-glyphosate-heavy-l2",
+      "description": "glyphosate_heavy: bare oats (no clearance) (Level 2)",
+      "input": {
+        "ingredientText": "Oats, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "glyphosate_heavy",
+            "severity": "reject",
+            "matchedIngredient": "oats",
+            "summary": "Contains \"oats\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-gluten-grains-l1",
+      "description": "gluten_grains: quinoa (paywall feature, stripped from display at both levels) (Level 1)",
+      "input": {
+        "ingredientText": "Quinoa, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-gluten-grains-l2",
+      "description": "gluten_grains: quinoa (paywall feature, stripped from display at both levels) (Level 2)",
+      "input": {
+        "ingredientText": "Quinoa, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-conventional-meat-l1",
+      "description": "conventional_meat: beef with no organic cert (Level 1)",
+      "input": {
+        "ingredientText": "Beef, water, salt",
+        "productLabels": [],
+        "categoriesTags": [
+          "en:beef"
+        ],
+        "productName": "Beef Jerky",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "conventional_meat",
+            "severity": "caution",
+            "matchedIngredient": "",
+            "summary": "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed, pasture-raised, or meat from a farm you trust."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": true,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": "meat"
+      }
+    },
+    {
+      "id": "cat-conventional-meat-l2",
+      "description": "conventional_meat: beef with no organic cert (Level 2)",
+      "input": {
+        "ingredientText": "Beef, water, salt",
+        "productLabels": [],
+        "categoriesTags": [
+          "en:beef"
+        ],
+        "productName": "Beef Jerky",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "conventional_meat",
+            "severity": "reject",
+            "matchedIngredient": "",
+            "summary": "Conventional meat product without USDA Organic certification"
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": true,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": "meat"
+      }
+    },
+    {
+      "id": "cat-conventional-dairy-l1",
+      "description": "conventional_dairy: whole milk + cheddar, no organic cert (Level 1)",
+      "input": {
+        "ingredientText": "Whole milk, cheddar cheese, salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "conventional_dairy",
+            "severity": "caution",
+            "matchedIngredient": "",
+            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Organic dairy is a meaningful alternative when you're ready for that step."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-conventional-dairy-l2",
+      "description": "conventional_dairy: whole milk + cheddar, no organic cert (Level 2)",
+      "input": {
+        "ingredientText": "Whole milk, cheddar cheese, salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "conventional_dairy",
+            "severity": "reject",
+            "matchedIngredient": "",
+            "summary": "Conventional dairy product without USDA Organic certification"
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [
+          "Whole milk",
+          "cheddar cheese"
+        ],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-conventional-eggs-l1",
+      "description": "conventional_eggs: bare egg whites, no organic cert (Level 1)",
+      "input": {
+        "ingredientText": "Egg whites, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "conventional_eggs",
+            "severity": "caution",
+            "matchedIngredient": "egg whites",
+            "summary": "Contains \"egg whites\" — eggs from conventionally raised hens without organic certification."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-conventional-eggs-l2",
+      "description": "conventional_eggs: bare egg whites, no organic cert (Level 2)",
+      "input": {
+        "ingredientText": "Egg whites, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "conventional_eggs",
+            "severity": "reject",
+            "matchedIngredient": "egg whites",
+            "summary": "Contains \"egg whites\" — eggs from conventionally raised hens without organic certification."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-fortified-vitamins-l1",
+      "description": "fortified_vitamins: organic path + synthetic vitamin fortification (L2-only mechanism — see CLAUDE.md, L1 never runs the organic sub-tree) (Level 1)",
+      "input": {
+        "ingredientText": "Organic milk, vitamin d3, niacin, salt.",
+        "productLabels": [
+          "en:usda-organic"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": "organic",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-fortified-vitamins-l2",
+      "description": "fortified_vitamins: organic path + synthetic vitamin fortification (L2-only mechanism — see CLAUDE.md, L1 never runs the organic sub-tree) (Level 2)",
+      "input": {
+        "ingredientText": "Organic milk, vitamin d3, niacin, salt.",
+        "productLabels": [
+          "en:usda-organic"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "fortified_vitamins",
+            "severity": "caution",
+            "matchedIngredient": "",
+            "summary": "Organic product with synthetic vitamin fortification"
+          }
+        ],
+        "clearedBy": "organic",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-natural-colorants-l1",
+      "description": "natural_colorants: organic path + plant-derived colorant (L2-only mechanism) (Level 1)",
+      "input": {
+        "ingredientText": "Organic milk, beet juice concentrate, salt.",
+        "productLabels": [
+          "en:usda-organic"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": "organic",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-natural-colorants-l2",
+      "description": "natural_colorants: organic path + plant-derived colorant (L2-only mechanism) (Level 2)",
+      "input": {
+        "ingredientText": "Organic milk, beet juice concentrate, salt.",
+        "productLabels": [
+          "en:usda-organic"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "natural_colorants",
+            "severity": "caution",
+            "matchedIngredient": "",
+            "summary": "Organic product with natural plant-derived colorants"
+          }
+        ],
+        "clearedBy": "organic",
+        "unverifiedIngredients": [
+          "beet juice concentrate"
+        ],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-olive-oil-adulteration-l1",
+      "description": "olive_oil_adulteration: organic path + olive oil (L2-only mechanism) (Level 1)",
+      "input": {
+        "ingredientText": "Organic olive oil, salt.",
+        "productLabels": [
+          "en:usda-organic"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": "organic",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "cat-olive-oil-adulteration-l2",
+      "description": "olive_oil_adulteration: organic path + olive oil (L2-only mechanism) (Level 2)",
+      "input": {
+        "ingredientText": "Organic olive oil, salt.",
+        "productLabels": [
+          "en:usda-organic"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "olive_oil_adulteration",
+            "severity": "caution",
+            "matchedIngredient": "olive oil",
+            "summary": "Olive oil adulteration is common — even organic olive oil may be cut with cheaper oils."
+          }
+        ],
+        "clearedBy": "organic",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": true,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "clear-usda-organic-label-l1",
+      "description": "usda-organic LABEL clears conventional_crops (corn starch) (Level 1)",
+      "input": {
+        "ingredientText": "Corn starch, salt, water.",
+        "productLabels": [
+          "en:usda-organic"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": "organic",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "clear-usda-organic-label-l2",
+      "description": "usda-organic LABEL clears conventional_crops (corn starch) (Level 2)",
+      "input": {
+        "ingredientText": "Corn starch, salt, water.",
+        "productLabels": [
+          "en:usda-organic"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": "organic",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "clear-organic-prefix-l1",
+      "description": "organic INGREDIENT PREFIX clears conventional_crops (no label needed) (Level 1)",
+      "input": {
+        "ingredientText": "Organic corn starch, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "clear-organic-prefix-l2",
+      "description": "organic INGREDIENT PREFIX clears conventional_crops (no label needed) (Level 2)",
+      "input": {
+        "ingredientText": "Organic corn starch, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": "cert_unconfirmed",
+        "productCategory": null
+      }
+    },
+    {
+      "id": "clear-non-gmo-project-verified-l1",
+      "description": "non-gmo-project-verified label clears conventional_crops (Level 1)",
+      "input": {
+        "ingredientText": "Corn starch, soy lecithin.",
+        "productLabels": [
+          "en:non-gmo-project-verified"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": "non-gmo-project-verified",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "clear-non-gmo-project-verified-l2",
+      "description": "non-gmo-project-verified label clears conventional_crops (Level 2)",
+      "input": {
+        "ingredientText": "Corn starch, soy lecithin.",
+        "productLabels": [
+          "en:non-gmo-project-verified"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [],
+        "clearedBy": "non-gmo-project-verified",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "clear-glyphosate-free-l1",
+      "description": "glyphosate-free label downgrades glyphosate_heavy to caution (Level 1)",
+      "input": {
+        "ingredientText": "Oats, salt, water.",
+        "productLabels": [
+          "en:glyphosate-free"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "glyphosate_heavy",
+            "severity": "caution",
+            "matchedIngredient": "oats",
+            "summary": "Contains \"oats\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "clear-glyphosate-free-l2",
+      "description": "glyphosate-free label downgrades glyphosate_heavy to caution (Level 2)",
+      "input": {
+        "ingredientText": "Oats, salt, water.",
+        "productLabels": [
+          "en:glyphosate-free"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "glyphosate_heavy",
+            "severity": "caution",
+            "matchedIngredient": "oats",
+            "summary": "Contains \"oats\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": "glyphosate-free",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "meat-wild-caught-seafood-l1",
+      "description": "wild-caught seafood (OFF category confirmed) → clean (Level 1)",
+      "input": {
+        "ingredientText": "salmon, water, salt",
+        "productLabels": [],
+        "categoriesTags": [
+          "en:salmon"
+        ],
+        "productName": "Wild Caught Alaskan Salmon",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": true,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "meat-wild-caught-seafood-l2",
+      "description": "wild-caught seafood (OFF category confirmed) → clean (Level 2)",
+      "input": {
+        "ingredientText": "salmon, water, salt",
+        "productLabels": [],
+        "categoriesTags": [
+          "en:salmon"
+        ],
+        "productName": "Wild Caught Alaskan Salmon",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": "wild-caught",
+        "unverifiedIngredients": [
+          "salmon"
+        ],
+        "isMeat": true,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "meat-farmed-seafood-l1",
+      "description": "farmed/unlabeled seafood (\"farm-raised\" name signal) → reject (Level 1)",
+      "input": {
+        "ingredientText": "atlantic salmon, water, salt",
+        "productLabels": [],
+        "categoriesTags": [
+          "en:salmon"
+        ],
+        "productName": "Farm-Raised Atlantic Salmon",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "conventional_meat",
+            "severity": "caution",
+            "matchedIngredient": "",
+            "summary": "Farmed or unlabeled seafood — Joel explains the difference between wild-caught and farmed: sourcing matters as much as ingredients. Look for a wild-caught certification, or seafood from a source you trust."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": true,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "meat-farmed-seafood-l2",
+      "description": "farmed/unlabeled seafood (\"farm-raised\" name signal) → reject (Level 2)",
+      "input": {
+        "ingredientText": "atlantic salmon, water, salt",
+        "productLabels": [],
+        "categoriesTags": [
+          "en:salmon"
+        ],
+        "productName": "Farm-Raised Atlantic Salmon",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "conventional_meat",
+            "severity": "reject",
+            "matchedIngredient": "",
+            "summary": "Farmed or unlabeled seafood — wild-caught certification not found"
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [
+          "atlantic salmon"
+        ],
+        "isMeat": true,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "meat-game-l1",
+      "description": "game meat (en:game-meats) → clean, wild-harvested by nature (Level 1)",
+      "input": {
+        "ingredientText": "venison, water, salt",
+        "productLabels": [],
+        "categoriesTags": [
+          "en:game-meats"
+        ],
+        "productName": "Venison Steak",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": true,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "meat-game-l2",
+      "description": "game meat (en:game-meats) → clean, wild-harvested by nature (Level 2)",
+      "input": {
+        "ingredientText": "venison, water, salt",
+        "productLabels": [],
+        "categoriesTags": [
+          "en:game-meats"
+        ],
+        "productName": "Venison Steak",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [
+          "venison"
+        ],
+        "isMeat": true,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "meat-conventional-l1",
+      "description": "conventional meat (en:beef), no organic cert → reject (Level 1)",
+      "input": {
+        "ingredientText": "beef, water, salt",
+        "productLabels": [],
+        "categoriesTags": [
+          "en:beef"
+        ],
+        "productName": "Grass Fed Beef",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "conventional_meat",
+            "severity": "caution",
+            "matchedIngredient": "",
+            "summary": "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed, pasture-raised, or meat from a farm you trust."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": true,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": "meat"
+      }
+    },
+    {
+      "id": "meat-conventional-l2",
+      "description": "conventional meat (en:beef), no organic cert → reject (Level 2)",
+      "input": {
+        "ingredientText": "beef, water, salt",
+        "productLabels": [],
+        "categoriesTags": [
+          "en:beef"
+        ],
+        "productName": "Grass Fed Beef",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "conventional_meat",
+            "severity": "reject",
+            "matchedIngredient": "",
+            "summary": "Conventional meat product without USDA Organic certification"
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": true,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": "meat"
+      }
+    },
+    {
+      "id": "path-pure-water-l1",
+      "description": "pure-water GREEN path (WATER_SAFE_INGREDIENTS only) (Level 1)",
+      "input": {
+        "ingredientText": "Spring water, calcium, magnesium, bicarbonates.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "path-pure-water-l2",
+      "description": "pure-water GREEN path (WATER_SAFE_INGREDIENTS only) (Level 2)",
+      "input": {
+        "ingredientText": "Spring water, calcium, magnesium, bicarbonates.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": "pure_water",
+        "unverifiedIngredients": [
+          "calcium",
+          "magnesium",
+          "bicarbonates"
+        ],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "path-cert-unconfirmed-l1",
+      "description": "cert_unconfirmed: all non-trivial ingredients organic-prefixed, no cert tag (Level 1)",
+      "input": {
+        "ingredientText": "Organic tomatoes, organic basil, sea salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "path-cert-unconfirmed-l2",
+      "description": "cert_unconfirmed: all non-trivial ingredients organic-prefixed, no cert tag (Level 2)",
+      "input": {
+        "ingredientText": "Organic tomatoes, organic basil, sea salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": "cert_unconfirmed",
+        "productCategory": null
+      }
+    },
+    {
+      "id": "path-inconclusive-l1",
+      "description": "inconclusive: all-unrecognized ingredients (ALL_UNKNOWN_OFF fixture) (Level 1)",
+      "input": {
+        "ingredientText": "zymotrixal, biophenolate, hexamorphite, gluvaxitol, cryomethylane, phytorextrin, neovitriol",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Mystery Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "path-inconclusive-l2",
+      "description": "inconclusive: all-unrecognized ingredients (ALL_UNKNOWN_OFF fixture) (Level 2)",
+      "input": {
+        "ingredientText": "zymotrixal, biophenolate, hexamorphite, gluvaxitol, cryomethylane, phytorextrin, neovitriol",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Mystery Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "inconclusive",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [
+          "zymotrixal",
+          "biophenolate",
+          "hexamorphite",
+          "gluvaxitol",
+          "cryomethylane",
+          "phytorextrin",
+          "neovitriol"
+        ],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "path-default-yellow-node14-l1",
+      "description": "default-yellow (L2 Node 14): \"Pistachios, salt\" — no cert, no concern (CLAUDE.md's own canonical example) (Level 1)",
+      "input": {
+        "ingredientText": "Pistachios, salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "path-default-yellow-node14-l2",
+      "description": "default-yellow (L2 Node 14): \"Pistachios, salt\" — no cert, no concern (CLAUDE.md's own canonical example) (Level 2)",
+      "input": {
+        "ingredientText": "Pistachios, salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-macadamia-l1",
+      "description": "bare 'ada' false positive: macadamia nuts (PROMPT_VERSION 33) (Level 1)",
+      "input": {
+        "ingredientText": "Almonds, macadamia nuts, cashews, sea salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-macadamia-l2",
+      "description": "bare 'ada' false positive: macadamia nuts (PROMPT_VERSION 33) (Level 2)",
+      "input": {
+        "ingredientText": "Almonds, macadamia nuts, cashews, sea salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-product-of-canada-l1",
+      "description": "bare 'ada' false positive: \"Product of Canada\" (PROMPT_VERSION 33) (Level 1)",
+      "input": {
+        "ingredientText": "Chocolate, sugar, cocoa butter. Product of Canada.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "conventional_crops",
+            "severity": "caution",
+            "matchedIngredient": "sugar",
+            "summary": "Contains conventional \"sugar\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-product-of-canada-l2",
+      "description": "bare 'ada' false positive: \"Product of Canada\" (PROMPT_VERSION 33) (Level 2)",
+      "input": {
+        "ingredientText": "Chocolate, sugar, cocoa butter. Product of Canada.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "conventional_crops",
+            "severity": "reject",
+            "matchedIngredient": "sugar",
+            "summary": "Contains conventional \"sugar\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [
+          "Chocolate"
+        ],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-goat-milk-l1",
+      "description": "bare 'oats'/'oat milk' false positive: goat milk (PROMPT_VERSION 34) (Level 1)",
+      "input": {
+        "ingredientText": "Goat milk, salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-goat-milk-l2",
+      "description": "bare 'oats'/'oat milk' false positive: goat milk (PROMPT_VERSION 34) (Level 2)",
+      "input": {
+        "ingredientText": "Goat milk, salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-goats-milk-yogurt-l1",
+      "description": "bare 'oats' false positive: goats' milk yogurt (PROMPT_VERSION 34) (Level 1)",
+      "input": {
+        "ingredientText": "Goats' milk yogurt, sea salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "conventional_dairy",
+            "severity": "caution",
+            "matchedIngredient": "",
+            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Organic dairy is a meaningful alternative when you're ready for that step."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-goats-milk-yogurt-l2",
+      "description": "bare 'oats' false positive: goats' milk yogurt (PROMPT_VERSION 34) (Level 2)",
+      "input": {
+        "ingredientText": "Goats' milk yogurt, sea salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "conventional_dairy",
+            "severity": "reject",
+            "matchedIngredient": "",
+            "summary": "Conventional dairy product without USDA Organic certification"
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-licorice-l1",
+      "description": "bare 'rice' false positive: licorice (PROMPT_VERSION 35) (Level 1)",
+      "input": {
+        "ingredientText": "Licorice, sugar, salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "conventional_crops",
+            "severity": "caution",
+            "matchedIngredient": "sugar",
+            "summary": "Contains conventional \"sugar\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-licorice-l2",
+      "description": "bare 'rice' false positive: licorice (PROMPT_VERSION 35) (Level 2)",
+      "input": {
+        "ingredientText": "Licorice, sugar, salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "conventional_crops",
+            "severity": "reject",
+            "matchedIngredient": "sugar",
+            "summary": "Contains conventional \"sugar\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-cowpeas-l1",
+      "description": "bare 'peas' false negative: cowpeas one-word form (PROMPT_VERSION 38) (Level 1)",
+      "input": {
+        "ingredientText": "Cowpeas, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "glyphosate_heavy",
+            "severity": "caution",
+            "matchedIngredient": "peas",
+            "summary": "Contains \"peas\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-cowpeas-l2",
+      "description": "bare 'peas' false negative: cowpeas one-word form (PROMPT_VERSION 38) (Level 2)",
+      "input": {
+        "ingredientText": "Cowpeas, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "glyphosate_heavy",
+            "severity": "reject",
+            "matchedIngredient": "peas",
+            "summary": "Contains \"peas\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-broadbeans-l1",
+      "description": "bare 'beans' false negative: broadbeans one-word form (PROMPT_VERSION 38) (Level 1)",
+      "input": {
+        "ingredientText": "Broadbeans, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "glyphosate_heavy",
+            "severity": "caution",
+            "matchedIngredient": "beans",
+            "summary": "Contains \"beans\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-broadbeans-l2",
+      "description": "bare 'beans' false negative: broadbeans one-word form (PROMPT_VERSION 38) (Level 2)",
+      "input": {
+        "ingredientText": "Broadbeans, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "glyphosate_heavy",
+            "severity": "reject",
+            "matchedIngredient": "beans",
+            "summary": "Contains \"beans\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-horsebeans-l1",
+      "description": "bare 'beans' false negative: horsebeans one-word form (PROMPT_VERSION 38) (Level 1)",
+      "input": {
+        "ingredientText": "Horsebeans, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "glyphosate_heavy",
+            "severity": "caution",
+            "matchedIngredient": "beans",
+            "summary": "Contains \"beans\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-horsebeans-l2",
+      "description": "bare 'beans' false negative: horsebeans one-word form (PROMPT_VERSION 38) (Level 2)",
+      "input": {
+        "ingredientText": "Horsebeans, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "glyphosate_heavy",
+            "severity": "reject",
+            "matchedIngredient": "beans",
+            "summary": "Contains \"beans\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-acorn-squash-l1",
+      "description": "bare 'corn' false positive: acorn squash (PROMPT_VERSION 37) (Level 1)",
+      "input": {
+        "ingredientText": "Acorn squash, sea salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-acorn-squash-l2",
+      "description": "bare 'corn' false positive: acorn squash (PROMPT_VERSION 37) (Level 2)",
+      "input": {
+        "ingredientText": "Acorn squash, sea salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-oat-groats-l1",
+      "description": "bare 'oats' false-negative-of-a-fix: oat groats must still flag (allowlisted, PROMPT_VERSION 35) (Level 1)",
+      "input": {
+        "ingredientText": "Water, oat groats, salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "glyphosate_heavy",
+            "severity": "caution",
+            "matchedIngredient": "oats",
+            "summary": "Contains \"oats\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-oat-groats-l2",
+      "description": "bare 'oats' false-negative-of-a-fix: oat groats must still flag (allowlisted, PROMPT_VERSION 35) (Level 2)",
+      "input": {
+        "ingredientText": "Water, oat groats, salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "glyphosate_heavy",
+            "severity": "reject",
+            "matchedIngredient": "oats",
+            "summary": "Contains \"oats\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-popcorn-l1",
+      "description": "bare 'corn' legitimate compound: popcorn must still flag (allowlisted) (Level 1)",
+      "input": {
+        "ingredientText": "Popcorn, sea salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "conventional_crops",
+            "severity": "caution",
+            "matchedIngredient": "popcorn",
+            "summary": "Contains conventional \"popcorn\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-popcorn-l2",
+      "description": "bare 'corn' legitimate compound: popcorn must still flag (allowlisted) (Level 2)",
+      "input": {
+        "ingredientText": "Popcorn, sea salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "conventional_crops",
+            "severity": "reject",
+            "matchedIngredient": "popcorn",
+            "summary": "Contains conventional \"popcorn\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-sweetcorn-l1",
+      "description": "bare 'corn' false negative: sweetcorn must still flag (allowlisted, PROMPT_VERSION 37) (Level 1)",
+      "input": {
+        "ingredientText": "Sweetcorn, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "bug-sweetcorn-l2",
+      "description": "bare 'corn' false negative: sweetcorn must still flag (allowlisted, PROMPT_VERSION 37) (Level 2)",
+      "input": {
+        "ingredientText": "Sweetcorn, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "multi-kraft-l1",
+      "description": "Kraft Mac & Cheese: 4 categories at once (seed_oils, conventional_crops, bioengineering, additives) (Level 1)",
+      "input": {
+        "ingredientText": "ENRICHED MACARONI (WHEAT FLOUR, NIACIN, FERROUS SULFATE, THIAMIN MONONITRATE, RIBOFLAVIN, FOLIC ACID), CHEESE SAUCE MIX (WHEY, MILKFAT, MILK PROTEIN CONCENTRATE, SALT, SODIUM TRIPOLYPHOSPHATE, CONTAINS LESS THAN 2% OF CITRIC ACID, SODIUM PHOSPHATE, LACTIC ACID, CALCIUM PHOSPHATE, SOYBEAN OIL, YELLOW 5, YELLOW 6). CONTAINS BIOENGINEERED FOOD INGREDIENTS.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Kraft Macaroni & Cheese Dinner Original",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "conventional_dairy",
+            "severity": "caution",
+            "matchedIngredient": "",
+            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Organic dairy is a meaningful alternative when you're ready for that step."
+          },
+          {
+            "category": "seed_oils",
+            "severity": "caution",
+            "matchedIngredient": "soybean oil",
+            "summary": "Contains \"soybean oil\" — a refined seed oil that disrupts omega-6/omega-3 balance and is associated with systemic inflammation."
+          },
+          {
+            "category": "conventional_crops",
+            "severity": "caution",
+            "matchedIngredient": "riboflavin",
+            "summary": "Contains conventional \"riboflavin\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          },
+          {
+            "category": "conventional_crops",
+            "severity": "caution",
+            "matchedIngredient": "citric acid",
+            "summary": "Contains conventional \"citric acid\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          },
+          {
+            "category": "conventional_crops",
+            "severity": "caution",
+            "matchedIngredient": "lactic acid",
+            "summary": "Contains conventional \"lactic acid\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          },
+          {
+            "category": "glyphosate_heavy",
+            "severity": "caution",
+            "matchedIngredient": "wheat flour",
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          },
+          {
+            "category": "bioengineering",
+            "severity": "caution",
+            "matchedIngredient": "bioengineered",
+            "summary": "Product discloses gene modification: \"bioengineered\". Covers both legacy GMO/rDNA transgenics and CRISPR-edited varieties that may fall outside mandatory labeling requirements."
+          },
+          {
+            "category": "additives",
+            "severity": "reject",
+            "matchedIngredient": "sodium phosphate",
+            "summary": "Contains \"sodium phosphate\" — a synthetic additive with documented links to adverse health effects, including behavioral changes and organ stress."
+          },
+          {
+            "category": "additives",
+            "severity": "reject",
+            "matchedIngredient": "yellow 5",
+            "summary": "Contains \"yellow 5\" — a synthetic additive with documented links to adverse health effects, including behavioral changes and organ stress."
+          },
+          {
+            "category": "additives",
+            "severity": "reject",
+            "matchedIngredient": "yellow 6",
+            "summary": "Contains \"yellow 6\" — a synthetic additive with documented links to adverse health effects, including behavioral changes and organ stress."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "multi-kraft-l2",
+      "description": "Kraft Mac & Cheese: 4 categories at once (seed_oils, conventional_crops, bioengineering, additives) (Level 2)",
+      "input": {
+        "ingredientText": "ENRICHED MACARONI (WHEAT FLOUR, NIACIN, FERROUS SULFATE, THIAMIN MONONITRATE, RIBOFLAVIN, FOLIC ACID), CHEESE SAUCE MIX (WHEY, MILKFAT, MILK PROTEIN CONCENTRATE, SALT, SODIUM TRIPOLYPHOSPHATE, CONTAINS LESS THAN 2% OF CITRIC ACID, SODIUM PHOSPHATE, LACTIC ACID, CALCIUM PHOSPHATE, SOYBEAN OIL, YELLOW 5, YELLOW 6). CONTAINS BIOENGINEERED FOOD INGREDIENTS.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Kraft Macaroni & Cheese Dinner Original",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "seed_oils",
+            "severity": "reject",
+            "matchedIngredient": "soybean oil",
+            "summary": "Contains \"soybean oil\" — a refined seed oil that disrupts omega-6/omega-3 balance and is associated with systemic inflammation."
+          },
+          {
+            "category": "conventional_crops",
+            "severity": "reject",
+            "matchedIngredient": "riboflavin",
+            "summary": "Contains conventional \"riboflavin\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          },
+          {
+            "category": "conventional_crops",
+            "severity": "reject",
+            "matchedIngredient": "citric acid",
+            "summary": "Contains conventional \"citric acid\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          },
+          {
+            "category": "conventional_crops",
+            "severity": "reject",
+            "matchedIngredient": "lactic acid",
+            "summary": "Contains conventional \"lactic acid\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          },
+          {
+            "category": "glyphosate_heavy",
+            "severity": "reject",
+            "matchedIngredient": "wheat flour",
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          },
+          {
+            "category": "bioengineering",
+            "severity": "reject",
+            "matchedIngredient": "bioengineered",
+            "summary": "Product discloses gene modification: \"bioengineered\". Covers both legacy GMO/rDNA transgenics and CRISPR-edited varieties that may fall outside mandatory labeling requirements."
+          },
+          {
+            "category": "additives",
+            "severity": "reject",
+            "matchedIngredient": "sodium phosphate",
+            "summary": "Contains \"sodium phosphate\" — a synthetic additive with documented links to adverse health effects, including behavioral changes and organ stress."
+          },
+          {
+            "category": "additives",
+            "severity": "reject",
+            "matchedIngredient": "yellow 5",
+            "summary": "Contains \"yellow 5\" — a synthetic additive with documented links to adverse health effects, including behavioral changes and organ stress."
+          },
+          {
+            "category": "additives",
+            "severity": "reject",
+            "matchedIngredient": "yellow 6",
+            "summary": "Contains \"yellow 6\" — a synthetic additive with documented links to adverse health effects, including behavioral changes and organ stress."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [
+          "ENRICHED MACARONI",
+          "CHEESE SAUCE MIX",
+          "WHEY",
+          "SODIUM TRIPOLYPHOSPHATE"
+        ],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "multi-seed-oil-suppresses-dairy-l1",
+      "description": "interaction: seed_oils (INSTANT_RED) short-circuits before conventional_dairy would be injected — milk present but NOT flagged (Level 1)",
+      "input": {
+        "ingredientText": "Whole milk, wheat flour, canola oil, salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "conventional_dairy",
+            "severity": "caution",
+            "matchedIngredient": "",
+            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Organic dairy is a meaningful alternative when you're ready for that step."
+          },
+          {
+            "category": "seed_oils",
+            "severity": "caution",
+            "matchedIngredient": "canola oil",
+            "summary": "Contains \"canola oil\" — a refined seed oil that disrupts omega-6/omega-3 balance and is associated with systemic inflammation."
+          },
+          {
+            "category": "glyphosate_heavy",
+            "severity": "caution",
+            "matchedIngredient": "wheat flour",
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "multi-seed-oil-suppresses-dairy-l2",
+      "description": "interaction: seed_oils (INSTANT_RED) short-circuits before conventional_dairy would be injected — milk present but NOT flagged (Level 2)",
+      "input": {
+        "ingredientText": "Whole milk, wheat flour, canola oil, salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "seed_oils",
+            "severity": "reject",
+            "matchedIngredient": "canola oil",
+            "summary": "Contains \"canola oil\" — a refined seed oil that disrupts omega-6/omega-3 balance and is associated with systemic inflammation."
+          },
+          {
+            "category": "glyphosate_heavy",
+            "severity": "reject",
+            "matchedIngredient": "wheat flour",
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [
+          "Whole milk"
+        ],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "multi-eggs-suppresses-dairy-and-crops-ordering-l1",
+      "description": "interaction: conventional_eggs (Node 8b) fires before conventional_dairy (Node 9) — milk present but NOT flagged; conventional_crops/glyphosate_heavy flags still retained in array (Level 1)",
+      "input": {
+        "ingredientText": "Wheat flour, eggs, whole milk, sugar, salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "conventional_dairy",
+            "severity": "caution",
+            "matchedIngredient": "",
+            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Organic dairy is a meaningful alternative when you're ready for that step."
+          },
+          {
+            "category": "conventional_crops",
+            "severity": "caution",
+            "matchedIngredient": "sugar",
+            "summary": "Contains conventional \"sugar\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          },
+          {
+            "category": "conventional_eggs",
+            "severity": "caution",
+            "matchedIngredient": "eggs",
+            "summary": "Contains \"eggs\" — eggs from conventionally raised hens without organic certification."
+          },
+          {
+            "category": "glyphosate_heavy",
+            "severity": "caution",
+            "matchedIngredient": "wheat flour",
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "multi-eggs-suppresses-dairy-and-crops-ordering-l2",
+      "description": "interaction: conventional_eggs (Node 8b) fires before conventional_dairy (Node 9) — milk present but NOT flagged; conventional_crops/glyphosate_heavy flags still retained in array (Level 2)",
+      "input": {
+        "ingredientText": "Wheat flour, eggs, whole milk, sugar, salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "conventional_crops",
+            "severity": "reject",
+            "matchedIngredient": "sugar",
+            "summary": "Contains conventional \"sugar\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          },
+          {
+            "category": "conventional_eggs",
+            "severity": "reject",
+            "matchedIngredient": "eggs",
+            "summary": "Contains \"eggs\" — eggs from conventionally raised hens without organic certification."
+          },
+          {
+            "category": "glyphosate_heavy",
+            "severity": "reject",
+            "matchedIngredient": "wheat flour",
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [
+          "whole milk"
+        ],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "multi-annies-organic-gluten-l1",
+      "description": "Annie's Homegrown: USDA organic clears conventional_crops, gluten_grains still fires (paywall feature, stripped from display) (Level 1)",
+      "input": {
+        "ingredientText": "ORGANIC WHEAT FLOUR, ORGANIC WHEY, ORGANIC CHEDDAR CHEESE (ORGANIC PASTEURIZED MILK, CULTURES, SALT, NON-ANIMAL ENZYMES), ORGANIC CORN STARCH, SEA SALT, ORGANIC ANNATTO EXTRACT.",
+        "productLabels": [
+          "en:usda-organic"
+        ],
+        "categoriesTags": [],
+        "productName": "Annie's Homegrown Shells & White Cheddar",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": "organic",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "multi-annies-organic-gluten-l2",
+      "description": "Annie's Homegrown: USDA organic clears conventional_crops, gluten_grains still fires (paywall feature, stripped from display) (Level 2)",
+      "input": {
+        "ingredientText": "ORGANIC WHEAT FLOUR, ORGANIC WHEY, ORGANIC CHEDDAR CHEESE (ORGANIC PASTEURIZED MILK, CULTURES, SALT, NON-ANIMAL ENZYMES), ORGANIC CORN STARCH, SEA SALT, ORGANIC ANNATTO EXTRACT.",
+        "productLabels": [
+          "en:usda-organic"
+        ],
+        "categoriesTags": [],
+        "productName": "Annie's Homegrown Shells & White Cheddar",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "natural_colorants",
+            "severity": "caution",
+            "matchedIngredient": "",
+            "summary": "Organic product with natural plant-derived colorants"
+          }
+        ],
+        "clearedBy": "organic",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "multi-eggs-and-meat-l1",
+      "description": "interaction: conventional_meat (Node 8) fires before conventional_eggs check — both flags coexist in the array (chicken broth + eggs) (Level 1)",
+      "input": {
+        "ingredientText": "chicken broth, egg noodles, eggs, chicken, salt",
+        "productLabels": [],
+        "categoriesTags": [
+          "en:broths",
+          "en:soups"
+        ],
+        "productName": "Chicken Noodle Soup",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "conventional_meat",
+            "severity": "caution",
+            "matchedIngredient": "",
+            "summary": "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed, pasture-raised, or meat from a farm you trust."
+          },
+          {
+            "category": "conventional_eggs",
+            "severity": "caution",
+            "matchedIngredient": "egg",
+            "summary": "Contains \"egg\" — eggs from conventionally raised hens without organic certification."
+          },
+          {
+            "category": "conventional_eggs",
+            "severity": "caution",
+            "matchedIngredient": "eggs",
+            "summary": "Contains \"eggs\" — eggs from conventionally raised hens without organic certification."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": true,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "multi-eggs-and-meat-l2",
+      "description": "interaction: conventional_meat (Node 8) fires before conventional_eggs check — both flags coexist in the array (chicken broth + eggs) (Level 2)",
+      "input": {
+        "ingredientText": "chicken broth, egg noodles, eggs, chicken, salt",
+        "productLabels": [],
+        "categoriesTags": [
+          "en:broths",
+          "en:soups"
+        ],
+        "productName": "Chicken Noodle Soup",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "conventional_meat",
+            "severity": "reject",
+            "matchedIngredient": "",
+            "summary": "Conventional meat product without USDA Organic certification"
+          },
+          {
+            "category": "conventional_eggs",
+            "severity": "reject",
+            "matchedIngredient": "egg",
+            "summary": "Contains \"egg\" — eggs from conventionally raised hens without organic certification."
+          },
+          {
+            "category": "conventional_eggs",
+            "severity": "reject",
+            "matchedIngredient": "eggs",
+            "summary": "Contains \"eggs\" — eggs from conventionally raised hens without organic certification."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [
+          "chicken broth",
+          "chicken"
+        ],
+        "isMeat": true,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "edge-allergen-advisory-stripping-l1",
+      "description": "allergen advisory stripping: \"Contains: soy lecithin.\" disclaimer must not trip a false conventional_crops flag (Level 1)",
+      "input": {
+        "ingredientText": "Sunflower seeds, dried cranberries, sea salt. Contains: soy lecithin.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "edge-allergen-advisory-stripping-l2",
+      "description": "allergen advisory stripping: \"Contains: soy lecithin.\" disclaimer must not trip a false conventional_crops flag (Level 2)",
+      "input": {
+        "ingredientText": "Sunflower seeds, dried cranberries, sea salt. Contains: soy lecithin.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [
+          "dried cranberries"
+        ],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "edge-purpose-note-parenthetical",
+      "description": "purpose-note parenthetical: \"canola (for cooking) oil\" still flags seed_oils across the gap",
+      "input": {
+        "ingredientText": "canola (for cooking) oil, salt",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "seed_oils",
+            "severity": "reject",
+            "matchedIngredient": "canola oil",
+            "summary": "Contains \"canola oil\" — a refined seed oil that disrupts omega-6/omega-3 balance and is associated with systemic inflammation."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "edge-free-context-seed-oils",
+      "description": "\"-free\" context: \"canola-free\" must NOT flag seed_oils (INSTANT_RED_CATEGORIES member)",
+      "input": {
+        "ingredientText": "Canola-free trail mix, sea salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "edge-free-context-eggs-and-wheat",
+      "description": "\"-free\" context: \"egg-free\" facility disclaimer must not flag conventional_eggs, but wheat flour still flags glyphosate_heavy/gluten_grains",
+      "input": {
+        "ingredientText": "Egg-free bakery facility. Wheat flour, sugar, salt.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "conventional_crops",
+            "severity": "reject",
+            "matchedIngredient": "sugar",
+            "summary": "Contains conventional \"sugar\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          },
+          {
+            "category": "glyphosate_heavy",
+            "severity": "reject",
+            "matchedIngredient": "wheat flour",
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "edge-fdc-no-normalization-l1",
+      "description": "FD&C \"No.\" normalization: \"FD&C Red No. 40\" matches the \"red 40\" dye trigger (Level 1)",
+      "input": {
+        "ingredientText": "water, FD&C Red No. 40, salt",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "additives",
+            "severity": "reject",
+            "matchedIngredient": "red 40",
+            "summary": "Contains \"red 40\" — a synthetic additive with documented links to adverse health effects, including behavioral changes and organ stress."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [
+          "FD&C Red No. 40"
+        ],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "edge-fdc-no-normalization-l2",
+      "description": "FD&C \"No.\" normalization: \"FD&C Red No. 40\" matches the \"red 40\" dye trigger (Level 2)",
+      "input": {
+        "ingredientText": "water, FD&C Red No. 40, salt",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "additives",
+            "severity": "reject",
+            "matchedIngredient": "red 40",
+            "summary": "Contains \"red 40\" — a synthetic additive with documented links to adverse health effects, including behavioral changes and organ stress."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [
+          "FD&C Red No. 40"
+        ],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "prod-tractor-wheels-l1",
+      "description": "TRACTOR WHEELS (barcode 810003512611): organic + oat flour/wheatgrass gluten_grains + unrecognized tokens, NOT inconclusive (>5 threshold with real flags present) (Level 1)",
+      "input": {
+        "ingredientText": "OAT FLOUR, DATE*, COCONUT OIL*, AGAVE INULIN* (PREBIOTIC), APPLE, STRAWBERRY**, PUMPKIN SEED BUTTER*, STRAWBERRY PUREE, PUMPKIN, VANILLA EXTRACT, BEET**, BAKING SODA (SODIUM BICARBONATE), CINNAMON*, GREENS POWDER BLEND* (WHEATGRASS, KALE, CHLORELLA*, MORINGA*)",
+        "productLabels": [
+          "en:usda-organic"
+        ],
+        "categoriesTags": [],
+        "productName": "TRACTOR WHEELS Organic Toddler Soft-Baked Bar Strawberry, Pumpkin & Beet",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": "organic",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "prod-tractor-wheels-l2",
+      "description": "TRACTOR WHEELS (barcode 810003512611): organic + oat flour/wheatgrass gluten_grains + unrecognized tokens, NOT inconclusive (>5 threshold with real flags present) (Level 2)",
+      "input": {
+        "ingredientText": "OAT FLOUR, DATE*, COCONUT OIL*, AGAVE INULIN* (PREBIOTIC), APPLE, STRAWBERRY**, PUMPKIN SEED BUTTER*, STRAWBERRY PUREE, PUMPKIN, VANILLA EXTRACT, BEET**, BAKING SODA (SODIUM BICARBONATE), CINNAMON*, GREENS POWDER BLEND* (WHEATGRASS, KALE, CHLORELLA*, MORINGA*)",
+        "productLabels": [
+          "en:usda-organic"
+        ],
+        "categoriesTags": [],
+        "productName": "TRACTOR WHEELS Organic Toddler Soft-Baked Bar Strawberry, Pumpkin & Beet",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "inconclusive",
+        "flags": [
+          {
+            "category": "gluten_grains",
+            "severity": "caution",
+            "matchedIngredient": "oat flour",
+            "summary": "Contains \"oat flour\" — gluten protein is present. Not safe for individuals with celiac disease or non-celiac gluten sensitivity."
+          },
+          {
+            "category": "gluten_grains",
+            "severity": "caution",
+            "matchedIngredient": "wheat",
+            "summary": "Contains \"wheat\" — gluten protein is present. Not safe for individuals with celiac disease or non-celiac gluten sensitivity."
+          }
+        ],
+        "clearedBy": "organic",
+        "unverifiedIngredients": [
+          "AGAVE INULIN",
+          "PREBIOTIC",
+          "STRAWBERRY",
+          "PUMPKIN SEED BUTTER",
+          "STRAWBERRY PUREE",
+          "GREENS POWDER BLEND",
+          "CHLORELLA",
+          "MORINGA"
+        ],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "prod-smoothie-melts-l1",
+      "description": "Smoothie Melts Blueberry Burst (barcode 810003512802): organic path, fortified_vitamins via vitamin E, low unverified count after vocabulary fixes (Level 1)",
+      "input": {
+        "ingredientText": "Cultured whole milk, blueberry purée, whole milk powder, cherry purée, Date, lemon juice, tapioca starch, vitamin E (mix tocopherols to protect flavor), Bifidobacterium lactics (probiotic). Organic.",
+        "productLabels": [
+          "en:usda-organic"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": "organic",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "prod-smoothie-melts-l2",
+      "description": "Smoothie Melts Blueberry Burst (barcode 810003512802): organic path, fortified_vitamins via vitamin E, low unverified count after vocabulary fixes (Level 2)",
+      "input": {
+        "ingredientText": "Cultured whole milk, blueberry purée, whole milk powder, cherry purée, Date, lemon juice, tapioca starch, vitamin E (mix tocopherols to protect flavor), Bifidobacterium lactics (probiotic). Organic.",
+        "productLabels": [
+          "en:usda-organic"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "fortified_vitamins",
+            "severity": "caution",
+            "matchedIngredient": "",
+            "summary": "Organic product with synthetic vitamin fortification"
+          }
+        ],
+        "clearedBy": "organic",
+        "unverifiedIngredients": [
+          "blueberry purée",
+          "whole milk powder",
+          "cherry purée"
+        ],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "prod-pasta-ravioli-eggs-l1",
+      "description": "Fresh Pasta Ravioli: eggs, no cert, non-meat category → conventional_eggs, not conventional_meat (Level 1)",
+      "input": {
+        "ingredientText": "semolina flour, eggs, water, salt",
+        "productLabels": [],
+        "categoriesTags": [
+          "en:pasta",
+          "en:fresh-pasta"
+        ],
+        "productName": "Fresh Pasta Ravioli",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "conventional_eggs",
+            "severity": "caution",
+            "matchedIngredient": "eggs",
+            "summary": "Contains \"eggs\" — eggs from conventionally raised hens without organic certification."
+          },
+          {
+            "category": "glyphosate_heavy",
+            "severity": "caution",
+            "matchedIngredient": "semolina",
+            "summary": "Contains \"semolina\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "prod-pasta-ravioli-eggs-l2",
+      "description": "Fresh Pasta Ravioli: eggs, no cert, non-meat category → conventional_eggs, not conventional_meat (Level 2)",
+      "input": {
+        "ingredientText": "semolina flour, eggs, water, salt",
+        "productLabels": [],
+        "categoriesTags": [
+          "en:pasta",
+          "en:fresh-pasta"
+        ],
+        "productName": "Fresh Pasta Ravioli",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "conventional_eggs",
+            "severity": "reject",
+            "matchedIngredient": "eggs",
+            "summary": "Contains \"eggs\" — eggs from conventionally raised hens without organic certification."
+          },
+          {
+            "category": "glyphosate_heavy",
+            "severity": "reject",
+            "matchedIngredient": "semolina",
+            "summary": "Contains \"semolina\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "prod-organic-egg-noodles-l1",
+      "description": "Organic Egg Noodles: \"organic eggs\" ingredient prefix clears conventional_eggs even with no cert tag (Level 1)",
+      "input": {
+        "ingredientText": "organic wheat flour, organic eggs, water",
+        "productLabels": [],
+        "categoriesTags": [
+          "en:pasta"
+        ],
+        "productName": "Organic Egg Noodles",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "prod-organic-egg-noodles-l2",
+      "description": "Organic Egg Noodles: \"organic eggs\" ingredient prefix clears conventional_eggs even with no cert tag (Level 2)",
+      "input": {
+        "ingredientText": "organic wheat flour, organic eggs, water",
+        "productLabels": [],
+        "categoriesTags": [
+          "en:pasta"
+        ],
+        "productName": "Organic Egg Noodles",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": "cert_unconfirmed",
+        "productCategory": null
+      }
+    },
+    {
+      "id": "variety-seed-oils-vegetable-oil-l1",
+      "description": "seed_oils variant: vegetable oil (Level 1)",
+      "input": {
+        "ingredientText": "Vegetable oil, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "seed_oils",
+            "severity": "caution",
+            "matchedIngredient": "vegetable oil",
+            "summary": "Contains \"vegetable oil\" — a refined seed oil that disrupts omega-6/omega-3 balance and is associated with systemic inflammation."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "variety-seed-oils-vegetable-oil-l2",
+      "description": "seed_oils variant: vegetable oil (Level 2)",
+      "input": {
+        "ingredientText": "Vegetable oil, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "seed_oils",
+            "severity": "reject",
+            "matchedIngredient": "vegetable oil",
+            "summary": "Contains \"vegetable oil\" — a refined seed oil that disrupts omega-6/omega-3 balance and is associated with systemic inflammation."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "variety-conventional-crops-dextrose-l1",
+      "description": "conventional_crops variant: dextrose (no clearance) (Level 1)",
+      "input": {
+        "ingredientText": "Dextrose, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "conventional_crops",
+            "severity": "caution",
+            "matchedIngredient": "dextrose",
+            "summary": "Contains conventional \"dextrose\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "variety-conventional-crops-dextrose-l2",
+      "description": "conventional_crops variant: dextrose (no clearance) (Level 2)",
+      "input": {
+        "ingredientText": "Dextrose, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "conventional_crops",
+            "severity": "reject",
+            "matchedIngredient": "dextrose",
+            "summary": "Contains conventional \"dextrose\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "variety-glyphosate-heavy-wheat-l1",
+      "description": "glyphosate_heavy variant: wheat flour (also gluten_grains) (Level 1)",
+      "input": {
+        "ingredientText": "Wheat flour, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "glyphosate_heavy",
+            "severity": "caution",
+            "matchedIngredient": "wheat flour",
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "variety-glyphosate-heavy-wheat-l2",
+      "description": "glyphosate_heavy variant: wheat flour (also gluten_grains) (Level 2)",
+      "input": {
+        "ingredientText": "Wheat flour, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "glyphosate_heavy",
+            "severity": "reject",
+            "matchedIngredient": "wheat flour",
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "variety-synthetic-additives-sodium-benzoate-l1",
+      "description": "synthetic_additives variant: sodium benzoate preservative (Level 1)",
+      "input": {
+        "ingredientText": "Sodium benzoate, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "additives",
+            "severity": "reject",
+            "matchedIngredient": "sodium benzoate",
+            "summary": "Contains \"sodium benzoate\" — a synthetic additive with documented links to adverse health effects, including behavioral changes and organ stress."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "variety-synthetic-additives-sodium-benzoate-l2",
+      "description": "synthetic_additives variant: sodium benzoate preservative (Level 2)",
+      "input": {
+        "ingredientText": "Sodium benzoate, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "additives",
+            "severity": "reject",
+            "matchedIngredient": "sodium benzoate",
+            "summary": "Contains \"sodium benzoate\" — a synthetic additive with documented links to adverse health effects, including behavioral changes and organ stress."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "variety-bioengineering-genetically-modified-l1",
+      "description": "bioengineering variant: full phrase \"genetically modified\" (Level 1)",
+      "input": {
+        "ingredientText": "Genetically modified soy protein, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "conventional_crops",
+            "severity": "caution",
+            "matchedIngredient": "soy protein",
+            "summary": "Contains conventional \"soy protein\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          },
+          {
+            "category": "bioengineering",
+            "severity": "caution",
+            "matchedIngredient": "genetically modified",
+            "summary": "Product discloses gene modification: \"genetically modified\". Covers both legacy GMO/rDNA transgenics and CRISPR-edited varieties that may fall outside mandatory labeling requirements."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "variety-bioengineering-genetically-modified-l2",
+      "description": "bioengineering variant: full phrase \"genetically modified\" (Level 2)",
+      "input": {
+        "ingredientText": "Genetically modified soy protein, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "conventional_crops",
+            "severity": "reject",
+            "matchedIngredient": "soy protein",
+            "summary": "Contains conventional \"soy protein\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          },
+          {
+            "category": "bioengineering",
+            "severity": "reject",
+            "matchedIngredient": "genetically modified",
+            "summary": "Product discloses gene modification: \"genetically modified\". Covers both legacy GMO/rDNA transgenics and CRISPR-edited varieties that may fall outside mandatory labeling requirements."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "variety-natural-flavors-wonf-l1",
+      "description": "natural_flavors variant: WONF abbreviation (Level 1)",
+      "input": {
+        "ingredientText": "WONF, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "natural_flavors",
+            "severity": "caution",
+            "matchedIngredient": "wonf",
+            "summary": "Contains \"wonf\" — a catch-all term that can mask hundreds of undisclosed chemical compounds derived from natural sources."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "variety-natural-flavors-wonf-l2",
+      "description": "natural_flavors variant: WONF abbreviation (Level 2)",
+      "input": {
+        "ingredientText": "WONF, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "natural_flavors",
+            "severity": "reject",
+            "matchedIngredient": "wonf",
+            "summary": "Contains \"wonf\" — a catch-all term that can mask hundreds of undisclosed chemical compounds derived from natural sources."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "clear-non-gmo-bioengineering-l1",
+      "description": "non-gmo-project-verified label downgrades bioengineering to caution (Level 1)",
+      "input": {
+        "ingredientText": "Bioengineered ingredient, salt, water.",
+        "productLabels": [
+          "en:non-gmo-project-verified"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "bioengineering",
+            "severity": "caution",
+            "matchedIngredient": "bioengineered",
+            "summary": "Product discloses gene modification: \"bioengineered\". Covers both legacy GMO/rDNA transgenics and CRISPR-edited varieties that may fall outside mandatory labeling requirements."
+          }
+        ],
+        "clearedBy": "non-gmo-project-verified",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "clear-non-gmo-bioengineering-l2",
+      "description": "non-gmo-project-verified label downgrades bioengineering to caution (Level 2)",
+      "input": {
+        "ingredientText": "Bioengineered ingredient, salt, water.",
+        "productLabels": [
+          "en:non-gmo-project-verified"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "bioengineering",
+            "severity": "reject",
+            "matchedIngredient": "bioengineered",
+            "summary": "Product discloses gene modification: \"bioengineered\". Covers both legacy GMO/rDNA transgenics and CRISPR-edited varieties that may fall outside mandatory labeling requirements."
+          }
+        ],
+        "clearedBy": "non-gmo-project-verified",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "clear-glyphosate-free-wheat-l1",
+      "description": "glyphosate-free label downgrades a second GLYPHOSATE_HEAVY crop (wheat) to caution (Level 1)",
+      "input": {
+        "ingredientText": "Wheat flour, salt, water.",
+        "productLabels": [
+          "en:glyphosate-free"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "glyphosate_heavy",
+            "severity": "caution",
+            "matchedIngredient": "wheat flour",
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "clear-glyphosate-free-wheat-l2",
+      "description": "glyphosate-free label downgrades a second GLYPHOSATE_HEAVY crop (wheat) to caution (Level 2)",
+      "input": {
+        "ingredientText": "Wheat flour, salt, water.",
+        "productLabels": [
+          "en:glyphosate-free"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "glyphosate_heavy",
+            "severity": "caution",
+            "matchedIngredient": "wheat flour",
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": "glyphosate-free",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "clear-organic-prefix-eggs-l1",
+      "description": "organic ingredient prefix clears conventional_eggs (no label needed) (Level 1)",
+      "input": {
+        "ingredientText": "Organic eggs, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "clear-organic-prefix-eggs-l2",
+      "description": "organic ingredient prefix clears conventional_eggs (no label needed) (Level 2)",
+      "input": {
+        "ingredientText": "Organic eggs, salt, water.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": "cert_unconfirmed",
+        "productCategory": null
+      }
+    },
+    {
+      "id": "clear-usda-organic-glyphosate-heavy-l1",
+      "description": "usda-organic label fully clears glyphosate_heavy (not just downgrade) (Level 1)",
+      "input": {
+        "ingredientText": "Oats, salt, water.",
+        "productLabels": [
+          "en:usda-organic"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": "organic",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "clear-usda-organic-glyphosate-heavy-l2",
+      "description": "usda-organic label fully clears glyphosate_heavy (not just downgrade) (Level 2)",
+      "input": {
+        "ingredientText": "Oats, salt, water.",
+        "productLabels": [
+          "en:usda-organic"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": "organic",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "meat-wild-name-signal-no-category-l1",
+      "description": "wild-caught NAME signal alone, no OFF seafood category → falls to default (safer failure mode, confirmed PROMPT_VERSION 29 fix) (Level 1)",
+      "input": {
+        "ingredientText": "salmon, water, salt",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Wild Caught Alaskan Salmon",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "meat-wild-name-signal-no-category-l2",
+      "description": "wild-caught NAME signal alone, no OFF seafood category → falls to default (safer failure mode, confirmed PROMPT_VERSION 29 fix) (Level 2)",
+      "input": {
+        "ingredientText": "salmon, water, salt",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Wild Caught Alaskan Salmon",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [
+          "salmon"
+        ],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "meat-wild-ingredient-text-signal-l1",
+      "description": "wild-caught INGREDIENT-TEXT signal (\"Wild\" in ingredients) with confirmed OFF seafood category (Level 1)",
+      "input": {
+        "ingredientText": "Wild pink salmon, water, salt",
+        "productLabels": [],
+        "categoriesTags": [
+          "en:salmon"
+        ],
+        "productName": "Pink Salmon",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": true,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "meat-wild-ingredient-text-signal-l2",
+      "description": "wild-caught INGREDIENT-TEXT signal (\"Wild\" in ingredients) with confirmed OFF seafood category (Level 2)",
+      "input": {
+        "ingredientText": "Wild pink salmon, water, salt",
+        "productLabels": [],
+        "categoriesTags": [
+          "en:salmon"
+        ],
+        "productName": "Pink Salmon",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": "wild-caught",
+        "unverifiedIngredients": [
+          "Wild pink salmon"
+        ],
+        "isMeat": true,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "prod-unsweetened-cereal-l1",
+      "description": "Unsweetened Cereal (barcode 860002152400): sole flag is glyphosate_heavy reject (chickpea + pea protein) — the Node 11b fix (Level 1)",
+      "input": {
+        "ingredientText": "Chickpea, Tapioca, Pea Protein, Salt",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Unsweetened Cereal",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "glyphosate_heavy",
+            "severity": "caution",
+            "matchedIngredient": "chickpea",
+            "summary": "Contains \"chickpea\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          },
+          {
+            "category": "glyphosate_heavy",
+            "severity": "caution",
+            "matchedIngredient": "pea protein",
+            "summary": "Contains \"pea protein\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "prod-unsweetened-cereal-l2",
+      "description": "Unsweetened Cereal (barcode 860002152400): sole flag is glyphosate_heavy reject (chickpea + pea protein) — the Node 11b fix (Level 2)",
+      "input": {
+        "ingredientText": "Chickpea, Tapioca, Pea Protein, Salt",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Unsweetened Cereal",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "glyphosate_heavy",
+            "severity": "reject",
+            "matchedIngredient": "chickpea",
+            "summary": "Contains \"chickpea\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          },
+          {
+            "category": "glyphosate_heavy",
+            "severity": "reject",
+            "matchedIngredient": "pea protein",
+            "summary": "Contains \"pea protein\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "prod-banana-berry-l1",
+      "description": "Banana Berry (barcode 079900003251): frozen fruit with \"wild blueberries\" — must NOT get false wild-caught clearance (PROMPT_VERSION 29 fix); citric acid still flags conventional_crops (Level 1)",
+      "input": {
+        "ingredientText": "BANANA SLICES (ASCORBIC AND CITRIC ACIDS ADDED TO PROTECT COLOR), STRAWBERRIES, WILD BLUEBERRIES.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Banana Berry",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "conventional_crops",
+            "severity": "caution",
+            "matchedIngredient": "citric acid",
+            "summary": "Contains conventional \"citric acid\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "prod-banana-berry-l2",
+      "description": "Banana Berry (barcode 079900003251): frozen fruit with \"wild blueberries\" — must NOT get false wild-caught clearance (PROMPT_VERSION 29 fix); citric acid still flags conventional_crops (Level 2)",
+      "input": {
+        "ingredientText": "BANANA SLICES (ASCORBIC AND CITRIC ACIDS ADDED TO PROTECT COLOR), STRAWBERRIES, WILD BLUEBERRIES.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Banana Berry",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "conventional_crops",
+            "severity": "reject",
+            "matchedIngredient": "citric acid",
+            "summary": "Contains conventional \"citric acid\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [
+          "BANANA SLICES",
+          "WILD BLUEBERRIES"
+        ],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "prod-guava-crackers-l1",
+      "description": "Guava Toasted Snack Crackers: \"egg-free facility\" disclaimer must not flag conventional_eggs (PROMPT_VERSION 30 fix) (Level 1)",
+      "input": {
+        "ingredientText": "Rice flour, guava paste, sugar, salt. Manufactured in a facility that also processes tree nuts. This product is made in an EGG-FREE facility.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Guava Toasted Snack Crackers",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "yellow",
+        "flags": [
+          {
+            "category": "conventional_crops",
+            "severity": "caution",
+            "matchedIngredient": "sugar",
+            "summary": "Contains conventional \"sugar\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "prod-guava-crackers-l2",
+      "description": "Guava Toasted Snack Crackers: \"egg-free facility\" disclaimer must not flag conventional_eggs (PROMPT_VERSION 30 fix) (Level 2)",
+      "input": {
+        "ingredientText": "Rice flour, guava paste, sugar, salt. Manufactured in a facility that also processes tree nuts. This product is made in an EGG-FREE facility.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Guava Toasted Snack Crackers",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "conventional_crops",
+            "severity": "reject",
+            "matchedIngredient": "sugar",
+            "summary": "Contains conventional \"sugar\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [
+          "guava paste"
+        ],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "prod-mango-chobani-l1",
+      "description": "Mango Chobani (barcode 818290015365): Oxford-comma conjunction + bare \"L. Rhamnosus\" probiotic strain, organic path (Level 1)",
+      "input": {
+        "ingredientText": "Organic cultured pasteurized grade A nonfat milk, mango, cane sugar, fruit pectin, L. Casei, and L. Rhamnosus.",
+        "productLabels": [
+          "en:usda-organic"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": "organic",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "prod-mango-chobani-l2",
+      "description": "Mango Chobani (barcode 818290015365): Oxford-comma conjunction + bare \"L. Rhamnosus\" probiotic strain, organic path (Level 2)",
+      "input": {
+        "ingredientText": "Organic cultured pasteurized grade A nonfat milk, mango, cane sugar, fruit pectin, L. Casei, and L. Rhamnosus.",
+        "productLabels": [
+          "en:usda-organic"
+        ],
+        "categoriesTags": [],
+        "productName": "Test Product",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "green",
+        "flags": [],
+        "clearedBy": "organic",
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "prod-himalayan-salt-crackers-l1",
+      "description": "Pink Himalayan Salt Flatbread Crackers (barcode 860493002284): multi-category product (17 flags across 3 categories in the original production incident) (Level 1)",
+      "input": {
+        "ingredientText": "Enriched wheat flour, soybean oil, sugar, pink himalayan salt, natural flavors, TBHQ.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Pink Himalayan Salt Flatbread Crackers",
+        "userLevel": 1
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "seed_oils",
+            "severity": "caution",
+            "matchedIngredient": "soybean oil",
+            "summary": "Contains \"soybean oil\" — a refined seed oil that disrupts omega-6/omega-3 balance and is associated with systemic inflammation."
+          },
+          {
+            "category": "conventional_crops",
+            "severity": "caution",
+            "matchedIngredient": "sugar",
+            "summary": "Contains conventional \"sugar\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          },
+          {
+            "category": "glyphosate_heavy",
+            "severity": "caution",
+            "matchedIngredient": "wheat flour",
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          },
+          {
+            "category": "natural_flavors",
+            "severity": "caution",
+            "matchedIngredient": "natural flavors",
+            "summary": "Contains \"natural flavors\" — a catch-all term that can mask hundreds of undisclosed chemical compounds derived from natural sources."
+          },
+          {
+            "category": "additives",
+            "severity": "reject",
+            "matchedIngredient": "tbhq",
+            "summary": "Contains \"tbhq\" — a synthetic additive with documented links to adverse health effects, including behavioral changes and organ stress."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    },
+    {
+      "id": "prod-himalayan-salt-crackers-l2",
+      "description": "Pink Himalayan Salt Flatbread Crackers (barcode 860493002284): multi-category product (17 flags across 3 categories in the original production incident) (Level 2)",
+      "input": {
+        "ingredientText": "Enriched wheat flour, soybean oil, sugar, pink himalayan salt, natural flavors, TBHQ.",
+        "productLabels": [],
+        "categoriesTags": [],
+        "productName": "Pink Himalayan Salt Flatbread Crackers",
+        "userLevel": 2
+      },
+      "output": {
+        "verdict": "red",
+        "flags": [
+          {
+            "category": "seed_oils",
+            "severity": "reject",
+            "matchedIngredient": "soybean oil",
+            "summary": "Contains \"soybean oil\" — a refined seed oil that disrupts omega-6/omega-3 balance and is associated with systemic inflammation."
+          },
+          {
+            "category": "conventional_crops",
+            "severity": "reject",
+            "matchedIngredient": "sugar",
+            "summary": "Contains conventional \"sugar\" — likely sourced from GE crops or grown with heavy synthetic pesticide and herbicide use."
+          },
+          {
+            "category": "glyphosate_heavy",
+            "severity": "reject",
+            "matchedIngredient": "wheat flour",
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+          },
+          {
+            "category": "natural_flavors",
+            "severity": "reject",
+            "matchedIngredient": "natural flavors",
+            "summary": "Contains \"natural flavors\" — a catch-all term that can mask hundreds of undisclosed chemical compounds derived from natural sources."
+          },
+          {
+            "category": "additives",
+            "severity": "reject",
+            "matchedIngredient": "tbhq",
+            "summary": "Contains \"tbhq\" — a synthetic additive with documented links to adverse health effects, including behavioral changes and organ stress."
+          }
+        ],
+        "clearedBy": null,
+        "unverifiedIngredients": [],
+        "isMeat": false,
+        "oliveCaveat": false,
+        "unverifiedReason": null,
+        "productCategory": null
+      }
+    }
+  ]
+}

@@ -2518,6 +2518,74 @@ been RED (`glyphosate_heavy` reject, no clearance available). Run
 
 ---
 
+## Golden Master Snapshot (L1/L2 Unification Project — Stage 1)
+
+The rules engine (`lib/rulesEngine.js`) and the L1/L2 post-processing logic in `pages/api/scan.js`
+have grown into two separate layers of decision logic that duplicate similar concepts (severity
+levels, clearance mechanisms, category checks) in two different places. A future session is
+planned to unify them into a single decision layer. Before that refactor begins, this session
+captured a **golden master snapshot** — a frozen record of the app's exact CURRENT input/output
+behavior (bugs included, not fixed) — so the refactor can be verified against real present-day
+behavior instead of against what CLAUDE.md merely claims the behavior should be.
+
+**Location**: `scripts/goldenMaster/`
+- `generateInputs.js` — generates 135 test cases (`{ ingredientText, productLabels, categoriesTags,
+  productName, userLevel }`) covering every flag category at both user levels, every clearance
+  mechanism, seafood/game-meat/conventional-meat routing, the four special verdict paths (pure-water,
+  cert_unconfirmed, inconclusive, default-yellow/Node 14), 12 specific historical bug-fix regressions
+  (macadamia, Product of Canada, goat milk, licorice, cowpeas, oat groats, sweetcorn, etc.), text
+  preprocessing edge cases (allergen advisory stripping, purpose-note parentheticals, "-free"/"non-"
+  contexts, FD&C "No." normalization), and several multi-flag-category products for interaction
+  effects. Run with `node scripts/goldenMaster/generateInputs.js` → writes `inputs.json`.
+- `inputs.json` — the generated 135 cases (committed, since it's the traceable Step-1 artifact —
+  regenerating it isn't guaranteed to produce byte-identical output if the source data it pulls real
+  fixture strings from ever changes).
+- `captureSnapshot.js` — runs every case in `inputs.json` through the real, unmodified
+  `pages/api/scan.js` handler (real `analyzeIngredients()` call, real L1 override block, real L2
+  tree — not a hand-ported duplicate, to avoid transcription drift) and records `verdict`, `flags`,
+  `clearedBy`, `unverifiedIngredients`, `isMeat`, `oliveCaveat`, `unverifiedReason`, and
+  `productCategory` for each. **Must be run through Jest, not plain `node`** — `scan.js` uses ESM
+  `import`/`export` syntax that only Next.js's bundler or Jest's `next/jest` transform can parse; a
+  bare `node`/`require()` fails with `ERR_MODULE_NOT_FOUND`. Run with:
+  ```
+  npx jest --testMatch "**/scripts/goldenMaster/captureSnapshot.js" --runInBand
+  ```
+  The `--testMatch` override is CLI-only for this one invocation — `jest.config.js` itself is not
+  modified. No real Supabase or Anthropic calls occur (`SUPABASE_SERVICE_ROLE_KEY`/`ANTHROPIC_API_KEY`
+  are never set under Jest, so both short-circuit to `null`/no-op as they already do in the existing
+  test suite).
+- `snapshot-baseline.json` — the frozen output (135 entries, ~134KB). This is the ground truth the
+  refactor will be diffed against.
+
+**⚠️ This file captures current behavior AS-IS, including at least one known, currently-undocumented
+bug found during the spot-check review** (see the "Golden Master spot-check findings" callout
+immediately below) — it is deliberately not "corrected" before being frozen. The point of Stage 1 is
+a faithful snapshot of what the app does today, not what it should do.
+
+**Regeneration rule**: if pre-refactor behavior is ever intentionally changed for an unrelated reason
+(e.g. another bug fix session, per the ongoing collision-word audit series) before the L1/L2
+refactor lands, **regenerate `snapshot-baseline.json` by re-running `captureSnapshot.js`** — do not
+hand-edit the JSON file. A hand-edited snapshot defeats its own purpose as an independent ground-truth
+check.
+
+### Golden Master spot-check findings (Stage 1, July 2026)
+
+Spot-checked 28 entries from the snapshot against CLAUDE.md's documented decision-tree logic. All
+matched documented behavior except one:
+
+**`clear-non-gmo-bioengineering-l2`** (input `"Bioengineered ingredient, salt, water."` +
+`en:non-gmo-project-verified` label) returns `verdict: 'yellow'`, `clearedBy:
+'non-gmo-project-verified'`, but `flags` still contains a `severity: 'reject'` `bioengineering` flag.
+Node 7 (`non-gmo-project-verified` label → YELLOW) fires unconditionally on the label alone with no
+check for a pre-existing reject-severity flag, and nothing strips the flag afterward — the same bug
+shape already found and fixed once for Node 5's wild-caught clearance at PROMPT_VERSION 29 (see that
+changelog entry above), which added a `!flags.some(f => f.severity === 'reject')` gate. Node 7 never
+received the equivalent fix. **Not fixed as part of this session** — flagged for a future session's
+review, consistent with the "Keeping the tree in sync with the engine" caution already documented
+under "Level 2 universal decision tree" above.
+
+---
+
 ## Pending Policy Decisions
 
 Items deferred from the June 2026 unverified ingredients audit — pending team review before adding to the engine.
