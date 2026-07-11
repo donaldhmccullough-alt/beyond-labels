@@ -1784,6 +1784,61 @@ describe('L. Universal L2 decision tree', () => {
     expect(res.body.clearedBy).toBe('organic');
     expect(res.body.flags.some(f => f.category === 'fortified_vitamins')).toBe(true);
   });
+
+  // ── L19: non-gmo-project-verified + pre-existing reject flag → RED (Node 7 gate) ──
+
+  test('L19: "Bioengineered ingredient, salt, water." + non-gmo-project-verified label → RED, not YELLOW (Node 7 no longer discards a reject-severity flag)', async () => {
+    // Regression for a verdict-contradicting bug found during Stage 1
+    // golden-master snapshot generation, same shape as the Node 5
+    // wild-caught fix at PROMPT_VERSION 29: Node 7 was unconditionally
+    // overriding verdict to 'yellow' whenever the non-gmo-project-verified
+    // label was present, with no check for a pre-existing reject-severity
+    // flag — bioengineering here. The flag survived in `flags`, but the
+    // verdict never reflected it. With the gate in place, Node 7 is skipped
+    // and execution falls through to Node 11 (bioengineering), which
+    // correctly sets RED and leaves clearedBy null.
+    mockFetchOnce(l2TreeOffResp({
+      ingredientsText: 'Bioengineered ingredient, salt, water.',
+      labelsTags:      ['en:non-gmo-project-verified'],
+      categoriesTags:  [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000319', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.clearedBy).toBeNull();
+    const flag = res.body.flags.find(f => f.category === 'bioengineering');
+    expect(flag).toBeDefined();
+    expect(flag.severity).toBe('reject');
+  });
+
+  // ── L20: non-gmo-project-verified with no reject flag → YELLOW (Node 7 still fires) ──
+
+  test('L20: "Almonds, sea salt, water." + non-gmo-project-verified label, no reject flag present → YELLOW as before (legitimate clearance unaffected by the new gate)', async () => {
+    // Guards against the L19 fix accidentally disabling Node 7 for the
+    // ordinary case it exists to handle — a genuine Non-GMO Project
+    // Verified product with no contradicting reject-severity flag should
+    // still get the caution-yellow clearance.
+    //
+    // Confirmed directly against analyzeIngredients() before writing this
+    // test that "oats" was NOT a safe choice here: hasNonGmo does not
+    // clear or downgrade GLYPHOSATE_HEAVY at the engine level (only
+    // hasUsdaOrganic fully clears it, and only hasGlyphosateFree downgrades
+    // it to caution — see the GLYPHOSATE_HEAVY loop in lib/rulesEngine.js),
+    // so an oats-based fixture would still carry a reject-severity
+    // glyphosate_heavy flag and incorrectly trip the new L19 gate here too.
+    // Almonds, salt, and water produce zero flags in any category, so this
+    // is a genuine "nothing to gate on" case.
+    mockFetchOnce(l2TreeOffResp({
+      ingredientsText: 'Almonds, sea salt, water.',
+      labelsTags:      ['en:non-gmo-project-verified'],
+      categoriesTags:  [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000320', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('yellow');
+    expect(res.body.clearedBy).toBe('non-gmo-project-verified');
+    expect(res.body.flags.every(f => f.severity !== 'reject')).toBe(true);
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1791,10 +1846,10 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 38 (v38: false-negative sweep fix — "cowpeas"/"broadbeans"/"horsebeans" one-word forms now correctly trigger glyphosate_heavy)', () => {
+  test('PROMPT_VERSION is 39 (v39: Node 7 non-gmo-project-verified reject-flag gate — same shape as the Node 5 fix at PROMPT_VERSION 29)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(38);
+    expect(PROMPT_VERSION).toBe(39);
   });
 });
 

@@ -1039,8 +1039,24 @@ export default async function handler(req, res) {
         verdict   = 'green';
         clearedBy = null;
 
-      } else if (hasNonGmo) {
+      } else if (hasNonGmo && !flags.some(f => f.severity === 'reject')) {
         // Node 7: Non-GMO Project Verified → caution yellow.
+        //
+        // Gate added (fixing a live verdict-contradicting bug found during
+        // Stage 1 golden-master snapshot generation — same shape as the
+        // Node 5 wild-caught fix at PROMPT_VERSION 29): this node was
+        // unconditionally overriding verdict to 'yellow' even when a
+        // reject-severity flag (bioengineering, conventional_crops,
+        // conventional_eggs, glyphosate_heavy) was already present in
+        // `flags` — the flag stayed in the response, but the verdict never
+        // reflected it, and that contradictory flag still fed
+        // buildUserMessage() in explain.js. Mirrors the "reject flags
+        // always win" precedent used by INSTANT_RED_CATEGORIES and Node 5:
+        // if ANY reject flag is present, this node is skipped and execution
+        // falls through to whichever later node actually matches the
+        // flag's category (e.g. Node 11 for bioengineering), which sets
+        // the correct RED verdict and leaves clearedBy null instead of
+        // falsely stamping 'non-gmo-project-verified' over a real reject.
         verdict   = 'yellow';
         clearedBy = 'non-gmo-project-verified';
 

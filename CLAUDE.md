@@ -573,7 +573,7 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 38** (false-negative sweep fix — cowpeas/broadbeans/horsebeans — see the "false-negative sweep fix" changelog entry below). Committed and pushed this session; not yet empirically re-confirmed live against production `scan_cache` the way v32 was — per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until a fresh live scan is checked post-deploy.
+**Current PROMPT_VERSION is 39** (L2 tree Node 7 reject-flag gate — see the "Node 7 non-gmo-project-verified reject-flag gate" changelog entry below). Committed and pushed this session; not yet empirically re-confirmed live against production `scan_cache` the way v32 was — per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until a fresh live scan is checked post-deploy.
 
 ### Cache Invalidation
 When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 30. Run `DELETE FROM scan_cache WHERE prompt_version < 30` in Supabase to purge all stale rows before deploying.
@@ -2518,6 +2518,97 @@ been RED (`glyphosate_heavy` reject, no clearance available). Run
 
 ---
 
+### Session — Node 7 non-gmo-project-verified reject-flag gate (July 2026, PROMPT_VERSION 39)
+
+Follow-up to the Stage 1 golden-master snapshot session above: the Step 3 spot-check found a real,
+previously-undocumented bug — `clear-non-gmo-bioengineering-l2` (input `"Bioengineered ingredient,
+salt, water."` + `en:non-gmo-project-verified` label) returned `verdict: 'yellow'` while `flags`
+still contained a `severity: 'reject'` `bioengineering` flag.
+
+**Root cause.** Node 7 of the L2 decision tree (`pages/api/scan.js`) — `else if (hasNonGmo) { verdict
+= 'yellow'; clearedBy = 'non-gmo-project-verified'; }` — fired unconditionally on the label alone,
+with no check for a pre-existing reject-severity flag, and nothing stripped that flag afterward. This
+is the exact same shape as the Node 5 wild-caught bug fixed at PROMPT_VERSION 29: an unconditional
+label-based verdict override with no `!flags.some(f => f.severity === 'reject')` gate. The
+contradictory reject flag survived into the response and still fed `buildUserMessage()` in
+`explain.js`, so the AI-generated explanation could also contradict the true severity.
+
+**Audit of every other L2 tree node for the same shape (per instruction — report, don't fix without
+confirmation).** Traced every node's condition against what reject-severity flags could still be
+present in `flags` at that point in the chain, cross-referenced against which categories are cleared
+at the *engine* level (`lib/rulesEngine.js`) by `hasUsdaOrganic`/`hasNonGmo` before ever reaching
+`scan.js`. Two more confirmed instances of the identical shape — **NOT fixed this session, reported
+for a separate decision**:
+
+1. **Node 4 (organic path, `hasOrganic`)** — narrower exposure than Node 7, but real. The engine
+   clears `conventional_crops`, `conventional_eggs`, and `glyphosate_heavy` via `hasUsdaOrganic`
+   directly in their own trigger loops (confirmed via grep of `lib/rulesEngine.js` — each has its own
+   `if (hasUsdaOrganic || ...) continue;` guard), so none of those can survive into `flags` when
+   Node 4 runs. But `BIOENGINEERING_TERMS`'s loop has **no** `hasUsdaOrganic` check anywhere —
+   confirmed by direct read. A product carrying both a `usda-organic` label and a literal
+   "bioengineered"/"genetically modified" disclosure produces a `bioengineering: reject` flag that
+   Node 4 silently ignores; if none of the organic branch's own checks (`fortified_vitamins`,
+   `natural_colorants`, `olive_oil_adulteration`) match, the product gets a full GREEN with a live
+   reject flag sitting unused in the response.
+2. **Node 6 (game meat, `isGameMeat`)** — `else if (isGameMeat) { verdict = 'green'; clearedBy = null;
+   }`, positioned before Nodes 7, 8b, 9, 10, 11, and 11b in the chain. Unlike Node 4, none of those
+   later categories are cleared by anything specific to game meat, so Node 6 is exposed to all of
+   them: `conventional_eggs`, `conventional_crops`, `bioengineering`, and `glyphosate_heavy` (reject)
+   flags can all still be present in `flags` when this node fires and would be silently discarded the
+   same way.
+
+Every other node was confirmed safe: Nodes 5b/8/8b/8c/9/10/11/11b/13 all set `verdict = 'red'` (never
+a downgrade, and 5b/8/8c prepend their own flag while keeping existing ones — no discarding), and
+Node 12 (glyphosate-free) sits *after* every reject-category check in the chain (Nodes 8b, 9, 10, 11,
+11b), so by construction nothing reject-severity can still be unaccounted-for by the time it runs —
+this is exactly the ordering the "Keeping the tree in sync with the engine" callout already
+documents. Node 14's safety likewise depends on that same ordering invariant holding, which is a
+pre-existing, separately-documented maintenance concern, not a new finding.
+
+**Fix.** Node 7's condition became `hasNonGmo && !flags.some(f => f.severity === 'reject')` — the
+identical pattern used at Node 5, gating on *any* reject-severity flag rather than bioengineering
+specifically. This mirrors Node 5's own resolution: when the gate fails, Node 7 is skipped entirely
+and execution falls through to whichever later node actually matches the flag's category (Node 11 for
+bioengineering, Node 10 for conventional_crops, Node 8b for conventional_eggs, Node 11b for
+glyphosate_heavy reject) — that node sets the correct RED verdict and leaves `clearedBy` at `null`
+rather than falsely stamping `'non-gmo-project-verified'` over a real reject. A category-specific gate
+(e.g. only checking for a bioengineering reject) was considered and rejected — there's no principled
+reason non-GMO clearance should apply to *some* reject categories and not others, and "any reject flag
+blocks any downstream downgrade" is already the established precedent from Node 5 and
+`INSTANT_RED_CATEGORIES`.
+
+**Tests added (Suite L, L19–L20, `__tests__/api/scan.test.js`):** L19 reproduces the exact bug case
+(`"Bioengineered ingredient, salt, water."` + non-gmo-project-verified label) and asserts
+`verdict: 'red'`, `clearedBy: null`, and the `bioengineering` flag retaining `severity: 'reject'`.
+L20 is a regression guard confirming legitimate non-gmo-project-verified clearance (no pre-existing
+reject flag) still correctly produces `verdict: 'yellow'`, `clearedBy: 'non-gmo-project-verified'`.
+**A wrong assumption was caught before landing**: L20 was initially written using an oats-based
+fixture (`"Non-GMO oats, salt, water."`), expecting the non-gmo label to leave no reject flag behind —
+confirmed via direct testing against `analyzeIngredients()` that this assumption was false. Only
+`hasUsdaOrganic` fully clears `GLYPHOSATE_HEAVY` at the engine level, and only `hasGlyphosateFree`
+downgrades it to caution; `hasNonGmo` does neither, so oats still produces a `severity: 'reject'`
+`glyphosate_heavy` flag even with the non-gmo label present — which would have tripped the new L19
+gate too, making the test assert the wrong thing. Switched to `"Almonds, sea salt, water."`, confirmed
+via the same direct check to produce zero flags in any category, before finalizing. Full suite: 1380
+passing / 1 known pre-existing failure (the cross-list contradiction test, unchanged — still only the
+same 8 out-of-scope "dead entry" findings from the collision-word audit series), up from 1378 passing
+/ 1 failing before this session's fix.
+
+**PROMPT_VERSION bumped 38 → 39.** This changes real `verdict`/`clearedBy` output for a class of
+previously-cached products — any product carrying a `non-gmo-project-verified` label alongside a
+reject-severity flag from an unrelated category (most plausibly `bioengineering`, since a formulation
+change or a minor sub-ingredient could trigger the mandatory disclosure without invalidating an
+already-issued Non-GMO Project certification) previously showed an incorrect YELLOW verdict instead of
+RED, with the contradicting reject flag silently along for the ride. Run
+`DELETE FROM scan_cache WHERE prompt_version < 39` in Supabase before/after deploying — **holding off
+on running this per an explicit standing decision**, not yet executed as of this session. The
+`M. PROMPT_VERSION` contract test was updated to assert `39`.
+
+**Golden master snapshot regenerated once, intentionally, to reflect this fix** — see the note added
+to the "Golden Master Snapshot" section immediately below.
+
+---
+
 ## Golden Master Snapshot (L1/L2 Unification Project — Stage 1)
 
 The rules engine (`lib/rulesEngine.js`) and the L1/L2 post-processing logic in `pages/api/scan.js`
@@ -2557,10 +2648,14 @@ behavior instead of against what CLAUDE.md merely claims the behavior should be.
 - `snapshot-baseline.json` — the frozen output (135 entries, ~134KB). This is the ground truth the
   refactor will be diffed against.
 
-**⚠️ This file captures current behavior AS-IS, including at least one known, currently-undocumented
-bug found during the spot-check review** (see the "Golden Master spot-check findings" callout
-immediately below) — it is deliberately not "corrected" before being frozen. The point of Stage 1 is
-a faithful snapshot of what the app does today, not what it should do.
+**⚠️ This file captures current behavior AS-IS** — it is deliberately not "corrected" before being
+frozen. The point of Stage 1 is a faithful snapshot of what the app does today, not what it should do.
+The Node 7 non-gmo-project-verified bug found during the original spot-check (see below) has since
+been fixed at PROMPT_VERSION 39, and the snapshot was **regenerated once, intentionally**, to reflect
+that fix — see "Snapshot regeneration log" below. Two related, still-unfixed findings from that same
+fix session's audit (Node 4 and Node 6 sharing the identical unconditional-override shape) remain
+live in this snapshot, pending a separate decision — see the PROMPT_VERSION 39 changelog entry above
+for details.
 
 **Regeneration rule**: if pre-refactor behavior is ever intentionally changed for an unrelated reason
 (e.g. another bug fix session, per the ongoing collision-word audit series) before the L1/L2
@@ -2568,21 +2663,34 @@ refactor lands, **regenerate `snapshot-baseline.json` by re-running `captureSnap
 hand-edit the JSON file. A hand-edited snapshot defeats its own purpose as an independent ground-truth
 check.
 
+### Snapshot regeneration log
+
+- **July 2026 (PROMPT_VERSION 39 session)** — regenerated after the Node 7 non-gmo-project-verified
+  reject-flag gate fix (see the PROMPT_VERSION 39 changelog entry above). This is the one exception to
+  "capture behavior as-is, bugs included": the bug this regeneration corrects for was found *by* the
+  Stage 1 spot-check itself, was fixed in the same session per explicit instruction, and leaving the
+  baseline frozen on the pre-fix (buggy) output would have meant Stage 2's refactor got verified
+  against behavior everyone already agreed was wrong. `clear-non-gmo-bioengineering-l2` now correctly
+  shows `verdict: 'red'`, `clearedBy: null`, with the `bioengineering` reject flag intact — confirmed
+  directly against the regenerated `snapshot-baseline.json`. No other entries changed as a side effect
+  (the fix only narrows Node 7's own condition; every other case's routing was independently
+  reconfirmed by the passing test suite, not just assumed).
+
 ### Golden Master spot-check findings (Stage 1, July 2026)
 
 Spot-checked 28 entries from the snapshot against CLAUDE.md's documented decision-tree logic. All
-matched documented behavior except one:
+matched documented behavior except one, which has since been fixed (see "Snapshot regeneration log"
+above):
 
 **`clear-non-gmo-bioengineering-l2`** (input `"Bioengineered ingredient, salt, water."` +
-`en:non-gmo-project-verified` label) returns `verdict: 'yellow'`, `clearedBy:
-'non-gmo-project-verified'`, but `flags` still contains a `severity: 'reject'` `bioengineering` flag.
-Node 7 (`non-gmo-project-verified` label → YELLOW) fires unconditionally on the label alone with no
-check for a pre-existing reject-severity flag, and nothing strips the flag afterward — the same bug
-shape already found and fixed once for Node 5's wild-caught clearance at PROMPT_VERSION 29 (see that
-changelog entry above), which added a `!flags.some(f => f.severity === 'reject')` gate. Node 7 never
-received the equivalent fix. **Not fixed as part of this session** — flagged for a future session's
-review, consistent with the "Keeping the tree in sync with the engine" caution already documented
-under "Level 2 universal decision tree" above.
+`en:non-gmo-project-verified` label) returned `verdict: 'yellow'`, `clearedBy:
+'non-gmo-project-verified'`, but `flags` still contained a `severity: 'reject'` `bioengineering` flag.
+Node 7 (`non-gmo-project-verified` label → YELLOW) fired unconditionally on the label alone with no
+check for a pre-existing reject-severity flag, and nothing stripped the flag afterward — the same bug
+shape already found and fixed once for Node 5's wild-caught clearance at PROMPT_VERSION 29. **Fixed at
+PROMPT_VERSION 39** — see that changelog entry above for the full root cause, fix, and the audit of
+every other L2 tree node for the same shape (which surfaced two more unfixed instances at Node 4 and
+Node 6, reported there pending a separate decision).
 
 ---
 

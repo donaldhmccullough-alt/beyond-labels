@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-11T01:31:24.026Z",
+  "generatedAt": "2026-07-11T12:00:42.715Z",
   "totalCases": 135,
   "results": [
     {
@@ -3274,7 +3274,7 @@
         "userLevel": 2
       },
       "output": {
-        "verdict": "yellow",
+        "verdict": "red",
         "flags": [
           {
             "category": "bioengineering",
@@ -3283,7 +3283,7 @@
             "summary": "Product discloses gene modification: \"bioengineered\". Covers both legacy GMO/rDNA transgenics and CRISPR-edited varieties that may fall outside mandatory labeling requirements."
           }
         ],
-        "clearedBy": "non-gmo-project-verified",
+        "clearedBy": null,
         "unverifiedIngredients": [],
         "isMeat": false,
         "oliveCaveat": false,
