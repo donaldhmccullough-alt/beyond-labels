@@ -2609,6 +2609,82 @@ to the "Golden Master Snapshot" section immediately below.
 
 ---
 
+### Session — L1/L2 unification Stage 4: shadow-mode comparison + two Stage 3 design revisions (July 2026)
+
+Built `scripts/shadowMode/compareVerdicts.js` — a standalone analysis script that runs all 135
+Golden Master cases through the real `analyzeIngredients()` (genuinely imported from
+`lib/rulesEngine.js`, not copied) plus a hand-written interpreter of `lib/verdictRules.js`'s Stage 3
+rule table, and diffs the result against the real, frozen `scan.js` output already captured in
+`scripts/goldenMaster/snapshot-baseline.json`. Since `pages/api/scan.js` only exports `handler` and
+two small Sets (and its ES module syntax means plain `node` can't `require()` it at all), the script
+carries hand-written mirrors of every other private helper it needs (`normalizeLabelTags`,
+`isMeatProduct`, `isSeafoodProduct`, `isGameMeatProduct`, `detectWildCaught`,
+`allIngredientsPrefixedOrganic`, `allIngredientsAreWaterSafe`, `maskIgnoredIngredients`,
+`mapProductCategory`, `GAME_MEAT_CATEGORIES`) — each explicitly commented as a manual copy, "as of"
+a specific commit and date, that will silently drift if `scan.js` changes before the script is next
+run. Comparison scope: `verdict`, `flags` (by category+severity, summary text excluded as
+presentation), `clearedBy`, `isMeat`, `oliveCaveat` — `unverifiedIngredients` and `productCategory`
+are explicitly out of scope (unrelated to verdict logic). No `scan.js`/`rulesEngine.js`/
+`verdictRules.js` production wiring anywhere; no `PROMPT_VERSION` bump — pure analysis.
+
+**First run**: 130/135 matching, 5 expected diffs (all attributable to Stage 3's three corrections —
+bioengineering organic/non-gmo clearance, conventional_meat game-meat handling, conventional_eggs
+priority over conventional_meat), 0 unexpected. Two of those expected diffs surfaced findings that led
+to revising the Stage 3 design itself (`lib/verdictRules.js`), not just the shadow interpreter:
+
+**a. Bioengineering clearance narrowed.** `non-gmo-project-verified-label` was removed as a clearance
+mechanism for the `bioengineering` reject flag; `usda-organic-label` and `organic-ingredient-prefix`
+clearance are unchanged. Reasoning: USDA organic certification is a legal GMO prohibition, so a
+product carrying both an organic label and a bioengineering disclosure is almost certainly a
+data/mislabeling artifact — full clearance there remains safe. Non-GMO Project Verified is different
+in kind: a private, point-in-time certification based on ingredient testing that can go stale relative
+to a product's current formulation, particularly now that the federal Bioengineered Food Disclosure
+Standard requires many products to carry an explicit, currently-accurate disclosure phrase independent
+of any private cert's testing date. `bioengineering` is a reject-severity flag — the app's strongest
+signal — so a false negative from a possibly-stale private label is worse than an over-cautious
+verdict. This was an **explicit product decision made after reviewing Stage 4 shadow-mode findings,
+not a bug fix** — see `DESIGN_DECISIONS.bioengineeringNonGmoLabelExcluded` in `lib/verdictRules.js`
+for the full reasoning, dated 2026-07-11.
+
+**b. Game-meat correction changed from full no-op removal to gated green.** The original Stage 3 draft
+modeled game-meat detection as a full no-op removed from the L2 priority chain entirely. Shadow-mode
+comparison surfaced an unstated side effect: removing the branch meant a **clean** game-meat product
+(zero other flags) fell through to the default-yellow node instead of getting an automatic green — a
+new L1/L2 asymmetry (L1's equivalent no-op still gives a clean game-meat product green, via the
+engine's own default) that nobody had actually decided on. Fixed by changing the mechanism to a
+**gated green**, mirroring the existing wild-caught Node 5 pattern exactly: game-meat category present
+AND no pre-existing reject-severity flag → green; if a reject flag IS present, it is left alone (not
+discarded) and the rest of the chain evaluates normally. The `DESIGN_DECISIONS` key was renamed from
+`correctedGameMeatNoOpAtL2` to `correctedGameMeatGatedGreenAtL2` to stop describing a no-op that no
+longer exists; the shadow interpreter was updated to match (`isGameMeat && !flags.some(reject) →
+green`, the same shape as the wild-caught branch immediately above it).
+
+**Second run** (after both revisions): 133/135 matching, 2 expected diffs, 0 unexpected. The 2
+remaining diffs are both `multi-eggs-and-meat-l1`/`-l2`, unchanged from the first run and still
+correctly attributable to correction #4 (conventional_eggs priority over the generic conventional_meat
+injection) — neither revision touched that correction.
+
+`lib/verdictRules.test.js`: +5 tests (73 total) — the narrowed bioengineering clearance (asserting
+`non-gmo-project-verified-label` is now `INTENTIONALLY-NOT-CLEARED`, matching the existing
+`conventional_eggs` pattern), the design-decision reasoning is present and dated, and both gated-green
+game-meat scenarios (clean product → documented as resolving to green; product with a separate reject
+flag → documented as being left alone, not discarded). Full test suite: **1453 passing** (up from
+1448), the one known pre-existing dead-entry failure unchanged (tracked separately, zero-risk cleanup
+item — see the collision-word audit series above).
+
+**Two coverage gaps identified and flagged, not filled** (deferred to a future Stage 1 supplement —
+see the "Known coverage gaps" note under "Golden Master Snapshot" below for full detail): no
+golden-master case tests game meat together with a separate reject-severity flag (the actual
+discriminating scenario the gated-green fix exists to handle is unverified by any real case), and no
+case tests bioengineering's one remaining clearance path (the `usda-organic` label) now that the
+non-GMO path no longer clears it.
+
+**Still true, unchanged**: `lib/verdictRules.js` is not wired into any live path — `pages/api/scan.js`
+does not reference it, enforced by a drift-guard test. `scripts/shadowMode/` is a standalone dev
+analysis tool, not part of the deployed app. No `PROMPT_VERSION` bump.
+
+---
+
 ## Golden Master Snapshot (L1/L2 Unification Project — Stage 1)
 
 The rules engine (`lib/rulesEngine.js`) and the L1/L2 post-processing logic in `pages/api/scan.js`
@@ -2692,6 +2768,25 @@ PROMPT_VERSION 39** — see that changelog entry above for the full root cause, 
 every other L2 tree node for the same shape (which surfaced two more unfixed instances at Node 4 and
 Node 6, reported there pending a separate decision).
 
+### Known coverage gaps (Stage 4, July 2026) — deferred, NOT a Stage 1 regeneration trigger
+
+Stage 4's shadow-mode comparison (see "Session — L1/L2 unification Stage 4" below) identified two
+gaps in the current 135-case input set. Both are flagged for a **future Stage 1 supplement** (adding
+new cases) — **neither requires regenerating the existing 135 cases or re-running
+`captureSnapshot.js`**; the current snapshot is still accurate for everything it covers, it simply
+doesn't cover these two scenarios yet:
+
+1. **No case tests bioengineering's remaining clearance path.** After the Stage 4 revision that
+   removed non-gmo-project-verified as a clearance mechanism for `bioengineering` (see
+   `DESIGN_DECISIONS.bioengineeringNonGmoLabelExcluded` in `lib/verdictRules.js`), the only clearance
+   mechanisms left are the `usda-organic` label and an organic ingredient prefix — and no golden-master
+   case combines a bioengineering disclosure with either one.
+2. **No case tests "game meat + a separate reject-severity flag present at the same time."** The two
+   existing game-meat cases (`meat-game-l1`/`meat-game-l2`) both use a single clean fixture
+   (`"venison, water, salt"`) with zero flags in either category — so the actual discriminating
+   behavior of the gated-green correction (`DESIGN_DECISIONS.correctedGameMeatGatedGreenAtL2`) —
+   leaving a real reject flag alone instead of discarding it — has never been exercised by a real case.
+
 ---
 
 ## Unified Verdict Rule Table (L1/L2 Unification Project — Stage 3)
@@ -2719,14 +2814,22 @@ a bug in the table.** Per explicit instruction, three rows encode CORRECTED targ
 of transcribing what `scan.js` currently does, so the eventual cutover fixes these by construction
 rather than needing a separate patch first:
 
-1. **`bioengineering`** — the table gives it organic/non-gmo/prefix clearance (matching
-   `conventional_crops`'s pattern). Today's live `lib/rulesEngine.js` has **no** such clearance for
+1. **`bioengineering`** — the table gives it organic-label and organic-ingredient-prefix clearance
+   (matching `conventional_eggs`/`glyphosate_heavy`'s narrower pattern, **not** `conventional_crops`'s
+   fuller organic-or-non-gmo pattern). Today's live `lib/rulesEngine.js` has **no** such clearance for
    this category at all, which is the root cause of the live L2 Node 4 bug (a `usda-organic`-labeled
    product with a bioengineering disclosure gets a false GREEN, silently discarding the reject flag).
-2. **`conventional_meat`** — the table treats game-meat detection as a no-op at L2 (leave existing
-   flags/verdict alone), matching L1's already-correct behavior. Today's live L2 Node 6
-   unconditionally overrides verdict to GREEN with no reject-flag gate — the same bug shape already
-   fixed for Node 5 (PROMPT_VERSION 29) and Node 7 (PROMPT_VERSION 39), but never fixed at Node 6.
+   **Revised after Stage 4 shadow-mode review** (see "Session — L1/L2 unification Stage 4" below):
+   `non-gmo-project-verified` was granted clearance in the original Stage 3 draft, then deliberately
+   removed — reasoning in `DESIGN_DECISIONS.bioengineeringNonGmoLabelExcluded`.
+2. **`conventional_meat`** — the table gives game-meat detection a **gated green** at L2 (green only
+   if no pre-existing reject-severity flag is present; a real reject flag is left alone, not
+   discarded), mirroring the existing wild-caught Node 5 pattern exactly. Today's live L2 Node 6
+   unconditionally overrides verdict to GREEN with no reject-flag gate at all — the same bug shape
+   already fixed for Node 5 (PROMPT_VERSION 29) and Node 7 (PROMPT_VERSION 39), but never fixed at
+   Node 6. **Revised after Stage 4 shadow-mode review**: the original Stage 3 draft modeled this as a
+   full no-op removed from the priority chain entirely, which turned out to have an undecided side
+   effect — see `DESIGN_DECISIONS.correctedGameMeatGatedGreenAtL2`.
 3. **`conventional_eggs`** — the table gives it strict priority over the generic `conventional_meat`
    injection at both levels. Today's live L2 Node 8 (conventional meat) fires before Node 8b
    (conventional eggs) for any OFF-tagged egg product, and the equivalent ordering gap exists in the

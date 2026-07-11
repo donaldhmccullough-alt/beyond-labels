@@ -1,0 +1,905 @@
+{
+  "generatedAt": "2026-07-11T15:35:08.090Z",
+  "scanJsMirrorAsOf": "commit 5252708, 2026-07-11",
+  "totalCases": 135,
+  "matchingCases": 133,
+  "expectedDiffCount": 2,
+  "unexpectedDiffCount": 0,
+  "methodologyNotes": {
+    "bioengineeringClearance": "REVISED after the first shadow-mode run: bioengineering clearance is now usda-organic-label ONLY (non-gmo-project-verified-label was removed as a clearance mechanism for this category specifically — see lib/verdictRules.js DESIGN_DECISIONS.bioengineeringNonGmoLabelExcluded, decided 2026-07-11 after reviewing this comparison's first run). Organic-ingredient-PREFIX clearance (still documented as a third mechanism on the bioengineering row) remains NOT implemented in this interpreter — replicating it faithfully would require re-deriving lib/rulesEngine.js's private isPrecededByOrganic(), which needs the character index of the match inside the engine's internal cleaned text (not exposed by analyzeIngredients()'s return value), and no current Golden Master case exercises that combination anyway.",
+    "bioengineeringCoverageGap": "No current Golden Master case combines \"bioengineered\"/\"genetically modified\" ingredient text with a usda-organic LABEL — only the non-gmo-project-verified label path (clear-non-gmo-bioengineering-l1/l2) is covered, and that path no longer clears bioengineering after the revision above. This means NO case in the current input set exercises bioengineering's remaining (organic-label) clearance mechanism at all. Flagged as a candidate for a future Stage 1 supplement, not built as part of this stage.",
+    "comparisonScope": "Diffed fields: verdict, flags (by category+severity only — summary text excluded as presentation, not logic), clearedBy, isMeat, oliveCaveat. Excluded entirely: unverifiedIngredients, productCategory (both unrelated to verdict logic; nothing in Stage 3 changes them, so diffing them would only ever add noise). unverifiedReason is computed by the interpreter for completeness but is also excluded from the diff.",
+    "mirroredHelpers": "normalizeLabelTags, isMeatProduct, isSeafoodProduct, isGameMeatProduct, detectWildCaught, allIngredientsPrefixedOrganic, allIngredientsAreWaterSafe, maskIgnoredIngredients, mapProductCategory, and GAME_MEAT_CATEGORIES are re-derived copies of pages/api/scan.js's private helpers (mirrored as of commit 5252708, 2026-07-11), not imports — scan.js cannot be modified to export them, and its ES module syntax means plain node cannot require() it at all. These will silently drift if scan.js changes before this script is next run.",
+    "correction4Scope": "The conventional_eggs-over-conventional_meat priority correction (#4) is scoped narrowly to the same ordering the original discrepancy report described — conventional_eggs checked before the generic isConventionalMeat branch (live Node 8 vs Node 8b) — at both levels. It is NOT extended to the farmed-seafood (Node 5b) or gelatin (Node 8c) conventional_meat injection sites, which were never part of the reported ordering issue.",
+    "correction2GatedGreenRevision": "REVISED after the first shadow-mode run: correction #2 (game-meat handling) is now a GATED GREEN, mirroring the wild-caught Node 5 pattern exactly, instead of a full no-op removed from the priority chain. The first run's interpreter modeled a true no-op and surfaced an undecided side effect — a CLEAN game-meat product (zero other flags) fell through to Node 14's default YELLOW instead of getting an automatic GREEN, a new L1/L2 asymmetry nobody had actually decided on (L1's equivalent no-op leaves a clean game-meat product GREEN via the engine's own default). Gated green resolves this: a clean game-meat product now correctly shows GREEN again, matching L1, while a game-meat product WITH a genuine pre-existing reject-severity flag still has that flag preserved rather than discarded (the gate condition is simply false, so the branch does not match and the chain falls through normally to whichever node matches the real concern).",
+    "correction2CoverageGap": "No current Golden Master case combines game-meat category with a separate reject-severity flag present at the same time — the only two game-meat cases in the input set (meat-game-l1/l2) use a single clean fixture (\"venison, water, salt\") with zero flags in either category. This means the gate's actual discriminating behavior — leaving a reject flag alone when one exists — is exercised by neither this comparison run nor lib/verdictRules.test.js's data-level assertions (which check the table documents the mechanism, not that it behaves correctly against a real case). Flagged as a candidate for a future Stage 1 supplement (e.g. a game-meat product with an added bioengineering disclosure and no organic/non-gmo label), not built as part of this stage."
+  },
+  "cases": [
+    {
+      "id": "cat-trans-fats-l1",
+      "description": "trans_fats: partially hydrogenated oil (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-trans-fats-l2",
+      "description": "trans_fats: partially hydrogenated oil (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-seed-oils-l1",
+      "description": "seed_oils: canola oil (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-seed-oils-l2",
+      "description": "seed_oils: canola oil (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-conventional-crops-l1",
+      "description": "conventional_crops: citric acid (no clearance) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-conventional-crops-l2",
+      "description": "conventional_crops: citric acid (no clearance) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-bioengineering-l1",
+      "description": "bioengineering: bioengineered disclosure (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-bioengineering-l2",
+      "description": "bioengineering: bioengineered disclosure (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-natural-flavors-l1",
+      "description": "natural_flavors: bare natural flavors (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-natural-flavors-l2",
+      "description": "natural_flavors: bare natural flavors (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-synthetic-additives-l1",
+      "description": "synthetic_additives (\"additives\"): Yellow 5 dye (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-synthetic-additives-l2",
+      "description": "synthetic_additives (\"additives\"): Yellow 5 dye (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-glyphosate-heavy-l1",
+      "description": "glyphosate_heavy: bare oats (no clearance) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-glyphosate-heavy-l2",
+      "description": "glyphosate_heavy: bare oats (no clearance) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-gluten-grains-l1",
+      "description": "gluten_grains: quinoa (paywall feature, stripped from display at both levels) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-gluten-grains-l2",
+      "description": "gluten_grains: quinoa (paywall feature, stripped from display at both levels) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-conventional-meat-l1",
+      "description": "conventional_meat: beef with no organic cert (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-conventional-meat-l2",
+      "description": "conventional_meat: beef with no organic cert (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-conventional-dairy-l1",
+      "description": "conventional_dairy: whole milk + cheddar, no organic cert (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-conventional-dairy-l2",
+      "description": "conventional_dairy: whole milk + cheddar, no organic cert (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-conventional-eggs-l1",
+      "description": "conventional_eggs: bare egg whites, no organic cert (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-conventional-eggs-l2",
+      "description": "conventional_eggs: bare egg whites, no organic cert (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-fortified-vitamins-l1",
+      "description": "fortified_vitamins: organic path + synthetic vitamin fortification (L2-only mechanism — see CLAUDE.md, L1 never runs the organic sub-tree) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-fortified-vitamins-l2",
+      "description": "fortified_vitamins: organic path + synthetic vitamin fortification (L2-only mechanism — see CLAUDE.md, L1 never runs the organic sub-tree) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-natural-colorants-l1",
+      "description": "natural_colorants: organic path + plant-derived colorant (L2-only mechanism) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-natural-colorants-l2",
+      "description": "natural_colorants: organic path + plant-derived colorant (L2-only mechanism) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-olive-oil-adulteration-l1",
+      "description": "olive_oil_adulteration: organic path + olive oil (L2-only mechanism) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "cat-olive-oil-adulteration-l2",
+      "description": "olive_oil_adulteration: organic path + olive oil (L2-only mechanism) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "clear-usda-organic-label-l1",
+      "description": "usda-organic LABEL clears conventional_crops (corn starch) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "clear-usda-organic-label-l2",
+      "description": "usda-organic LABEL clears conventional_crops (corn starch) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "clear-organic-prefix-l1",
+      "description": "organic INGREDIENT PREFIX clears conventional_crops (no label needed) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "clear-organic-prefix-l2",
+      "description": "organic INGREDIENT PREFIX clears conventional_crops (no label needed) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "clear-non-gmo-project-verified-l1",
+      "description": "non-gmo-project-verified label clears conventional_crops (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "clear-non-gmo-project-verified-l2",
+      "description": "non-gmo-project-verified label clears conventional_crops (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "clear-glyphosate-free-l1",
+      "description": "glyphosate-free label downgrades glyphosate_heavy to caution (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "clear-glyphosate-free-l2",
+      "description": "glyphosate-free label downgrades glyphosate_heavy to caution (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "meat-wild-caught-seafood-l1",
+      "description": "wild-caught seafood (OFF category confirmed) → clean (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "meat-wild-caught-seafood-l2",
+      "description": "wild-caught seafood (OFF category confirmed) → clean (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "meat-farmed-seafood-l1",
+      "description": "farmed/unlabeled seafood (\"farm-raised\" name signal) → reject (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "meat-farmed-seafood-l2",
+      "description": "farmed/unlabeled seafood (\"farm-raised\" name signal) → reject (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "meat-game-l1",
+      "description": "game meat (en:game-meats) → clean, wild-harvested by nature (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "meat-game-l2",
+      "description": "game meat (en:game-meats) → clean, wild-harvested by nature (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "meat-conventional-l1",
+      "description": "conventional meat (en:beef), no organic cert → reject (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "meat-conventional-l2",
+      "description": "conventional meat (en:beef), no organic cert → reject (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "path-pure-water-l1",
+      "description": "pure-water GREEN path (WATER_SAFE_INGREDIENTS only) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "path-pure-water-l2",
+      "description": "pure-water GREEN path (WATER_SAFE_INGREDIENTS only) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "path-cert-unconfirmed-l1",
+      "description": "cert_unconfirmed: all non-trivial ingredients organic-prefixed, no cert tag (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "path-cert-unconfirmed-l2",
+      "description": "cert_unconfirmed: all non-trivial ingredients organic-prefixed, no cert tag (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "path-inconclusive-l1",
+      "description": "inconclusive: all-unrecognized ingredients (ALL_UNKNOWN_OFF fixture) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "path-inconclusive-l2",
+      "description": "inconclusive: all-unrecognized ingredients (ALL_UNKNOWN_OFF fixture) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "path-default-yellow-node14-l1",
+      "description": "default-yellow (L2 Node 14): \"Pistachios, salt\" — no cert, no concern (CLAUDE.md's own canonical example) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "path-default-yellow-node14-l2",
+      "description": "default-yellow (L2 Node 14): \"Pistachios, salt\" — no cert, no concern (CLAUDE.md's own canonical example) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-macadamia-l1",
+      "description": "bare 'ada' false positive: macadamia nuts (PROMPT_VERSION 33) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-macadamia-l2",
+      "description": "bare 'ada' false positive: macadamia nuts (PROMPT_VERSION 33) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-product-of-canada-l1",
+      "description": "bare 'ada' false positive: \"Product of Canada\" (PROMPT_VERSION 33) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-product-of-canada-l2",
+      "description": "bare 'ada' false positive: \"Product of Canada\" (PROMPT_VERSION 33) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-goat-milk-l1",
+      "description": "bare 'oats'/'oat milk' false positive: goat milk (PROMPT_VERSION 34) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-goat-milk-l2",
+      "description": "bare 'oats'/'oat milk' false positive: goat milk (PROMPT_VERSION 34) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-goats-milk-yogurt-l1",
+      "description": "bare 'oats' false positive: goats' milk yogurt (PROMPT_VERSION 34) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-goats-milk-yogurt-l2",
+      "description": "bare 'oats' false positive: goats' milk yogurt (PROMPT_VERSION 34) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-licorice-l1",
+      "description": "bare 'rice' false positive: licorice (PROMPT_VERSION 35) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-licorice-l2",
+      "description": "bare 'rice' false positive: licorice (PROMPT_VERSION 35) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-cowpeas-l1",
+      "description": "bare 'peas' false negative: cowpeas one-word form (PROMPT_VERSION 38) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-cowpeas-l2",
+      "description": "bare 'peas' false negative: cowpeas one-word form (PROMPT_VERSION 38) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-broadbeans-l1",
+      "description": "bare 'beans' false negative: broadbeans one-word form (PROMPT_VERSION 38) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-broadbeans-l2",
+      "description": "bare 'beans' false negative: broadbeans one-word form (PROMPT_VERSION 38) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-horsebeans-l1",
+      "description": "bare 'beans' false negative: horsebeans one-word form (PROMPT_VERSION 38) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-horsebeans-l2",
+      "description": "bare 'beans' false negative: horsebeans one-word form (PROMPT_VERSION 38) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-acorn-squash-l1",
+      "description": "bare 'corn' false positive: acorn squash (PROMPT_VERSION 37) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-acorn-squash-l2",
+      "description": "bare 'corn' false positive: acorn squash (PROMPT_VERSION 37) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-oat-groats-l1",
+      "description": "bare 'oats' false-negative-of-a-fix: oat groats must still flag (allowlisted, PROMPT_VERSION 35) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-oat-groats-l2",
+      "description": "bare 'oats' false-negative-of-a-fix: oat groats must still flag (allowlisted, PROMPT_VERSION 35) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-popcorn-l1",
+      "description": "bare 'corn' legitimate compound: popcorn must still flag (allowlisted) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-popcorn-l2",
+      "description": "bare 'corn' legitimate compound: popcorn must still flag (allowlisted) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-sweetcorn-l1",
+      "description": "bare 'corn' false negative: sweetcorn must still flag (allowlisted, PROMPT_VERSION 37) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "bug-sweetcorn-l2",
+      "description": "bare 'corn' false negative: sweetcorn must still flag (allowlisted, PROMPT_VERSION 37) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "multi-kraft-l1",
+      "description": "Kraft Mac & Cheese: 4 categories at once (seed_oils, conventional_crops, bioengineering, additives) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "multi-kraft-l2",
+      "description": "Kraft Mac & Cheese: 4 categories at once (seed_oils, conventional_crops, bioengineering, additives) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "multi-seed-oil-suppresses-dairy-l1",
+      "description": "interaction: seed_oils (INSTANT_RED) short-circuits before conventional_dairy would be injected — milk present but NOT flagged (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "multi-seed-oil-suppresses-dairy-l2",
+      "description": "interaction: seed_oils (INSTANT_RED) short-circuits before conventional_dairy would be injected — milk present but NOT flagged (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "multi-eggs-suppresses-dairy-and-crops-ordering-l1",
+      "description": "interaction: conventional_eggs (Node 8b) fires before conventional_dairy (Node 9) — milk present but NOT flagged; conventional_crops/glyphosate_heavy flags still retained in array (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "multi-eggs-suppresses-dairy-and-crops-ordering-l2",
+      "description": "interaction: conventional_eggs (Node 8b) fires before conventional_dairy (Node 9) — milk present but NOT flagged; conventional_crops/glyphosate_heavy flags still retained in array (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "multi-annies-organic-gluten-l1",
+      "description": "Annie's Homegrown: USDA organic clears conventional_crops, gluten_grains still fires (paywall feature, stripped from display) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "multi-annies-organic-gluten-l2",
+      "description": "Annie's Homegrown: USDA organic clears conventional_crops, gluten_grains still fires (paywall feature, stripped from display) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "multi-eggs-and-meat-l1",
+      "description": "interaction: conventional_meat (Node 8) fires before conventional_eggs check — both flags coexist in the array (chicken broth + eggs) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": true,
+      "classification": "expected",
+      "expectedCorrections": [
+        "#4 (conventional_eggs priority over conventional_meat)"
+      ],
+      "fieldDiffs": {
+        "flags": {
+          "corrected": [
+            "conventional_eggs:caution",
+            "conventional_eggs:caution"
+          ],
+          "live": [
+            "conventional_eggs:caution",
+            "conventional_eggs:caution",
+            "conventional_meat:caution"
+          ]
+        }
+      },
+      "correctedOutput": {
+        "verdict": "yellow",
+        "flags": [
+          "conventional_eggs:caution",
+          "conventional_eggs:caution"
+        ],
+        "clearedBy": null,
+        "isMeat": true,
+        "oliveCaveat": false
+      },
+      "liveOutput": {
+        "verdict": "yellow",
+        "flags": [
+          "conventional_eggs:caution",
+          "conventional_eggs:caution",
+          "conventional_meat:caution"
+        ],
+        "clearedBy": null,
+        "isMeat": true,
+        "oliveCaveat": false
+      }
+    },
+    {
+      "id": "multi-eggs-and-meat-l2",
+      "description": "interaction: conventional_meat (Node 8) fires before conventional_eggs check — both flags coexist in the array (chicken broth + eggs) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": true,
+      "classification": "expected",
+      "expectedCorrections": [
+        "#4 (conventional_eggs priority over conventional_meat)"
+      ],
+      "fieldDiffs": {
+        "flags": {
+          "corrected": [
+            "conventional_eggs:reject",
+            "conventional_eggs:reject"
+          ],
+          "live": [
+            "conventional_eggs:reject",
+            "conventional_eggs:reject",
+            "conventional_meat:reject"
+          ]
+        }
+      },
+      "correctedOutput": {
+        "verdict": "red",
+        "flags": [
+          "conventional_eggs:reject",
+          "conventional_eggs:reject"
+        ],
+        "clearedBy": null,
+        "isMeat": true,
+        "oliveCaveat": false
+      },
+      "liveOutput": {
+        "verdict": "red",
+        "flags": [
+          "conventional_eggs:reject",
+          "conventional_eggs:reject",
+          "conventional_meat:reject"
+        ],
+        "clearedBy": null,
+        "isMeat": true,
+        "oliveCaveat": false
+      }
+    },
+    {
+      "id": "edge-allergen-advisory-stripping-l1",
+      "description": "allergen advisory stripping: \"Contains: soy lecithin.\" disclaimer must not trip a false conventional_crops flag (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "edge-allergen-advisory-stripping-l2",
+      "description": "allergen advisory stripping: \"Contains: soy lecithin.\" disclaimer must not trip a false conventional_crops flag (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "edge-purpose-note-parenthetical",
+      "description": "purpose-note parenthetical: \"canola (for cooking) oil\" still flags seed_oils across the gap",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "edge-free-context-seed-oils",
+      "description": "\"-free\" context: \"canola-free\" must NOT flag seed_oils (INSTANT_RED_CATEGORIES member)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "edge-free-context-eggs-and-wheat",
+      "description": "\"-free\" context: \"egg-free\" facility disclaimer must not flag conventional_eggs, but wheat flour still flags glyphosate_heavy/gluten_grains",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "edge-fdc-no-normalization-l1",
+      "description": "FD&C \"No.\" normalization: \"FD&C Red No. 40\" matches the \"red 40\" dye trigger (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "edge-fdc-no-normalization-l2",
+      "description": "FD&C \"No.\" normalization: \"FD&C Red No. 40\" matches the \"red 40\" dye trigger (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "prod-tractor-wheels-l1",
+      "description": "TRACTOR WHEELS (barcode 810003512611): organic + oat flour/wheatgrass gluten_grains + unrecognized tokens, NOT inconclusive (>5 threshold with real flags present) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "prod-tractor-wheels-l2",
+      "description": "TRACTOR WHEELS (barcode 810003512611): organic + oat flour/wheatgrass gluten_grains + unrecognized tokens, NOT inconclusive (>5 threshold with real flags present) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "prod-smoothie-melts-l1",
+      "description": "Smoothie Melts Blueberry Burst (barcode 810003512802): organic path, fortified_vitamins via vitamin E, low unverified count after vocabulary fixes (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "prod-smoothie-melts-l2",
+      "description": "Smoothie Melts Blueberry Burst (barcode 810003512802): organic path, fortified_vitamins via vitamin E, low unverified count after vocabulary fixes (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "prod-pasta-ravioli-eggs-l1",
+      "description": "Fresh Pasta Ravioli: eggs, no cert, non-meat category → conventional_eggs, not conventional_meat (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "prod-pasta-ravioli-eggs-l2",
+      "description": "Fresh Pasta Ravioli: eggs, no cert, non-meat category → conventional_eggs, not conventional_meat (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "prod-organic-egg-noodles-l1",
+      "description": "Organic Egg Noodles: \"organic eggs\" ingredient prefix clears conventional_eggs even with no cert tag (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "prod-organic-egg-noodles-l2",
+      "description": "Organic Egg Noodles: \"organic eggs\" ingredient prefix clears conventional_eggs even with no cert tag (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "variety-seed-oils-vegetable-oil-l1",
+      "description": "seed_oils variant: vegetable oil (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "variety-seed-oils-vegetable-oil-l2",
+      "description": "seed_oils variant: vegetable oil (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "variety-conventional-crops-dextrose-l1",
+      "description": "conventional_crops variant: dextrose (no clearance) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "variety-conventional-crops-dextrose-l2",
+      "description": "conventional_crops variant: dextrose (no clearance) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "variety-glyphosate-heavy-wheat-l1",
+      "description": "glyphosate_heavy variant: wheat flour (also gluten_grains) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "variety-glyphosate-heavy-wheat-l2",
+      "description": "glyphosate_heavy variant: wheat flour (also gluten_grains) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "variety-synthetic-additives-sodium-benzoate-l1",
+      "description": "synthetic_additives variant: sodium benzoate preservative (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "variety-synthetic-additives-sodium-benzoate-l2",
+      "description": "synthetic_additives variant: sodium benzoate preservative (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "variety-bioengineering-genetically-modified-l1",
+      "description": "bioengineering variant: full phrase \"genetically modified\" (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "variety-bioengineering-genetically-modified-l2",
+      "description": "bioengineering variant: full phrase \"genetically modified\" (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "variety-natural-flavors-wonf-l1",
+      "description": "natural_flavors variant: WONF abbreviation (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "variety-natural-flavors-wonf-l2",
+      "description": "natural_flavors variant: WONF abbreviation (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "clear-non-gmo-bioengineering-l1",
+      "description": "non-gmo-project-verified label downgrades bioengineering to caution (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "clear-non-gmo-bioengineering-l2",
+      "description": "non-gmo-project-verified label downgrades bioengineering to caution (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "clear-glyphosate-free-wheat-l1",
+      "description": "glyphosate-free label downgrades a second GLYPHOSATE_HEAVY crop (wheat) to caution (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "clear-glyphosate-free-wheat-l2",
+      "description": "glyphosate-free label downgrades a second GLYPHOSATE_HEAVY crop (wheat) to caution (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "clear-organic-prefix-eggs-l1",
+      "description": "organic ingredient prefix clears conventional_eggs (no label needed) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "clear-organic-prefix-eggs-l2",
+      "description": "organic ingredient prefix clears conventional_eggs (no label needed) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "clear-usda-organic-glyphosate-heavy-l1",
+      "description": "usda-organic label fully clears glyphosate_heavy (not just downgrade) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "clear-usda-organic-glyphosate-heavy-l2",
+      "description": "usda-organic label fully clears glyphosate_heavy (not just downgrade) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "meat-wild-name-signal-no-category-l1",
+      "description": "wild-caught NAME signal alone, no OFF seafood category → falls to default (safer failure mode, confirmed PROMPT_VERSION 29 fix) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "meat-wild-name-signal-no-category-l2",
+      "description": "wild-caught NAME signal alone, no OFF seafood category → falls to default (safer failure mode, confirmed PROMPT_VERSION 29 fix) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "meat-wild-ingredient-text-signal-l1",
+      "description": "wild-caught INGREDIENT-TEXT signal (\"Wild\" in ingredients) with confirmed OFF seafood category (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "meat-wild-ingredient-text-signal-l2",
+      "description": "wild-caught INGREDIENT-TEXT signal (\"Wild\" in ingredients) with confirmed OFF seafood category (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "prod-unsweetened-cereal-l1",
+      "description": "Unsweetened Cereal (barcode 860002152400): sole flag is glyphosate_heavy reject (chickpea + pea protein) — the Node 11b fix (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "prod-unsweetened-cereal-l2",
+      "description": "Unsweetened Cereal (barcode 860002152400): sole flag is glyphosate_heavy reject (chickpea + pea protein) — the Node 11b fix (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "prod-banana-berry-l1",
+      "description": "Banana Berry (barcode 079900003251): frozen fruit with \"wild blueberries\" — must NOT get false wild-caught clearance (PROMPT_VERSION 29 fix); citric acid still flags conventional_crops (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "prod-banana-berry-l2",
+      "description": "Banana Berry (barcode 079900003251): frozen fruit with \"wild blueberries\" — must NOT get false wild-caught clearance (PROMPT_VERSION 29 fix); citric acid still flags conventional_crops (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "prod-guava-crackers-l1",
+      "description": "Guava Toasted Snack Crackers: \"egg-free facility\" disclaimer must not flag conventional_eggs (PROMPT_VERSION 30 fix) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "prod-guava-crackers-l2",
+      "description": "Guava Toasted Snack Crackers: \"egg-free facility\" disclaimer must not flag conventional_eggs (PROMPT_VERSION 30 fix) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "prod-mango-chobani-l1",
+      "description": "Mango Chobani (barcode 818290015365): Oxford-comma conjunction + bare \"L. Rhamnosus\" probiotic strain, organic path (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "prod-mango-chobani-l2",
+      "description": "Mango Chobani (barcode 818290015365): Oxford-comma conjunction + bare \"L. Rhamnosus\" probiotic strain, organic path (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    },
+    {
+      "id": "prod-himalayan-salt-crackers-l1",
+      "description": "Pink Himalayan Salt Flatbread Crackers (barcode 860493002284): multi-category product (17 flags across 3 categories in the original production incident) (Level 1)",
+      "userLevel": 1,
+      "hasDiff": false
+    },
+    {
+      "id": "prod-himalayan-salt-crackers-l2",
+      "description": "Pink Himalayan Salt Flatbread Crackers (barcode 860493002284): multi-category product (17 flags across 3 categories in the original production incident) (Level 2)",
+      "userLevel": 2,
+      "hasDiff": false
+    }
+  ]
+}
