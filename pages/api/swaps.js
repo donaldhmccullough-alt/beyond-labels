@@ -1,22 +1,42 @@
 /**
  * pages/api/swaps.js — Beyond Labels store-bought swap recommendations
  *
- * GET /api/swaps?category=chips|snacks|cereal|condiments|beverages|dairy|bread|frozen|cooking_oils&userLevel=1|2
+ * GET /api/swaps?category=chips|snacks|cereal|condiments|beverages|dairy|bread|frozen|cooking_oils&userLevel=1|2&subcategory=...
  *
  * Flow:
  *   1. Check 1-hour in-memory cache
- *   2. Fetch CSV from public Google Sheet if stale
- *   3. Parse CSV → array of swap objects
+ *   2. Query the swap_products Supabase table if stale (Phase 0 migration,
+ *      July 2026 — previously a public Google Sheet CSV; see CLAUDE.md
+ *      "Swaps System" section)
+ *   3. Normalize rows → array of swap objects (array columns re-joined into
+ *      the same delimited-string shape the CSV pipeline used to produce, so
+ *      the response shape and SwapCard.jsx's own client-side .split() calls
+ *      are unaffected by the migration)
  *   4. Filter by ?category (optional)
- *   5. Filter/tag by userLevel:
+ *   5. If ?subcategory is also provided, narrow the category-filtered pool to
+ *      matching (category, subcategory) rows — but only if that narrower
+ *      pool is non-empty. Zero subcategory matches falls back to the
+ *      category-wide pool silently (not treated as the "zero curated
+ *      results" case — see step 6). subcategory is free text (Phase 1,
+ *      July 2026 — see CLAUDE.md "Swaps System"); an unrecognized value
+ *      just never matches any row, which is the same fallback behavior.
+ *   6. Filter/tag by userLevel, capped at RESULTS_PER_TIER (20, raised from 3 in
+ *      Phase 2, July 2026 — see CLAUDE.md "Swaps System") per tier:
  *      - Level 2: only swap_level=2 rows, returned flat with tier:'better'
  *      - Level 1: swap_level=1 tagged tier:'good', swap_level=2 tagged tier:'better'
- *   6. AI fallback if 0 curated results and category is provided
- *   7. Return { swaps, source: 'curated' | 'ai' }
+ *      SwapsScreen.jsx renders only the first 3 of each tier initially and
+ *      reveals the rest via a client-side "Show More" tap — no second
+ *      request, since every row up to the cap is already in the response.
+ *   7. AI fallback if 0 curated results and category is provided — unchanged
+ *      from before subcategory support. Since step 5 already falls back to
+ *      the category-wide pool whenever the subcategory has zero matches,
+ *      this check never sees an empty subcategory-only pool as a false
+ *      "zero curated results" signal.
+ *   8. Return { swaps, source: 'curated' | 'ai' }
  *
- * CSV column order:
- *   product_name, brand, category, barcode,
- *   certifications, why_it_passes, where_to_buy, image_url, swap_level
+ * swap_products columns: product_name, brand, category, subcategory, barcode,
+ *   certifications (text[]), why_it_passes (text[]), where_to_buy (text[]),
+ *   image_url, swap_level (integer), source ('curated' | 'scan_approved')
  *
  * swap_level values: 1 (passes Level 1 criteria), 2 (passes Level 2 strict criteria)
  * Level 2 swaps surface as tier:'better' for Level 1 users.
@@ -24,22 +44,18 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { ANTHROPIC_MODEL } from '../../lib/aiConfig';
-
-const COLUMNS = [
-  'product_name',
-  'brand',
-  'category',
-  'barcode',
-  'certifications',
-  'why_it_passes',
-  'where_to_buy',
-  'image_url',
-  'swap_level',
-];
+import { getSupabaseServer } from '../../lib/supabaseServer';
 
 const VALID_CATEGORIES = [
   'chips', 'snacks', 'cereal', 'condiments', 'beverages', 'dairy', 'bread', 'frozen', 'cooking_oils', 'meat',
 ];
+
+// Phase 2 of the swaps overhaul (July 2026): raised from 3 to 20 so
+// SwapsScreen.jsx can offer a client-side "Show More" expansion per tier
+// without a second network request — it already has every row it needs,
+// just renders the first 3 until the user asks for more. See CLAUDE.md
+// "Swaps System" for the full behavior.
+const RESULTS_PER_TIER = 20;
 
 let _cache = { rows: null, fetchedAt: 0 };
 const CACHE_TTL_MS = 60 * 60 * 1000;
@@ -53,51 +69,36 @@ function shuffleArray(arr) {
   return a;
 }
 
-function parseCSV(text) {
-  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim().split('\n');
-  const rows = [];
-  let startIdx = 0;
-  if (lines[0] && lines[0].toLowerCase().startsWith('product_name')) startIdx = 1;
-
-  for (let li = startIdx; li < lines.length; li++) {
-    const line = lines[li];
-    if (!line.trim()) continue;
-    const fields = [];
-    let cur = '';
-    let inQuote = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (inQuote) {
-        if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
-        else if (ch === '"') { inQuote = false; }
-        else { cur += ch; }
-      } else {
-        if (ch === '"') { inQuote = true; }
-        else if (ch === ',') { fields.push(cur.trim()); cur = ''; }
-        else { cur += ch; }
-      }
-    }
-    fields.push(cur.trim());
-    const row = {};
-    COLUMNS.forEach((col, idx) => { row[col] = (fields[idx] ?? '').trim(); });
-    if (row.product_name) rows.push(row);
-  }
-  return rows;
+// Re-joins swap_products' text[] columns into the same delimited-string
+// shape the old CSV pipeline produced, so every downstream consumer
+// (this file's own filter/tier logic below, plus SwapCard.jsx's client-side
+// .split(';')/.split(',') calls) needs zero changes for the migration.
+function normalizeSwapRow(row) {
+  return {
+    product_name: row.product_name || '',
+    brand: row.brand || '',
+    category: row.category || '',
+    subcategory: row.subcategory || '',
+    barcode: row.barcode || '',
+    certifications: (row.certifications || []).join(';'),
+    why_it_passes: (row.why_it_passes || []).join(';'),
+    where_to_buy: (row.where_to_buy || []).join(','),
+    image_url: row.image_url || '',
+    swap_level: String(row.swap_level),
+  };
 }
 
 async function getSwapRows() {
   const now = Date.now();
   if (_cache.rows && (now - _cache.fetchedAt) < CACHE_TTL_MS) return _cache.rows;
 
-  const sheetId = process.env.SWAP_SHEET_ID;
-  if (!sheetId) throw new Error('SWAP_SHEET_ID environment variable is not set.');
+  const sb = getSupabaseServer();
+  if (!sb) throw new Error('Supabase client unavailable — check NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
 
-  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
-  const response = await fetch(url, { headers: { 'User-Agent': 'BeyondLabels/1.0 (swap-fetch)' } });
-  if (!response.ok) throw new Error(`Google Sheets fetch failed: HTTP ${response.status} ${response.statusText}`);
+  const { data, error } = await sb.from('swap_products').select('*');
+  if (error) throw new Error(`swap_products query failed: ${error.message}`);
 
-  const csv = await response.text();
-  _cache.rows = parseCSV(csv);
+  _cache.rows = (data || []).map(normalizeSwapRow);
   _cache.fetchedAt = now;
   return _cache.rows;
 }
@@ -152,7 +153,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed. Use GET.' });
   }
 
-  const { category, userLevel: rawUserLevel } = req.query;
+  const { category, subcategory, userLevel: rawUserLevel } = req.query;
 
   if (rawUserLevel !== undefined && rawUserLevel !== '1' && rawUserLevel !== '2') {
     return res.status(400).json({ error: 'Invalid userLevel. Must be 1 or 2.' });
@@ -168,11 +169,21 @@ export default async function handler(req, res) {
 
   try {
     const allRows = await getSwapRows();
-    const filtered = category ? allRows.filter(r => r.category === category) : allRows;
+    const categoryFiltered = category ? allRows.filter(r => r.category === category) : allRows;
+
+    // Narrow to (category, subcategory) only when that narrower pool is
+    // non-empty — zero matches falls back to the category-wide pool
+    // silently, so a subcategory the backfill/detection didn't confidently
+    // classify never dead-ends to no swaps shown.
+    let filtered = categoryFiltered;
+    if (subcategory) {
+      const subcategoryFiltered = categoryFiltered.filter(r => r.subcategory === subcategory);
+      if (subcategoryFiltered.length > 0) filtered = subcategoryFiltered;
+    }
 
     if (userLevel === 2) {
       const swaps = shuffleArray(filtered.filter(r => r.swap_level === '2'))
-        .slice(0, 3)
+        .slice(0, RESULTS_PER_TIER)
         .map(r => ({ ...r, tier: 'better' }));
 
       if (swaps.length === 0 && category) {
@@ -181,8 +192,8 @@ export default async function handler(req, res) {
       }
       return res.status(200).json({ swaps, source: 'curated' });
     } else {
-      const good   = shuffleArray(filtered.filter(r => r.swap_level === '1')).slice(0, 3).map(r => ({ ...r, tier: 'good' }));
-      const better = shuffleArray(filtered.filter(r => r.swap_level === '2')).slice(0, 3).map(r => ({ ...r, tier: 'better' }));
+      const good   = shuffleArray(filtered.filter(r => r.swap_level === '1')).slice(0, RESULTS_PER_TIER).map(r => ({ ...r, tier: 'good' }));
+      const better = shuffleArray(filtered.filter(r => r.swap_level === '2')).slice(0, RESULTS_PER_TIER).map(r => ({ ...r, tier: 'better' }));
       const swaps  = [...good, ...better];
 
       if (swaps.length === 0 && category) {

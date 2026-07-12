@@ -3545,3 +3545,129 @@ describe("X. Phase B — clearedBy 'organic' persists alongside an instant-red f
     expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// Y. productSubcategory detection (Phase 1 of the swaps overhaul, July 2026)
+//    SUBCATEGORY_TAG_MAP / mapProductSubcategory() in lib/scanHelpers.js —
+//    every tag below is a real, verified OFF categories_tags value (see
+//    CLAUDE.md "Swaps System" for the research method), not guessed.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('Y. productSubcategory detection', () => {
+  /** Minimal OFF response builder for Suite Y tests. */
+  function yResp({
+    productName     = 'Test Product',
+    ingredientsText = 'water, salt',
+    categoriesTags  = [],
+  } = {}) {
+    return {
+      status: 1,
+      product: {
+        product_name:     productName,
+        ingredients_text: ingredientsText,
+        labels_tags:      [],
+        categories_tags:  categoriesTags,
+      },
+    };
+  }
+
+  // ── The 5 covered categories, one real-tag case per confirmed subcategory ──
+
+  const COVERED_CASES = [
+    { label: 'chips:tortilla',   categoriesTags: ['en:chips-and-fries', 'en:corn-chips'], subcategory: 'tortilla' },
+    { label: 'chips:potato',     categoriesTags: ['en:chips-and-fries', 'en:potato-crisps'], subcategory: 'potato' },
+    { label: 'dairy:milk',       categoriesTags: ['en:dairy-products', 'en:whole-milks'], subcategory: 'milk' },
+    { label: 'dairy:cheese',     categoriesTags: ['en:dairy-products', 'en:cheeses'], subcategory: 'cheese' },
+    { label: 'dairy:yogurt',     categoriesTags: ['en:dairy-products', 'en:yogurts'], subcategory: 'yogurt' },
+    { label: 'dairy:butter',     categoriesTags: ['en:dairy-products', 'en:butters'], subcategory: 'butter' },
+    { label: 'meat:beef',        categoriesTags: ['en:meats', 'en:beef'], subcategory: 'beef' },
+    { label: 'meat:poultry',     categoriesTags: ['en:meats', 'en:chickens'], subcategory: 'poultry' },
+    { label: 'meat:pork',        categoriesTags: ['en:meats', 'en:pork-and-its-products'], subcategory: 'pork' },
+    { label: 'meat:seafood',     categoriesTags: ['en:meats', 'en:seafood'], subcategory: 'seafood' },
+    { label: 'beverages:soda',           categoriesTags: ['en:beverages', 'en:sodas'], subcategory: 'soda' },
+    { label: 'beverages:juice',          categoriesTags: ['en:beverages', 'en:fruit-juices'], subcategory: 'juice' },
+    { label: 'beverages:sparkling_water', categoriesTags: ['en:beverages', 'en:carbonated-waters'], subcategory: 'sparkling_water' },
+    { label: 'beverages:coffee_tea (coffee)', categoriesTags: ['en:beverages', 'en:coffees'], subcategory: 'coffee_tea' },
+    { label: 'beverages:coffee_tea (tea)', categoriesTags: ['en:beverages', 'en:teas'], subcategory: 'coffee_tea' },
+    { label: 'beverages:plant_milk (plant-based-milk-alternatives)', categoriesTags: ['en:beverages', 'en:plant-based-milk-alternatives'], subcategory: 'plant_milk' },
+    { label: 'beverages:plant_milk (milk-substitutes)', categoriesTags: ['en:beverages', 'en:milk-substitutes'], subcategory: 'plant_milk' },
+    // bread redesigned this session — sliced/bagels_buns retired, replaced by
+    // sprouted_grain/gluten_free/keto_low_carb/sandwich/bagels_muffins/tortillas_wraps.
+    // keto_low_carb and sandwich have NO SUBCATEGORY_TAG_MAP entry (no
+    // confident real-tag evidence found — see the lib/scanHelpers.js comment),
+    // so they're covered by the "no confident tag" test below, not here.
+    { label: 'bread:sprouted_grain',   categoriesTags: ['en:breads', 'en:sprouted-wheat'], subcategory: 'sprouted_grain' },
+    { label: 'bread:gluten_free',      categoriesTags: ['en:breads', 'en:gluten-free-breads'], subcategory: 'gluten_free' },
+    { label: 'bread:bagels_muffins (bagel)', categoriesTags: ['en:breads', 'en:bagel-breads'], subcategory: 'bagels_muffins' },
+    { label: 'bread:bagels_muffins (muffin)', categoriesTags: ['en:breads', 'en:english-muffins'], subcategory: 'bagels_muffins' },
+    { label: 'bread:tortillas_wraps',  categoriesTags: ['en:breads', 'en:wraps'], subcategory: 'tortillas_wraps' },
+  ];
+
+  test.each(COVERED_CASES)('$label → productSubcategory = "$subcategory"', async ({ categoriesTags, subcategory }) => {
+    mockFetchOnce(yResp({ categoriesTags }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: `Y${Math.random().toString().slice(2, 13)}`, userLevel: 2 }), res);
+    expect(res.body.productSubcategory).toBe(subcategory);
+  });
+
+  // ── The other 5 categories (no SUBCATEGORY_TAG_MAP entry) → always null ──
+
+  const UNCOVERED_CASES = [
+    { label: 'cereal', categoriesTags: ['en:breakfast-cereals'] },
+    { label: 'condiments', categoriesTags: ['en:condiments', 'en:ketchups'] },
+    { label: 'frozen', categoriesTags: ['en:frozen-foods'] },
+    { label: 'cooking_oils', categoriesTags: ['en:oils', 'en:olive-oils'] },
+    { label: 'snacks', categoriesTags: ['en:snacks', 'en:popcorn'] },
+  ];
+
+  test.each(UNCOVERED_CASES)('$label category → productSubcategory is always null', async ({ categoriesTags }) => {
+    mockFetchOnce(yResp({ categoriesTags }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: `Y${Math.random().toString().slice(2, 13)}`, userLevel: 2 }), res);
+    expect(res.body.productCategory).not.toBeNull();
+    expect(res.body.productSubcategory).toBeNull();
+  });
+
+  // ── Covered category, but no subcategory tag present → null (falls back
+  //    to category-level matching, the existing safe default) ──
+
+  test('chips category with no tortilla/potato tag present → productSubcategory is null', async () => {
+    mockFetchOnce(yResp({ categoriesTags: ['en:chips-and-fries', 'en:crisps'] }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001101', userLevel: 2 }), res);
+    expect(res.body.productCategory).toBe('chips');
+    expect(res.body.productSubcategory).toBeNull();
+  });
+
+  test('meat category with no beef/poultry/pork/seafood tag present → productSubcategory is null (e.g. the unmapped "deli" case)', async () => {
+    mockFetchOnce(yResp({ categoriesTags: ['en:meats', 'en:deli-meats'] }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001102', userLevel: 2 }), res);
+    expect(res.body.productCategory).toBe('meat');
+    expect(res.body.productSubcategory).toBeNull();
+  });
+
+  test('bread category with only generic breads/sliced-breads tags present → productSubcategory is null (keto_low_carb and sandwich have no SUBCATEGORY_TAG_MAP entry — no confident distinct OFF tag evidence found for either)', async () => {
+    mockFetchOnce(yResp({ categoriesTags: ['en:breads', 'en:sliced-breads', 'en:white-breads'] }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001105', userLevel: 2 }), res);
+    expect(res.body.productCategory).toBe('bread');
+    expect(res.body.productSubcategory).toBeNull();
+  });
+
+  test('no categories_tags at all → both productCategory and productSubcategory are null', async () => {
+    mockFetchOnce(yResp({ categoriesTags: [] }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001103', userLevel: 2 }), res);
+    expect(res.body.productCategory).toBeNull();
+    expect(res.body.productSubcategory).toBeNull();
+  });
+
+  test('404 not-found response includes productSubcategory: null', async () => {
+    mockFetchOnce({ status: 0, product: null });
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001104', userLevel: 2 }), res);
+    expect(res.statusCode).toBe(404);
+    expect(res.body.productSubcategory).toBeNull();
+  });
+});

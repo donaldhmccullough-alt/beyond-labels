@@ -67,6 +67,7 @@ const {
   allIngredientsAreWaterSafe,
   maskIgnoredIngredients,
   mapProductCategory,
+  mapProductSubcategory,
   MEAT_CATEGORIES,
   SEAFOOD_CATEGORIES,
 } = scanHelpers;
@@ -813,6 +814,7 @@ export default async function handler(req, res) {
           unverifiedIngredients: cached.unverified_ingredients ?? [],
           explanation:           cached.explanation ?? null,
           productCategory:       cached.product_category ?? null,
+          productSubcategory:    cached.product_subcategory ?? null,
           unverifiedReason:      cached.unverified_reason ?? null,
           isMeat:                cached.is_meat ?? false,
           oliveCaveat:           cached.olive_caveat ?? false,
@@ -867,6 +869,7 @@ export default async function handler(req, res) {
       unverifiedIngredients: [],
       explanation:           null,
       productCategory:       null,
+      productSubcategory:    null,
       unverifiedReason:      'not_found',
       isMeat:                false,
       oliveCaveat:           false,
@@ -890,6 +893,7 @@ export default async function handler(req, res) {
   const labelsDetected   = normalizeLabelTags(product.labels_tags);
   const categoriesTags   = product.categories_tags ?? [];
   const productCategory  = mapProductCategory(categoriesTags);
+  const productSubcategory = mapProductSubcategory(productCategory, categoriesTags);
 
   // is_meat corroboration (PROMPT_VERSION-independent — see CLAUDE.md
   // changelog): OFF categories_tags alone missed a majority of real meat
@@ -1104,6 +1108,7 @@ export default async function handler(req, res) {
             unverified_reason:      unverifiedReason,
             product_name:           productName,
             product_category:       productCategory,
+            product_subcategory:    productSubcategory,
             is_meat:                isMeat,
             is_meat_category:       isMeatCategory,
             is_meat_ingredient:     isMeatIngredient,
@@ -1131,6 +1136,7 @@ export default async function handler(req, res) {
     unverifiedIngredients: unverifiedIngredients ?? [],
     explanation,
     productCategory,
+    productSubcategory,
     unverifiedReason,
     isMeat,
     oliveCaveat,

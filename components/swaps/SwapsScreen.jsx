@@ -2,25 +2,65 @@
 import { useState, useEffect } from 'react';
 import SwapCard from './SwapCard';
 
+// Fallback product-category mapping for when a scan has no OFF-tagged
+// productCategory (see mapProductCategory() in lib/scanHelpers.js) — keyed
+// on the scan's top flag instead. Module-scope (not defined inside the
+// component) so it's a plain, testable data structure — see
+// __tests__/components/SwapsScreen.test.js.
+//
+// conventional_meat -> 'meat' (fixed July 2026, Phase 1 of the swaps
+// overhaul): meat became a real swap category with real swap_products rows
+// in Phase 0 (migrateSwapsFromSheet.js); before that fix this entry was
+// `null`, meaning any scan whose only signal was a conventional_meat flag
+// and no OFF productCategory dead-ended to the "Local Farm Upgrade" card
+// with zero curated or AI swaps shown, even though real meat swaps existed.
+export const FLAG_CATEGORY_MAP = {
+  trans_fats:          'condiments',
+  seed_oils:           'snacks',
+  conventional_crops:  'snacks',
+  bioengineering:      'snacks',
+  natural_flavors:     'snacks',
+  synthetic_additives: 'snacks',
+  gluten_grains:       'cereal',
+  conventional_meat:   'meat',
+};
+
+// "Show More" expansion (Phase 2 of the swaps overhaul, July 2026) — GET
+// /api/swaps now returns up to 20 rows per tier (raised from 3, see
+// pages/api/swaps.js) instead of just 3, so the full pool a user could ever
+// expand into is already sitting in `swaps` state after the one fetch.
+// INITIAL_VISIBLE_SWAPS/getVisibleSwaps/shouldShowExpandButton are pure,
+// module-scope functions (same reasoning as FLAG_CATEGORY_MAP above) so
+// this logic has direct unit test coverage without rendering the component
+// — see __tests__/components/SwapsScreen.test.js.
+export const INITIAL_VISIBLE_SWAPS = 3;
+
+export function getVisibleSwaps(items, expanded) {
+  return expanded ? items : items.slice(0, INITIAL_VISIBLE_SWAPS);
+}
+
+// Never shown for AI-generated results (source === 'ai') — per design,
+// "Show More" only ever expands an already-fetched curated pool. This is
+// also naturally true today since the AI path never populates `swaps` (see
+// the fetch handler below), but is asserted explicitly here rather than
+// relied on as a side effect, so it stays correct if that coupling ever
+// changes.
+export function shouldShowExpandButton(items, expanded, source) {
+  return source !== 'ai' && !expanded && items.length > INITIAL_VISIBLE_SWAPS;
+}
+
 export default function SwapsScreen({ scanResult, userLevel = 1, onBack }) {
   const [swaps, setSwaps] = useState([]);
   const [aiSwaps, setAiSwaps] = useState([]);
+  const [source, setSource] = useState('curated');
+  const [goodExpanded, setGoodExpanded] = useState(false);
+  const [betterExpanded, setBetterExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const productCategory = scanResult?.productCategory ?? null;
-  const flagCategories  = [...new Set((scanResult?.flags || []).map(f => f.category))];
-
-  const FLAG_CATEGORY_MAP = {
-    trans_fats:          'condiments',
-    seed_oils:           'snacks',
-    conventional_crops:  'snacks',
-    bioengineering:      'snacks',
-    natural_flavors:     'snacks',
-    synthetic_additives: 'snacks',
-    gluten_grains:       'cereal',
-    conventional_meat:   null,   // no product-category swap for meat; use farm card instead
-  };
+  const productCategory    = scanResult?.productCategory ?? null;
+  const productSubcategory = scanResult?.productSubcategory ?? null;
+  const flagCategories     = [...new Set((scanResult?.flags || []).map(f => f.category))];
 
   const topFlag         = (scanResult?.flags || [])[0]?.category ?? null;
   const fallbackCategory = topFlag ? (FLAG_CATEGORY_MAP[topFlag] ?? null) : null;
@@ -29,12 +69,20 @@ export default function SwapsScreen({ scanResult, userLevel = 1, onBack }) {
   useEffect(() => {
     setLoading(true);
     setError(null);
+    // A fresh fetch means a fresh pool — any previous expansion no longer
+    // applies to it.
+    setGoodExpanded(false);
+    setBetterExpanded(false);
     const params = new URLSearchParams({ userLevel: String(userLevel) });
     if (resolvedCategory) params.set('category', resolvedCategory);
+    // Only meaningful alongside a real productCategory — the flag-derived
+    // fallbackCategory has no corresponding subcategory signal.
+    if (productCategory && productSubcategory) params.set('subcategory', productSubcategory);
 
     fetch(`/api/swaps?${params.toString()}`)
       .then(r => r.json())
       .then(data => {
+        setSource(data.source);
         if (data.source === 'ai') {
           setSwaps([]);
           setAiSwaps(data.swaps || []);
@@ -45,10 +93,12 @@ export default function SwapsScreen({ scanResult, userLevel = 1, onBack }) {
       })
       .catch(() => setError('Could not load swaps.'))
       .finally(() => setLoading(false));
-  }, [resolvedCategory, userLevel]);
+  }, [resolvedCategory, productCategory, productSubcategory, userLevel]);
 
   const goodSwaps   = swaps.filter(s => s.tier === 'good');
   const betterSwaps = swaps.filter(s => s.tier === 'better');
+  const visibleGoodSwaps   = getVisibleSwaps(goodSwaps, goodExpanded);
+  const visibleBetterSwaps = getVisibleSwaps(betterSwaps, betterExpanded);
   const isLevel1    = userLevel === 1;
 
   const categoryLabel = productCategory
@@ -98,26 +148,39 @@ export default function SwapsScreen({ scanResult, userLevel = 1, onBack }) {
               {goodSwaps.length > 0 && (
                 <>
                   <SectionDivider label="Good Swap" />
-                  {goodSwaps.map((swap, i) => (
+                  {visibleGoodSwaps.map((swap, i) => (
                     <SwapCard key={i} swap={swap} clearedFlags={flagCategories} />
                   ))}
+                  {shouldShowExpandButton(goodSwaps, goodExpanded, source) && (
+                    <ShowMoreButton onClick={() => setGoodExpanded(true)} />
+                  )}
                 </>
               )}
               {betterSwaps.length > 0 && (
                 <>
                   <SectionDivider label="Better Swap" />
-                  {betterSwaps.map((swap, i) => (
+                  {visibleBetterSwaps.map((swap, i) => (
                     <SwapCard key={i} swap={swap} clearedFlags={flagCategories} />
                   ))}
+                  {shouldShowExpandButton(betterSwaps, betterExpanded, source) && (
+                    <ShowMoreButton onClick={() => setBetterExpanded(true)} />
+                  )}
                 </>
               )}
             </>
           )}
 
-          {/* Level 2: flat list */}
-          {!isLevel1 && betterSwaps.map((swap, i) => (
-            <SwapCard key={i} swap={swap} clearedFlags={flagCategories} />
-          ))}
+          {/* Level 2: flat list (uses the "better" tier state — Level 2 never renders a "good" tier at all) */}
+          {!isLevel1 && (
+            <>
+              {visibleBetterSwaps.map((swap, i) => (
+                <SwapCard key={i} swap={swap} clearedFlags={flagCategories} />
+              ))}
+              {shouldShowExpandButton(betterSwaps, betterExpanded, source) && (
+                <ShowMoreButton onClick={() => setBetterExpanded(true)} />
+              )}
+            </>
+          )}
 
           {/* AI fallback */}
           {aiSwaps.length > 0 && (
@@ -158,6 +221,25 @@ export default function SwapsScreen({ scanResult, userLevel = 1, onBack }) {
         </div>
       )}
     </div>
+  );
+}
+
+// Matches the header "← Verdict" back button's text-link style (amber,
+// 600 weight, transparent background, no border) — the app's existing
+// pattern for a tappable text link, reused here rather than introducing a
+// new visual treatment.
+function ShowMoreButton({ onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'block', width: 'calc(100% - 32px)', margin: '0 16px 16px',
+        color: 'var(--amber)', fontSize: 14, fontWeight: 600, textAlign: 'center',
+        cursor: 'pointer', background: 'none', border: 'none', padding: '10px 0', minHeight: 44,
+      }}
+    >
+      Show More
+    </button>
   );
 }
 
