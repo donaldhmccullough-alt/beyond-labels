@@ -616,6 +616,42 @@ On a cache miss, a "Scan this product again to see the full report." message app
 
 ---
 
+## Test Data Tracking — off-test-results-cumulative.csv
+
+`scripts/off-test-results-cumulative.csv` (tracked in Git as of July 2026) is a cumulative,
+append-only log of rules-engine test results — L1/L2 verdicts, decisive/optional flags, and
+ingredient text — across real products. It's used to spot-check the rules engine's behavior
+against a growing corpus of real-world ingredient lists over time, independent of the Jest test
+suite (which uses hand-picked fixtures). **2248 rows as of July 2026.**
+
+Two separate tools write to this file — do not confuse them:
+
+- **`scripts/off-rules-tester.js`** — fetches products directly from Open Food Facts (by category
+  and brand search) and re-derives both L1 and L2 verdicts from whatever rules engine code is
+  currently on disk. Its own internal `CSV_COLUMNS` constant and verdict-label mapping do **not**
+  match this file's real header (a historical mismatch — this script was never actually the tool
+  that produced the file's current column conventions). Treat its scan_cache-sourcing code path
+  as unused/superseded by the tool below; its OFF category/brand-search phase is still the way to
+  add fresh non-scan_cache products.
+- **`scripts/appendScanCacheToOffResults.js`** — the tool to use for appending **new scan_cache
+  products** to this CSV going forward. Appends only barcodes not already present anywhere in the
+  file's `barcode` column; never modifies existing rows. Critically, it logs L2 verdicts/flags
+  **exactly as scan_cache recorded them** (historical, never re-derived against current code) —
+  L1 is populated from a real cached `user_level=1` scan_cache row when one exists for that
+  barcode, falling back to running the current rules engine (`analyzeIngredients(text, [], 1)`)
+  otherwise, since scan_cache doesn't store the OFF label/category data needed to reproduce
+  scan.js's full L1 override logic (meat/dairy/seafood handling).
+  - `node scripts/appendScanCacheToOffResults.js --dry-run` — preview counts/breakdown with no
+    file changes.
+  - `node scripts/appendScanCacheToOffResults.js --sample` — additionally print the first 3 new
+    rows as JSON, for sanity-checking format/content before a real run.
+  - Full column conventions (verdict label vocabulary, decisive-vs-optional flag splitting,
+    `ingredients_preview` truncation length, language-skip detection) are documented in the
+    script's own header comment — read it before writing any other tool that touches this CSV, so
+    conventions don't drift.
+
+---
+
 ## Common Patterns
 
 ### All 'use client' components
