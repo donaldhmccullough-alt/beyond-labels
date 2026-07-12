@@ -349,14 +349,151 @@ function computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags,
     // NOT game meat (seafood/game have their own dedicated tree nodes).
     const isConventionalMeat = isMeat && !isSeafood && !isGameMeat;
 
-    // ── Nodes 1–3: Instant RED categories ─────────────────────────────────
-    // Any flag in these categories → RED immediately, no further checks.
+    // Any flag in these categories → RED immediately, no further checks
+    // (moved above Phase A — see hasRejectFlagBeforeInjection below for why
+    // Phase A needs this Set before it runs, not just the priority chain).
     const INSTANT_RED_CATEGORIES = new Set([
       'additives',       // SYNTHETIC_ADDITIVES: dyes, MSG, sweeteners, preservatives
       'natural_flavors',
       'seed_oils',
       'trans_fats',
     ]);
+
+    // ── Phase A: unconditional corroboration-signal flag injection ──────────
+    // conventional_meat, conventional_dairy, and the three organic sub-tree
+    // categories (fortified_vitamins, natural_colorants, olive_oil_adulteration)
+    // used to be injected ONLY if the tree below reached their specific node —
+    // meaning an earlier-firing node (an instant-red flag, or e.g. Node 7's
+    // non-GMO check) silently prevented them from ever being EVALUATED at all,
+    // not just suppressed. Confirmed via a production data audit: 64.6% of
+    // dairy products and 44.2% of meat products with an instant-red flag never
+    // got their sourcing flag. This block evaluates every corroboration signal
+    // exactly once, unconditionally, before the verdict-determination chain
+    // below runs — so `flags` is always fully populated regardless of which
+    // node ultimately decides the top-level verdict/clearedBy.
+    //
+    // Part 1 of a multi-part change (Phase A only — see CLAUDE.md). Verdict/
+    // clearedBy determination below is UNCHANGED: it still runs the same
+    // first-match-wins priority chain, just reading from (and, for these five
+    // categories, no longer re-injecting into) the now-richer flags array —
+    // each of those five nodes had its own `flags = [...]` injection line
+    // removed below, since this block already added the same flag.
+    //
+    // `hasRejectFlagBeforeInjection` snapshots reject-flag presence BEFORE this
+    // block runs, because Node 5 (wild-caught) and Node 7 (non-GMO) each gate
+    // on "no reject flag present" — a check written when the only way a reject
+    // flag could exist at that point was via the engine itself. If those two
+    // nodes read the live (post-injection) `flags` array instead, a newly
+    // injected conventional_dairy/conventional_meat flag (e.g. dairy sauce on
+    // an otherwise-clean wild-caught fish product) would incorrectly count as
+    // "a reject flag is already present" and silently strip the wild-caught/
+    // non-GMO clearance that today's code would still correctly grant.
+    //
+    // Deliberately EXCLUDES INSTANT_RED_CATEGORIES (additives/seed_oils/
+    // trans_fats/natural_flavors). In the original (still-unchanged) chain,
+    // Node 5/7 are only ever reached via the `else` branch of
+    // `if (hasInstantRedFlag) {...} else if (hasOrganic) {...} else {...}` —
+    // meaning at the exact point those nodes' own `flags.some(reject)` checks
+    // ran, an instant-red category could never actually be present (it would
+    // have already short-circuited the whole tree before Node 5/7 were ever
+    // reached). Node 5/7's reject-gates were always implicitly scoped to the
+    // OTHER reject categories only (conventional_crops, conventional_eggs,
+    // bioengineering, glyphosate_heavy) — confirmed by a real regression this
+    // caught during implementation: a genuinely wild-caught salmon product
+    // with an unrelated seed_oils flag must still get verdict=red (from
+    // seed_oils, via Node 1-3) with NO conventional_meat injected, since the
+    // salmon itself is still wild-caught regardless of the seed oil. Including
+    // instant-red categories here would have wrongly treated that seed_oils
+    // flag as a competing "reject" and defeated the wild-caught exemption.
+    const hasRejectFlagBeforeInjection = flags.some(
+      f => f.severity === 'reject' && !INSTANT_RED_CATEGORIES.has(f.category)
+    );
+
+    if (!hasOrganic) {
+      // ── conventional_meat — mirrors the exact priority Node 5 → 5b → 6 → 8
+      // → 8c use below, so exactly one flag (with the correct summary for
+      // whichever condition actually applies) is ever injected per product.
+      const isWildCaughtSeafood =
+        isSeafood &&
+        !hasRejectFlagBeforeInjection &&
+        detectWildCaught(productName, labelsDetected, ingredientsText);
+
+      if (isSeafood && !isWildCaughtSeafood) {
+        // Mirrors Node 5b: seafood without a wild-caught signal.
+        flags = [{
+          category:          'conventional_meat',
+          severity:          'reject',
+          matchedIngredient: '',
+          summary:           'Farmed or unlabeled seafood — wild-caught certification not found',
+        }, ...flags];
+      } else if (isGameMeat) {
+        // Mirrors Node 6: game meat is wild-harvested by nature — no flag.
+      } else if (isConventionalMeat) {
+        // Mirrors Node 8: conventional meat without organic cert.
+        flags = [{
+          category:          'conventional_meat',
+          severity:          'reject',
+          matchedIngredient: '',
+          summary:           'Conventional meat product without USDA Organic certification',
+        }, ...flags];
+      } else if (maskedText && containsMeatDerived(maskedText)) {
+        // Mirrors Node 8c: animal-derived gelatin without organic cert.
+        flags = [{
+          category:          'conventional_meat',
+          severity:          'reject',
+          matchedIngredient: '',
+          summary:           'Contains animal-derived gelatin without organic certification.',
+        }, ...flags];
+      }
+
+      // ── conventional_dairy — independent of meat; mirrors Node 9. A product
+      // can now carry both conventional_meat AND conventional_dairy flags
+      // simultaneously (e.g. a conventional meat product with dairy sauce) —
+      // previously only whichever node the chain reached first would show.
+      if (maskedText && containsMilkDerived(maskedText)) {
+        flags = [{
+          category:          'conventional_dairy',
+          severity:          'reject',
+          matchedIngredient: '',
+          summary:           'Conventional dairy product without USDA Organic certification',
+        }, ...flags];
+      }
+    }
+
+    // ── Organic sub-tree flags — independent of each other and of any
+    // instant-red flag; mirrors Node 4's three checks below, but all three are
+    // now evaluated regardless of whether the others also apply ("whichever
+    // apply" rather than first-match-wins).
+    if (hasOrganic) {
+      if (maskedText && containsFortifiedVitamins(maskedText)) {
+        flags = [...flags, {
+          category:          'fortified_vitamins',
+          severity:          'caution',
+          matchedIngredient: '',
+          summary:           'Organic product with synthetic vitamin fortification',
+        }];
+      }
+      if (maskedText && containsNaturalColorants(maskedText)) {
+        flags = [...flags, {
+          category:          'natural_colorants',
+          severity:          'caution',
+          matchedIngredient: '',
+          summary:           'Organic product with natural plant-derived colorants',
+        }];
+      }
+      if (maskedText && maskedText.includes('olive oil')) {
+        flags = [...flags, {
+          category:          'olive_oil_adulteration',
+          severity:          'caution',
+          matchedIngredient: 'olive oil',
+          summary:           'Olive oil adulteration is common — even organic olive oil may be cut with cheaper oils.',
+        }];
+      }
+    }
+
+    // ── Nodes 1–3: Instant RED categories ─────────────────────────────────
+    // Any flag in these categories → RED immediately, no further checks.
+    // (INSTANT_RED_CATEGORIES itself is declared above, before Phase A.)
     const hasInstantRedFlag = flags.some(f => INSTANT_RED_CATEGORIES.has(f.category));
 
     if (hasInstantRedFlag) {
@@ -371,33 +508,17 @@ function computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags,
       // clearedBy is set to 'organic' for all organic-path branches.
       clearedBy = 'organic';
       if (maskedText && containsFortifiedVitamins(maskedText)) {
-        // Synthetic vitamin fortification.
-        flags = [...flags, {
-          category:          'fortified_vitamins',
-          severity:          'caution',
-          matchedIngredient: '',
-          summary:           'Organic product with synthetic vitamin fortification',
-        }];
+        // Synthetic vitamin fortification. Flag already injected by Phase A above.
         verdict = 'yellow';
       } else if (maskedText && containsNaturalColorants(maskedText)) {
         // Plant-derived colorants signal processing-related color correction.
-        flags = [...flags, {
-          category:          'natural_colorants',
-          severity:          'caution',
-          matchedIngredient: '',
-          summary:           'Organic product with natural plant-derived colorants',
-        }];
+        // Flag already injected by Phase A above.
         verdict = 'yellow';
       } else if (maskedText && maskedText.includes('olive oil')) {
         // Olive oil adulteration risk — even organic labels are not immune.
+        // Flag already injected by Phase A above.
         oliveCaveat = true;
         verdict = 'yellow';
-        flags = [...flags, {
-          category:          'olive_oil_adulteration',
-          severity:          'caution',
-          matchedIngredient: 'olive oil',
-          summary:           'Olive oil adulteration is common — even organic olive oil may be cut with cheaper oils.',
-        }];
       } else {
         // No concerns found → fully clean.
         verdict = 'green';
@@ -408,7 +529,7 @@ function computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags,
 
       if (
         isSeafood &&
-        !flags.some(f => f.severity === 'reject') &&
+        !hasRejectFlagBeforeInjection &&
         detectWildCaught(productName, labelsDetected, ingredientsText)
       ) {
         // Node 5: Wild-caught fish — clean regardless of how the product is
@@ -436,21 +557,16 @@ function computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags,
 
       } else if (isSeafood) {
         // Node 5b: Seafood without a wild-caught signal — farmed or unlabeled.
+        // Flag already injected by Phase A above.
         verdict   = 'red';
         clearedBy = null;
-        flags = [{
-          category:          'conventional_meat',
-          severity:          'reject',
-          matchedIngredient: '',
-          summary:           'Farmed or unlabeled seafood — wild-caught certification not found',
-        }, ...flags];
 
       } else if (isGameMeat) {
         // Node 6: Game meat — wild-harvested by nature, no certification needed.
         verdict   = 'green';
         clearedBy = null;
 
-      } else if (hasNonGmo && !flags.some(f => f.severity === 'reject')) {
+      } else if (hasNonGmo && !hasRejectFlagBeforeInjection) {
         // Node 7: Non-GMO Project Verified → caution yellow.
         //
         // Gate added (fixing a live verdict-contradicting bug found during
@@ -473,14 +589,9 @@ function computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags,
 
       } else if (isConventionalMeat) {
         // Node 8: Conventional meat without organic cert.
+        // Flag already injected by Phase A above.
         verdict   = 'red';
         clearedBy = null;
-        flags = [{
-          category:          'conventional_meat',
-          severity:          'reject',
-          matchedIngredient: '',
-          summary:           'Conventional meat product without USDA Organic certification',
-        }, ...flags];
 
       } else if (flags.some(f => f.category === 'conventional_eggs')) {
         // Node 8b: Conventional eggs detected by the rules engine — no organic cert.
@@ -491,25 +602,15 @@ function computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags,
 
       } else if (maskedText && containsMeatDerived(maskedText)) {
         // Node 8c: Animal-derived gelatin without organic cert.
+        // Flag already injected by Phase A above.
         verdict   = 'red';
         clearedBy = null;
-        flags = [{
-          category:          'conventional_meat',
-          severity:          'reject',
-          matchedIngredient: '',
-          summary:           'Contains animal-derived gelatin without organic certification.',
-        }, ...flags];
 
       } else if (maskedText && containsMilkDerived(maskedText)) {
         // Node 9: Conventional dairy without organic cert.
+        // Flag already injected by Phase A above.
         verdict   = 'red';
         clearedBy = null;
-        flags = [{
-          category:          'conventional_dairy',
-          severity:          'reject',
-          matchedIngredient: '',
-          summary:           'Conventional dairy product without USDA Organic certification',
-        }, ...flags];
 
       } else if (flags.some(f => f.category === 'conventional_crops')) {
         // Node 10: Conventional crops without cert — flags kept so user understands verdict.

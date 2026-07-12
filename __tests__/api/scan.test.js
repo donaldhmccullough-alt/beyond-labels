@@ -3201,3 +3201,215 @@ describe('V. Live mode (VERDICT_ENGINE_MODE=live)', () => {
     expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(true);
   });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// W. Phase A — unconditional corroboration-signal flag injection
+//
+// conventional_meat, conventional_dairy, and the three organic sub-tree
+// categories (fortified_vitamins, natural_colorants, olive_oil_adulteration)
+// used to be injected ONLY if the L2 tree reached their specific node — an
+// earlier-firing node (an instant-red flag, or Node 7's non-GMO check) would
+// silently prevent them from ever being evaluated. Phase A (Part 1 of a
+// multi-part change) makes flag injection for these five categories
+// unconditional. Verdict/clearedBy determination itself is UNCHANGED in this
+// part — that's Part 2.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('W. Phase A — unconditional flag injection', () => {
+  /** Minimal OFF response builder for Suite W tests. */
+  function wResp({
+    productName     = 'Test Product',
+    ingredientsText = 'water, salt',
+    labelsTags      = [],
+    categoriesTags  = [],
+  } = {}) {
+    return {
+      status: 1,
+      product: {
+        product_name:     productName,
+        ingredients_text: ingredientsText,
+        labels_tags:      labelsTags,
+        categories_tags:  categoriesTags,
+      },
+    };
+  }
+
+  // ── W1: meat + additives co-occur ────────────────────────────────────────
+
+  test('W1: conventional meat + additives (red 40) → both conventional_meat and additives appear together', async () => {
+    mockFetchOnce(wResp({
+      ingredientsText: 'beef, red 40, water, salt',
+      categoriesTags:  ['en:beef'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000920', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'additives')).toBe(true);
+    const meatFlag = res.body.flags.find(f => f.category === 'conventional_meat');
+    expect(meatFlag).toBeDefined();
+    expect(meatFlag.severity).toBe('reject');
+  });
+
+  // ── W2: dairy + seed_oils co-occur ────────────────────────────────────────
+
+  test('W2: conventional dairy + seed_oils (canola oil) → both conventional_dairy and seed_oils appear together', async () => {
+    mockFetchOnce(wResp({
+      ingredientsText: 'cheese, canola oil, salt',
+      categoriesTags:  [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000921', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'seed_oils')).toBe(true);
+    const dairyFlag = res.body.flags.find(f => f.category === 'conventional_dairy');
+    expect(dairyFlag).toBeDefined();
+    expect(dairyFlag.severity).toBe('reject');
+  });
+
+  // ── W3: wild-caught seafood exemption preserved despite an unrelated instant-red flag ─
+
+  test('W3: wild-caught seafood + an unrelated instant-red flag (red 40) → conventional_meat still NOT injected', async () => {
+    // The salmon itself is still wild-caught regardless of an unrelated dye —
+    // the exemption must not be defeated by an unrelated instant-red category.
+    mockFetchOnce(wResp({
+      productName:     'Wild-Caught Salmon with Red 40 Garnish',
+      ingredientsText: 'salmon, red 40, water, salt',
+      categoriesTags:  ['en:salmon'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000922', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red'); // from additives — instant-red still wins verdict, unchanged
+    expect(res.body.flags.some(f => f.category === 'additives')).toBe(true);
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+  });
+
+  // ── W4: game meat exemption preserved despite an unrelated instant-red flag ─
+
+  test('W4: game meat + an unrelated instant-red flag (red 40) → conventional_meat still NOT injected', async () => {
+    mockFetchOnce(wResp({
+      productName:     'Venison with Red 40 Garnish',
+      ingredientsText: 'venison, red 40, water, salt',
+      categoriesTags:  ['en:game-meats'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000923', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red'); // from additives, unchanged
+    expect(res.body.flags.some(f => f.category === 'additives')).toBe(true);
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+  });
+
+  // ── W5: organic sub-tree flags now evaluated despite an instant-red flag ──
+
+  test('W5: organic product + additives (red 40) + fortified vitamins → fortified_vitamins now injected alongside additives', async () => {
+    // Before Phase A, hasInstantRedFlag being true meant the organic branch
+    // (and its fortified_vitamins/natural_colorants/olive-oil checks) was
+    // never even reached — folic acid/cyanocobalamin would never have been
+    // evaluated at all.
+    mockFetchOnce(wResp({
+      ingredientsText: 'organic oats, folic acid, cyanocobalamin, red 40',
+      labelsTags:      ['en:usda-organic'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000924', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red'); // additives still wins verdict/clearedBy, unchanged
+    expect(res.body.clearedBy).toBeNull();
+    expect(res.body.flags.some(f => f.category === 'additives')).toBe(true);
+    const fortifiedFlag = res.body.flags.find(f => f.category === 'fortified_vitamins');
+    expect(fortifiedFlag).toBeDefined();
+    expect(fortifiedFlag.severity).toBe('caution');
+  });
+
+  test('W5b: organic product + additives + natural colorants (annatto extract) → natural_colorants now injected alongside additives', async () => {
+    mockFetchOnce(wResp({
+      ingredientsText: 'organic rice, annatto extract, red 40',
+      labelsTags:      ['en:usda-organic'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000925', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'additives')).toBe(true);
+    expect(res.body.flags.some(f => f.category === 'natural_colorants')).toBe(true);
+  });
+
+  test('W5c: organic product + additives + olive oil → olive_oil_adulteration now injected alongside additives', async () => {
+    mockFetchOnce(wResp({
+      ingredientsText: 'organic olive oil, red 40, salt',
+      labelsTags:      ['en:usda-organic'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000926', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.flags.some(f => f.category === 'additives')).toBe(true);
+    expect(res.body.flags.some(f => f.category === 'olive_oil_adulteration')).toBe(true);
+  });
+
+  // ── Regression: existing single-category cases produce identical flags ──
+
+  test('regression: meat alone (no other flags) → identical to today — single conventional_meat reject flag', async () => {
+    mockFetchOnce(wResp({
+      ingredientsText: 'beef, pork, water, salt, spices',
+      categoriesTags:  ['en:sausages'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000927', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    const meatFlags = res.body.flags.filter(f => f.category === 'conventional_meat');
+    expect(meatFlags).toHaveLength(1);
+    expect(meatFlags[0].severity).toBe('reject');
+  });
+
+  test('regression: dairy alone (no other flags) → identical to today — single conventional_dairy reject flag', async () => {
+    mockFetchOnce(wResp({ ingredientsText: 'whole milk, vitamin d' }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000928', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    const dairyFlags = res.body.flags.filter(f => f.category === 'conventional_dairy');
+    expect(dairyFlags).toHaveLength(1);
+    expect(dairyFlags[0].severity).toBe('reject');
+  });
+
+  test('regression: organic clean product alone → identical to today — GREEN, zero flags', async () => {
+    mockFetchOnce(wResp({
+      ingredientsText: 'organic oats, organic honey, sea salt',
+      labelsTags:      ['en:usda-organic'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000929', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.clearedBy).toBe('organic');
+    expect(res.body.flags).toHaveLength(0);
+  });
+
+  test('regression: wild-caught seafood alone (no other flags) → identical to today — GREEN, clearedBy wild-caught, no conventional_meat', async () => {
+    mockFetchOnce(wResp({
+      productName:     'Wild-Caught Pacific Cod Fillets',
+      ingredientsText: 'cod, water, salt',
+      categoriesTags:  ['en:cod'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000930', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.clearedBy).toBe('wild-caught');
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+  });
+
+  test('regression: game meat alone (no other flags) → identical to today — GREEN, no conventional_meat', async () => {
+    mockFetchOnce(wResp({
+      ingredientsText: 'venison, water, salt',
+      categoriesTags:  ['en:game-meats'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000931', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+  });
+
+  test('regression: gelatin-only meat signal (no meat category tag) → identical to today — single conventional_meat reject flag', async () => {
+    mockFetchOnce(wResp({ ingredientsText: 'gelatin, sugar water, salt', categoriesTags: [] }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000932', userLevel: 2 }), res);
+    const meatFlags = res.body.flags.filter(f => f.category === 'conventional_meat');
+    expect(meatFlags).toHaveLength(1);
+    expect(meatFlags[0].summary).toMatch(/gelatin/i);
+  });
+});
