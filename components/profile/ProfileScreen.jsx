@@ -17,7 +17,7 @@ import PrivacyPromiseModal from '@/components/shared/PrivacyPromiseModal';
 
 const FREE_SCAN_LIMIT = 15;
 
-export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRetakeAssessment, onStartOnboarding, onSignIn, onViewVerdict }) {
+export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRetakeAssessment, onStartOnboarding, onSignIn, onSignOut, onViewVerdict }) {
   const [profile, setProfile] = useState(undefined);
   const [scanUsage, setScanUsage] = useState({ scanCount: 0 });
   const [scanHistory, setScanHistory] = useState([]);
@@ -65,6 +65,13 @@ export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRe
       clearProfile();
     } finally {
       setSigningOut(false);
+      // signOut() guarantees the local Supabase session is cleared even when the
+      // server-side revoke fails (see lib/auth.js) — but that fallback path never
+      // fires Supabase's own SIGNED_OUT event, so don't wait on the async
+      // onAuthStateChange listener to update the parent's `user` state. Tell it
+      // directly, every time, regardless of whether the network round-trip
+      // succeeded.
+      onSignOut?.();
     }
   }
 

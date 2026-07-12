@@ -187,6 +187,10 @@ export default function Home() {
     setShowAuthModal(false);
   }
 
+  function handleSignOut() {
+    setUser(null);
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (appScreen === 'loading') {
@@ -256,6 +260,7 @@ export default function Home() {
             onRetakeAssessment={handleRetakeAssessment}
             onStartOnboarding={handleStartOnboarding}
             onSignIn={() => setShowAuthModal(true)}
+            onSignOut={handleSignOut}
             onViewVerdict={handleScanResult}
           />
         )}
