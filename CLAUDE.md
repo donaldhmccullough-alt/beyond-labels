@@ -3861,6 +3861,88 @@ deliberately-deferred PROMPT_VERSION 41/42 purge decision documented under "Scan
 
 ---
 
+### Session — sign-out fix: stuck spinner + false re-login on network error (July 2026)
+
+Fixes a reported bug: tapping "Sign Out" on ProfileScreen sometimes worked, but most of the time left
+the UI in a stuck/loading state instead of a clean logged-out screen — and refreshing or navigating
+away and back never showed a logged-out state either, snapping straight back to the signed-in Profile
+view as if sign-out had never happened.
+
+**Root cause**, confirmed by reading the installed `@supabase/auth-js` source directly
+(`node_modules/@supabase/auth-js/dist/module/GoTrueClient.js`, `_signOut()`): `supabase.auth.signOut()`
+(the default `scope: 'global'`) only clears the local session token and fires the `SIGNED_OUT` event
+**after a successful network round-trip** to revoke the session server-side. If that round-trip fails
+for any reason other than an ignorable 401/403/404 (a plain network error, offline, a slow/flaky
+connection — plausible for a barcode-scanning app used in stores), `_signOut()` returns early:
+`_removeSession()` — the function that both clears `localStorage` and fires `SIGNED_OUT` — is never
+called. There was also no client-side timeout on the call, so a hanging request left the "Sign Out"
+button showing `...` indefinitely (the "stuck" symptom). Compounding this, `lib/auth.js`'s `signOut()`
+did correctly `await` the call, but `components/profile/ProfileScreen.jsx`'s `handleSignOut()` never
+inspected the `{ error }` it returned — it silently proceeded as if sign-out had succeeded, so the UI
+gave no indication anything had gone wrong, and its only path to reflecting sign-out was the
+`onAuthStateChange` listener in `app/page.jsx`, which never fired on this failure path.
+
+**Fix, three files**:
+- [lib/auth.js](lib/auth.js) — `signOut()` now wraps `supabase.auth.signOut()` in a 6-second timeout
+  (`withTimeout()`), so a hanging network call can no longer block the button forever. On any error or
+  timeout, it now also force-clears the local session directly via a new `clearLocalSupabaseSession()`
+  helper — removes any `localStorage` key matching `sb-*-auth-token` (confirmed via the installed
+  `@supabase/supabase-js` bundle that this is the client's actual default storage-key format, so no
+  project-ref needs to be hardcoded). This guarantees the local session is actually gone after
+  `signOut()` resolves, regardless of whether the server-side revoke succeeded — closing the "refresh
+  snaps back to signed-in" symptom, since the stale token genuinely can't survive anymore.
+- [components/profile/ProfileScreen.jsx](components/profile/ProfileScreen.jsx) — `handleSignOut()` now
+  calls a new `onSignOut` prop unconditionally in its `finally` block, after `signOut()` settles —
+  regardless of whether it returned an error. This stops the UI from depending on the async
+  `onAuthStateChange` listener (which never fires on the fallback-clear path) as the only way to learn
+  sign-out happened.
+- [app/page.jsx](app/page.jsx) — passes `onSignOut={() => setUser(null)}` to `<ProfileScreen>`, so
+  `user` state updates deterministically the moment `handleSignOut()` finishes, independent of whether
+  Supabase's own event system ever fires. (The existing `onAuthStateChange` listener is untouched and
+  still handles the success path redundantly — harmless, `setUser(null)` twice is a no-op the second
+  time.)
+
+**Tests**: new [lib/auth.test.js](lib/auth.test.js) (7 tests) — success path (awaits correctly, returns
+no error, doesn't touch a session it didn't need to clear), scan-localStorage wipe on success (verifies
+`bl_profile` is deliberately left alone, matching `clearScanLocalStorage()`'s existing contract), a
+returned network error force-clearing the local `sb-*-auth-token` key, `supabase.auth.signOut()`
+rejecting outright handled the same way, a hanging call resolving via the new timeout (driven with
+`jest.useFakeTimers()`/`advanceTimersByTimeAsync()` rather than a real 6-second wait), the fallback
+clearing only the `sb-*-auth-token` key pattern and leaving unrelated keys (including a
+differently-shaped `sb-*-auth-token-code-verifier` key) untouched, and confirming the fallback does
+**not** fire redundantly on the success path. `lib/supabase.js` is mocked so no real Supabase client is
+constructed; `testEnvironment: 'node'` (project-wide, per `jest.config.js`) meant a minimal
+`window`/`localStorage` stand-in had to be built via `global.window`/`global.localStorage` — the mock
+had to specifically replicate real `localStorage`'s behavior of exposing stored keys as the object's
+own *enumerable* properties (via `Object.defineProperties` with `enumerable: false` on the
+Storage-interface methods), since `clearLocalSupabaseSession()` relies on `Object.keys(window.localStorage)`
+to find what to remove — an earlier version of the mock that used plain method properties instead
+caused `Object.keys()` to return method names instead of stored keys, silently defeating every
+error-path assertion. Confirmed the tests are actually diagnostic, not just passing by construction: 4
+of the 7 fail against the pre-fix `lib/auth.js` (checked via `git stash`) and all 7 pass against the
+fix. Full suite: 1741 passing, 1 known pre-existing failure (the cross-list contradiction test from the
+collision-word audit series, unrelated, unchanged).
+
+**⚠️ Verified via unit tests only — no live browser click-through.** Reproducing this bug faithfully
+requires a real, authenticated Supabase session plus a simulated network failure during the sign-out
+call itself; the unit tests exercise the actual failure mechanism directly (mocking
+`supabase.auth.signOut()` to reject/hang, matching the exact code path confirmed in the installed
+`@supabase/auth-js` source) rather than attempting to fake that combination through the browser preview
+tooling, which has no real Supabase credentials or a way to inject a network fault mid-request.
+**Manual live sign-in/sign-out testing is still pending from the product side** — ideally exercised on
+a slow or flaky connection, not fast wifi, since a fast connection won't exercise the failure path this
+fix targets at all (only the always-safe success path). Do not consider this fix fully confirmed until
+that manual pass has been done.
+
+**Deploy status**: pushed to `origin/mvp-beta` as commit `1e049ed` on July 12, 2026. Confirmed deployed
+(not just pushed) via GitHub's commit status API — the `Vercel` context shows `state: success`,
+`description: "Deployment has completed"`, timestamped `2026-07-12T20:03:47Z`.
+
+**No `PROMPT_VERSION` bump** — this is a client-side auth-session fix with no `analyzeIngredients()`
+`flags`/`verdict`/`clearedBy` impact, and no `scan_cache` schema or contract change.
+
+---
+
 ## Golden Master Snapshot (L1/L2 Unification Project — Stage 1)
 
 The rules engine (`lib/rulesEngine.js`) and the L1/L2 post-processing logic in `pages/api/scan.js`
