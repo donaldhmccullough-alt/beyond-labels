@@ -4095,7 +4095,38 @@ failure (the cross-list contradiction test from the collision-word audit series,
 **No `PROMPT_VERSION` bump** — confirmed no `analyzeIngredients()` `flags`/`verdict`/`clearedBy` impact;
 this is a rendering fallback plus console-only logging, nothing persisted differently to `scan_cache`.
 
-**Not deployed** — committed locally only, per instruction, for review before pushing.
+**Confirmed pushed and deployed to production July 12, 2026** (not just committed). Before pushing,
+`git fetch` + `git merge-base --is-ancestor origin/mvp-beta HEAD` confirmed a clean fast-forward with no
+divergence — local `HEAD` (`ed85fc0`) sat directly on top of `origin/mvp-beta`'s prior tip (`b54ebe7`,
+the maskIgnoredIngredients deploy-status docs commit), and `git push --dry-run` showed a simple
+`b54ebe7..ed85fc0` fast-forward before the real push ran. Pushed via `git push origin mvp-beta`;
+confirmed `origin/mvp-beta` moved to `ed85fc0` via a post-push `git fetch` + `git log`. Deploy confirmed
+via GitHub's commit status API (same method used for every prior deploy check in this file) — the
+`Vercel` context for `ed85fc0` shows `state: success`, `description: "Deployment has completed"`,
+timestamped `2026-07-12T22:33:52Z`.
+
+Live-checked `beyond-labels-eight.vercel.app` immediately after: confirmed the app loads normally, then
+went further than a basic load check — used the manual "Enter Barcode" entry (no camera needed) to
+scan barcode `024300043130` ("Nutty Buddy Creme Pies") directly, the exact product this whole session's
+fix was built around. The verdict screen rendered correctly (red "AVOID", all 7 concern cards, correct
+ingredient chips), and expanding the `conventional_crops` card showed its real AI-generated explanation
+text — confirming the normal (non-fallback) `ConcernCard` path is unaffected by this session's change.
+**One notable, unplanned finding from this check**: the re-scan did NOT reproduce the original
+`explanation: null` state — Claude's fresh call succeeded this time, generating a complete
+`explanation.details` entry for all 7 categories. This happened because the cached row was stale
+relative to the live `PROMPT_VERSION` (the row was written at `prompt_version: 40`, live is `42`), so
+the read was treated as a cache miss and `scan.js` re-fetched from Open Food Facts and re-ran the
+Claude call fresh (`source: 'open-food-facts'` in the response, not `'cache'`) rather than serving the
+stale cached row — meaning `scan_cache` reads **are** version-gated on read, not just relying on the
+documented manual purge, a detail worth remembering for future investigations that assumed otherwise.
+Net effect: the specific null-explanation fallback UI could not be directly observed live in this
+check, since production no longer has a reproducible null case for this barcode — but the fallback
+logic itself was already verified by the 16 new unit tests (10 specifically for `getFallbackSummary()`
+and the `explanation || getFallbackSummary(flags)` selection logic), and this live check positively
+confirms the deploy didn't break the surrounding rendering path.
+
+No `scan_cache` purge was run — not needed, this change doesn't touch verdict/flags/explanation-generation
+data, only how existing data renders and is logged.
 
 ---
 
