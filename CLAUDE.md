@@ -4022,7 +4022,19 @@ real `flags`/`verdict` output going forward (any non-organic dairy product whose
 false clean/yellow), but since it ships before any v42-stamped row exists, there's nothing already
 cached under v42 that would need distinguishing from this fixed behavior.
 
-**Not deployed** — committed locally only, per instruction. `origin/mvp-beta` is unchanged.
+**Confirmed pushed and deployed to production July 12, 2026** (not just committed). Before pushing,
+`git fetch` + `git merge-base --is-ancestor origin/mvp-beta HEAD` confirmed a clean fast-forward with no
+divergence — local `HEAD` (`ede48bf`) sat directly on top of `origin/mvp-beta`'s prior tip (`3fb6a2e`,
+the sign-out-fix docs commit), and `git push --dry-run` showed a simple `3fb6a2e..ede48bf` fast-forward
+before the real push ran. Pushed via `git push origin mvp-beta`; confirmed `origin/mvp-beta` moved to
+`ede48bf` via a post-push `git fetch` + `git log`. Deploy confirmed via GitHub's commit status API (same
+method used for every prior deploy check in this file) — the `Vercel` context for `ede48bf` shows
+`state: success`, `description: "Deployment has completed"`, timestamped `2026-07-12T22:06:50Z`. A live
+check of `beyond-labels-eight.vercel.app` immediately after confirmed the app loads normally (root `GET
+/` → 200, all static assets 200, disclaimer/onboarding screen renders with real content, no console
+errors) — not a full manual scan test, just confirmation the deploy didn't break the app. No
+`scan_cache` purge was run or needed — Step 0 of the investigation that produced this fix already
+confirmed zero rows exist at `prompt_version = 42`, so there was nothing stale to invalidate.
 
 ---
 
