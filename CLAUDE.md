@@ -280,27 +280,34 @@ Before any trigger matching, the raw ingredient string is normalized in four ste
 
 ### Level 2 universal decision tree (inline in scan.js)
 
-For `userLevel === 2`, `scan.js` applies a universal 14-node decision tree **after** `analyzeIngredients()` runs. Applies to all 10 product categories. First matching node wins. Does not run for `unverified` or `inconclusive` verdicts.
+For `userLevel === 2`, `scan.js` applies a universal 14-node decision tree **after** `analyzeIngredients()` runs. Applies to all 10 product categories. First matching node wins for **verdict/clearedBy purposes**. Does not run for `unverified` or `inconclusive` verdicts.
 
-**Pre-processing before the tree runs:**
-1. Gluten_grains flags are stripped (paywall feature — invisible at both levels)
-2. `maskedText` is built: `maskIgnoredIngredients(ingredientsText.toLowerCase())` — replaces `ALWAYS_IGNORE_INGREDIENTS` terms (salt, water, calcium carbonate, magnesium oxide, yeast, cultures, enzymes) with same-length spaces to prevent false positives in ingredient-level helper functions.
+**⚠️ Architecture note — Phase A (flag injection) vs. Phase B (verdict/clearedBy determination), added PROMPT_VERSION 42.** The tree is now split into two structurally separate passes, run in this order:
+
+1. **Phase A — unconditional corroboration-signal injection.** Before the priority chain below ever runs, `scan.js` evaluates every corroboration signal for `conventional_meat`, `conventional_dairy`, and the three organic sub-tree categories (`fortified_vitamins`, `natural_colorants`, `olive_oil_adulteration`) **exactly once**, unconditionally, and adds whichever apply to `flags`. This mirrors the exact same priority/conditions the tree nodes below always used (e.g. the wild-caught/game-meat exemptions for `conventional_meat` are preserved intact), but decouples *whether a flag gets added* from *which node ends up winning the verdict*.
+2. **Phase B — verdict/clearedBy determination.** The 14-node priority chain below is **unchanged in shape and priority order** — it still runs first-match-wins exactly as before. The only difference is it now reads from (and, for the five categories above, no longer re-injects into) an already-complete `flags` array, plus one deliberate `clearedBy` change (see below).
+
+**Why this split exists:** before PROMPT_VERSION 42, `conventional_meat`/`conventional_dairy`/the three organic sub-tree flags were only ever added *by* the node that also decided verdict — meaning if an earlier-firing node (most commonly `hasInstantRedFlag`, but also e.g. Node 7's non-GMO check) resolved the chain first, those categories were never even **evaluated**, not just suppressed. A July 2026 production data audit found this affected the majority of real products in the affected categories: **64.6% of dairy products and 44.2% of meat products with an instant-red flag never got their sourcing flag at all.** Organic products with an instant-red flag never had the organic sub-tree evaluated either, since Node 4 was itself nested inside the same `else` branch. See the "Session — L2 tree flag-injection unification" changelog entry below for the full investigation and both implementation commits.
+
+**The one deliberate verdict-adjacent behavior change (Phase B, part of PROMPT_VERSION 42):** when `hasInstantRedFlag` fires (Nodes 1–3b), `clearedBy` is now `'organic'` instead of being discarded to `null`, **if** the product also carries the `usda-organic` label — verdict still goes red either way (a real synthetic additive/seed oil/trans fat is not excused by organic certification), but the cert context is no longer silently dropped from the response. This holds regardless of whether any of the three organic sub-tree flags actually fired, since `clearedBy` describes certification status, not which concerns were found.
+
+**⚠️ Non-obvious invariant — `conventional_meat`/`conventional_dairy` and `clearedBy: 'organic'` are mutually exclusive by design, and this is intentional, not a gap.** Phase A's meat/dairy injection block is gated on `!hasOrganic` — a genuinely organic-certified product correctly should never get a "conventional [meat/dairy], no cert" flag, since it does have a cert. This means a product can never simultaneously show `conventional_meat` (or `conventional_dairy`) **and** `clearedBy: 'organic'` in the same response. Confirmed directly during implementation (Part 2's own test suite, X4a/X4b): writing a test that expected both together for a real organic-labeled meat product failed outright (Phase A never injected the meat flag at all, since `hasOrganic` was true — verdict came back `green`, not `red`). If a future session is tempted to "fix" this by removing the `!hasOrganic` gate so meat/dairy flags fire regardless of organic status, don't — that would mean a certified-organic product gets flagged for lacking the certification it demonstrably has. The correct read of `clearedBy: 'organic'` alongside a red verdict (from an unrelated instant-red flag) is "this product is organic-certified, but has an unrelated synthetic-additive/seed-oil/trans-fat/natural-flavor concern" — not "this product's meat/dairy sourcing is unconfirmed."
 
 **Decision tree:**
 | Node | Condition | Verdict | `clearedBy` |
 |------|-----------|---------|-------------|
-| 1 | `additives` flag present | RED | null |
-| 2 | `seed_oils` flag present | RED | null |
-| 3 | `trans_fats` flag present | RED | null |
-| 3b | `natural_flavors` flag present | RED | null |
+| 1 | `additives` flag present | RED | `'organic'` if `usda-organic` label present, else `null` (Phase B, PROMPT_VERSION 42 — previously always `null`) |
+| 2 | `seed_oils` flag present | RED | same as Node 1 |
+| 3 | `trans_fats` flag present | RED | same as Node 1 |
+| 3b | `natural_flavors` flag present | RED | same as Node 1 |
 | 4 | `usda-organic` label | → organic sub-tree | `'organic'` |
 | 5 | `isSeafood` AND no reject-severity flag already present AND `detectWildCaught()` returns true (OFF label OR product name contains wild-caught signal, no farmed exclusions) — **both the `isSeafood` gate and the reject-flag gate were added PROMPT_VERSION 29, see changelog; before that, this node had neither and could silently force GREEN over a real reject flag on any product, seafood or not** | GREEN | `'wild-caught'` |
-| 5b | `isSeafood` + no wild-caught signal detected | RED (inject `conventional_meat` flag) | null |
+| 5b | `isSeafood` + no wild-caught signal detected | RED (`conventional_meat` flag present — injected unconditionally by Phase A, not by this node) | null |
 | 6 | Game meat category (`en:game-meats`) | GREEN | null |
 | 7 | `non-gmo-project-verified` label | YELLOW | `'non-gmo-project-verified'` |
-| 8 | `isMeat` (non-seafood, non-game) | RED (inject `conventional_meat` flag) | null |
-| 8b | `conventional_eggs` flag present (from engine) | RED (no injection — engine already has flag with matchedIngredient) | null |
-| 9 | `containsMilkDerived(maskedText)` | RED (inject `conventional_dairy` flag) | null |
+| 8 | `isMeat` (non-seafood, non-game) | RED (`conventional_meat` flag present — injected by Phase A) | null |
+| 8b | `conventional_eggs` flag present (from engine) | RED (engine already has the flag with matchedIngredient — never tree-injected, unaffected by Phase A/B) | null |
+| 9 | `containsMilkDerived(maskedText)` | RED (`conventional_dairy` flag present — injected by Phase A) | null |
 | 10 | `conventional_crops` flag present | RED | null |
 | 11 | `bioengineering` flag present | RED | null |
 | 11b | `glyphosate_heavy` flag present with `severity: 'reject'` (added PROMPT_VERSION 24 — see changelog; mutually exclusive with node 12 by construction, since the engine already downgrades this flag's own severity to `'caution'` when `glyphosate-free`/`usda-organic` clearance applies) | RED | null |
@@ -311,10 +318,12 @@ For `userLevel === 2`, `scan.js` applies a universal 14-node decision tree **aft
 **Organic sub-tree (entered at node 4):**
 | Check | Verdict |
 |-------|---------|
-| `containsFortifiedVitamins(maskedText)` | YELLOW + inject `fortified_vitamins` caution flag |
-| `containsNaturalColorants(maskedText)` | YELLOW + inject `natural_colorants` caution flag |
-| `maskedText.includes('olive oil')` | YELLOW + inject `olive_oil_adulteration` flag, set `oliveCaveat: true` |
+| `containsFortifiedVitamins(maskedText)` | YELLOW (`fortified_vitamins` caution flag present — injected by Phase A) |
+| `containsNaturalColorants(maskedText)` | YELLOW (`natural_colorants` caution flag present — injected by Phase A) |
+| `maskedText.includes('olive oil')` | YELLOW, `oliveCaveat: true` (`olive_oil_adulteration` flag present — injected by Phase A) |
 | None of the above | GREEN |
+
+As of PROMPT_VERSION 42, all three of these checks are evaluated by Phase A **unconditionally whenever `hasOrganic` is true** — including when `hasInstantRedFlag` is also true, a case Node 4 itself never even reaches (it's nested in the `else` branch after the instant-red check). This sub-tree's own verdict logic (still if-elseif, first-match-wins for the purpose of deciding YELLOW vs GREEN) is otherwise unchanged from before — the only difference is that Phase A may have already injected more than one of these three flags into `flags` simultaneously (a product can have both fortified vitamins and olive oil, for instance), even though this sub-tree's verdict computation still only looks for the first one that applies.
 
 **⚠️ Keeping the tree in sync with the engine — required reading before adding a new reject-severity category:**
 Every category `analyzeIngredients()` can emit with `severity: 'reject'` at Level 2 MUST have a
@@ -339,6 +348,7 @@ the same change**, and add a Suite L test asserting the top-level `verdict` (not
 - Conventional eggs (`conventional_eggs` flag) have their own Node 8b — no longer merged into the `conventional_meat` node. Products like ravioli, pasta, and cookies with egg ingredients get `conventional_eggs` (not `conventional_meat`). The flag comes from the rules engine (not scan.js injection) and carries the actual matched ingredient string.
 - Egg ingredients are detected by the rules engine (CONVENTIONAL_EGGS loop with `isPrecededByOrganic()` guard, a letter-adjacency word-boundary guard, and — since PROMPT_VERSION 30 — the shared `isInFreeOrNonContext()` guard so `"egg-free"` facility disclaimers don't false-flag) and handled at Node 8b — separate from conventional_meat. Products like ravioli, pasta, and cookies with egg ingredients get a `conventional_eggs` flag (not `conventional_meat`). "organic eggs" as an ingredient prefix clears the flag at engine level. `containsEggDerived()` is still exported from rulesEngine but no longer used in scan.js.
 - `oliveCaveat: true` is set on the response object when the organic path hits the olive oil branch. Not yet persisted to `scan_cache` (no `olive_caveat` column); `TODO` comment left in upsert.
+- As of PROMPT_VERSION 42: `conventional_meat`, `conventional_dairy`, and the three organic sub-tree flags are injected by a separate unconditional "Phase A" pass, not by whichever tree node happens to fire — see the "Architecture note" above for the full shape and the reasoning.
 
 **New helper sets in scan.js:**
 ```js
@@ -573,7 +583,7 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 41** (meat detection fixes — `stripAllergenAdvisory()` "contains X% or less of" qualifier data-loss fix + "mechanically separated [species]" additive trigger — see the "Session — meat detection fixes" changelog entry below). `scan_cache` has **not yet been invalidated** for this bump — run `DELETE FROM scan_cache WHERE prompt_version < 41` in Supabase before/after deploying. Per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until verified live.
+**Current PROMPT_VERSION is 42** (L2 tree flag-injection unification — `conventional_meat`/`conventional_dairy`/organic sub-tree flags are now injected unconditionally instead of only when the tree happens to reach their node, plus `clearedBy: 'organic'` now persists alongside a red verdict from an unrelated instant-red flag — see the "Session — L2 tree flag-injection unification" changelog entry below). `scan_cache` has **not yet been invalidated** for this bump — run `DELETE FROM scan_cache WHERE prompt_version < 42` in Supabase before/after deploying. Per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until verified live.
 
 Separately, PROMPT_VERSION 40 (L1/L2 unification Stage 5c — `VERDICT_ENGINE_MODE=live` wired to `lib/verdictEngine.js`'s `computeCorrectedVerdict()`) remains **not yet activated** — see the "Session — L1/L2 unification Stage 5c" changelog entry and its "Stage 5c — pending activation steps" for the exact remaining manual sequence (deploy confirmation, then `VERDICT_ENGINE_MODE=live` in Vercel, then cache invalidation). That activation is independent of and unaffected by this session's v41 bump.
 
@@ -3116,6 +3126,90 @@ Full suite: **1494 passing** (up from 1474; +20 net across all three fixes), sam
 pre-existing failure (the cross-list contradiction test — `coconut sugar`, `flax seeds`, `sweet
 potato`, `quinoa`, `amaranth`, `teff`, `date sugar`, `lactic acid starter culture` — unrelated to this
 session, unchanged, tracked separately since the collision-word audit series).
+
+---
+
+### Session — L2 tree flag-injection unification (July 2026, PROMPT_VERSION 42)
+
+Follow-up to an investigation session (report-only, no code changed) into a structural gap
+distinct from — but adjacent to — every prior fix in this file: `conventional_meat`,
+`conventional_dairy`, and the three organic sub-tree flags (`fortified_vitamins`,
+`natural_colorants`, `olive_oil_adulteration`) were only ever injected *by* the specific L2 tree
+node that also decided verdict — meaning an earlier-firing node (most commonly an instant-red flag,
+but also e.g. Node 7's non-GMO check) silently prevented those categories from ever being
+**evaluated at all**, not merely suppressed after the fact. Confirmed via a `scan_cache` production
+data audit: **64.6% of dairy products and 44.2% of meat products with an instant-red flag never got
+their sourcing flag.** Organic products with an instant-red flag never had the organic sub-tree
+evaluated either, since Node 4 was nested inside the same `else` branch as the check that discarded
+it — a `usda-organic`-labeled product with a synthetic additive would silently never have its
+fortified-vitamins/colorant/olive-oil status checked, and would additionally lose its `clearedBy:
+'organic'` context entirely (discarded to `null`).
+
+**What changed** — implemented as two separately committed, separately tested parts:
+
+- **Part 1 (`384a79d`) — Phase A: unconditional flag injection.** Every corroboration signal for the
+  five affected categories is now evaluated and injected into `flags` exactly once, before the
+  existing 14-node priority chain runs — not by whichever node the chain happens to reach. The five
+  tree nodes that used to inject these flags (5b, 8, 8c, 9, and the three branches inside Node 4)
+  had their own duplicate injection removed; their verdict/clearedBy-setting logic was left
+  otherwise untouched. One necessary correctness fix was bundled in: Node 5 (wild-caught) and Node 7
+  (non-GMO) each gate on "no reject flag already present" — a check written when the only way a
+  reject flag could exist at that point was via the engine itself. Snapshotting reject-flag presence
+  into `hasRejectFlagBeforeInjection` (deliberately excluding `INSTANT_RED_CATEGORIES`, which could
+  never have been present at that point in the original chain either) prevents Phase A's own
+  injected reject flags from retroactively defeating the wild-caught/non-GMO exemptions — caught
+  during implementation by a real regression (wild-caught salmon + an unrelated seed-oil flag
+  incorrectly losing its `conventional_meat` exemption) before the commit landed.
+- **Part 2 (`e45f041`) — Phase B: `clearedBy` behavior change.** The 14-node priority chain's shape
+  and order is otherwise completely unchanged — same first-match-wins verdict logic as before. The
+  one deliberate change: when `hasInstantRedFlag` fires, `clearedBy` is now `'organic'` instead of
+  `null` if the product also carries the `usda-organic` label. Verdict still goes red either way (an
+  organic label doesn't excuse a real synthetic additive/seed oil/trans fat), but the cert context
+  is no longer silently dropped from the response. This holds whether or not any of the three organic
+  sub-tree flags actually fired.
+
+**A genuine, confirmed invariant, not a residual gap:** `conventional_meat`/`conventional_dairy` and
+`clearedBy: 'organic'` can never co-occur in the same response, because Phase A's meat/dairy
+injection block is gated on `!hasOrganic` — a certified-organic product correctly should never get a
+"no cert" flag for meat or dairy sourcing it does have a cert for. This was confirmed directly during
+Part 2's own implementation: a test written to expect `conventional_meat` + `clearedBy: 'organic'`
+together for a realistic organic-labeled beef-hot-dog fixture failed outright (verdict came back
+`green` — Phase A never injected the meat flag at all once `hasOrganic` was true). The real
+production barcode this investigation started from (025317161916, "The Great Organic Uncured Beef
+Hot Dog") was re-examined in light of this: the original investigation's own query had already
+selected only rows where `cleared_by !== 'organic'`, meaning the *real* cached row's `clearedBy` was
+already `null` — consistent with the already-documented "product name says Organic but OFF has no
+real `usda-organic` tag" data gap (see "Known Limitations"), not a contradiction of the new
+invariant. See the full CLAUDE.md "Level 2 universal decision tree" section above (Architecture
+note) for the complete reasoning — a future session should not attempt to "fix" this mutual
+exclusivity by removing the `!hasOrganic` gate.
+
+**Tests**: 13 new tests in Part 1 (Suite W, `__tests__/api/scan.test.js`) — meat+additives and
+dairy+seed_oils co-occurrence, wild-caught/game-meat exemptions preserved despite an unrelated
+instant-red flag, all three organic sub-tree flags now injecting alongside an additive, and
+regression guards confirming every existing single-category case (meat alone, dairy alone,
+organic-clean-green, wild-caught alone, game-meat alone, gelatin-only) produces identical flags to
+before. 8 new tests in Part 2 (Suite X in `scan.test.js`, 5 tests; Suite A2 in
+`__tests__/api/explain.test.js`, 3 tests) — organic + additives with none of the three sub-tree
+conditions applicable still showing `clearedBy: 'organic'`; regression guards for the
+organic-clean-green and non-organic-instant-red cases; the X4a/X4b real-world-shaped pair described
+above; and confirmation that `buildUserMessage()` in `explain.js` handles the new `clearedBy:
+'organic'` + `verdict: 'red'` combination correctly (its `flagsSection` ternary is keyed first on
+whether `flags` is non-empty, so this combination routes through the ordinary "Flagged categories"
+branch — `clearedBy` is never even consulted there, since it's only read in the ternary's "no flags"
+branches).
+
+**PROMPT_VERSION bumped 41 → 42.** This changes real `flags`/`clearedBy` output for previously-cached
+products: any dairy or meat product with an instant-red flag now correctly also carries its
+`conventional_dairy`/`conventional_meat` flag; any organic product with an instant-red flag now
+correctly shows `clearedBy: 'organic'` instead of `null`, and may now also carry
+`fortified_vitamins`/`natural_colorants`/`olive_oil_adulteration` flags that were never evaluated
+before. Run `DELETE FROM scan_cache WHERE prompt_version < 42` in Supabase before/after deploying.
+The `M. PROMPT_VERSION` contract test in `__tests__/api/scan.test.js` was updated to assert `42`.
+
+Full suite: **1515 passing** (up from 1494 at the end of the prior session), same one known
+pre-existing failure (the cross-list contradiction test, unrelated, unchanged, tracked separately
+since the collision-word audit series).
 
 ---
 

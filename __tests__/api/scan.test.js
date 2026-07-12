@@ -1864,10 +1864,10 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 41 (v41: stripAllergenAdvisory() "contains X% or less of" qualifier fix + "mechanically separated [species]" additive trigger)', () => {
+  test('PROMPT_VERSION is 42 (v42: L2 tree flag-injection unification — unconditional conventional_meat/conventional_dairy/organic-sub-tree flags, clearedBy "organic" persists on red)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(41);
+    expect(PROMPT_VERSION).toBe(42);
   });
 });
 
