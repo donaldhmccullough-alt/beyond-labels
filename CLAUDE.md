@@ -679,7 +679,7 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 42** (L2 tree flag-injection unification — `conventional_meat`/`conventional_dairy`/organic sub-tree flags are now injected unconditionally instead of only when the tree happens to reach their node, plus `clearedBy: 'organic'` now persists alongside a red verdict from an unrelated instant-red flag — see the "Session — L2 tree flag-injection unification" changelog entry below). `scan_cache` has **not yet been invalidated** for this bump — run `DELETE FROM scan_cache WHERE prompt_version < 42` in Supabase before/after deploying. Per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until verified live.
+**Current PROMPT_VERSION is 42** (L2 tree flag-injection unification — `conventional_meat`/`conventional_dairy`/organic sub-tree flags are now injected unconditionally instead of only when the tree happens to reach their node, plus `clearedBy: 'organic'` now persists alongside a red verdict from an unrelated instant-red flag — see the "Session — L2 tree flag-injection unification" changelog entry below). `scan_cache` has **not yet been invalidated** for this bump — run `DELETE FROM scan_cache WHERE prompt_version < 42` in Supabase before/after deploying. Per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until verified live. As of a follow-up session, `PROMPT_VERSION 42` also includes the `maskIgnoredIngredients()` word-boundary fix (see "Session — maskIgnoredIngredients() word-boundary fix" below) — folded in without a bump since zero `scan_cache` rows existed at `prompt_version = 42` at the time it shipped, confirmed by direct query before the fix was written.
 
 **⚠️ Deploy-without-purge in progress (July 2026) — deliberate, temporary, not an oversight.** The commits carrying the PROMPT_VERSION 40→41 and 41→42 bumps (`61d258e` through `a5998a2`) had themselves been sitting local-only for an unknown stretch — `origin/mvp-beta` was still on the PROMPT_VERSION **40** code the entire time, meaning the actually-deployed app has been stamping every fresh scan with `prompt_version: 40`, not 41 or 42, until this push. Those 9 commits were pushed to `origin/mvp-beta` via a fast-forward (`git push origin a5998a2:mvp-beta`) specifically **without** running either purge — no `DELETE FROM scan_cache WHERE prompt_version < 41` and no `< 42`. This was an explicit choice, not a skipped step: the purge is being **intentionally deferred** so that today's `scan_cache` rows (all currently at `prompt_version: 40`, since that's what the live app had been running) can be reviewed first, before they're irreversibly deleted.
 
@@ -3943,6 +3943,89 @@ that manual pass has been done.
 
 ---
 
+### Session — maskIgnoredIngredients() word-boundary fix: "cultured milk"/"unsalted butter"/"salted butter" silently missing conventional_dairy (July 2026)
+
+Follow-up to an investigation session (report-only, no code changed) into a real-world verdict
+inconsistency: two plain, non-organic dairy products — "Medium Cheddar" (barcode 072830005517,
+`"CULTURED MILK, SALT, ENZYMES, ANNATTO (COLOR)"`) and "Semisoft Cheese"/Bel (barcode 041757026288,
+`"PASTEURIZED CULTURED MILK, SALT, QUEST MICROBIAL ENZYMES..."`) — came back `verdict: 'yellow'` with a
+completely **empty** `flags` array, while two structurally identical dairy products ("Whole Milk
+Mozzarella," "Light String Cheese") correctly came back red with a `conventional_dairy` flag. That
+investigation traced the divergence to `maskIgnoredIngredients()` (`lib/scanHelpers.js`) and confirmed
+it as a real bug, not an intentional distinction — this session fixes it.
+
+**Root cause**: `maskIgnoredIngredients()` masks every `ALWAYS_IGNORE_INGREDIENTS` term via plain
+substring search with no word-boundary check. Bare `'culture'` is a literal 7-character substring of
+`'cultured'` (`culture` + `d`) — masking it stripped `cultur` + `e` out of `"cultured milk"`, leaving
+`"       d milk"`, which no longer contains the `MILK_DERIVED_INGREDIENTS` trigger `'cultured milk'` as
+a contiguous substring. Same mechanism, different term: bare `'salt'` is a substring of
+`'unsalted'`/`'salted'`, corrupting the `'unsalted butter'`/`'salted butter'` triggers identically. Both
+silently suppressed `conventional_dairy` detection for any non-organic dairy product whose only dairy
+signal was one of these phrases — confirmed directly: `containsMilkDerived()` returned `false` on the
+masked text for all four corrupted phrases, `true` on the unmasked text.
+
+**Step 0 — PROMPT_VERSION bump check, done before touching any code.** Queried `scan_cache` directly
+(read-only, service-role key) for rows at `prompt_version = 42`: **zero rows found** — the table's full
+distribution is `{40: 86}`, consistent with the already-documented deploy-without-purge state (no fresh
+scans have landed since the v41/v42 code went live). Per explicit instruction, since no v42-cached data
+exists yet to be silently invalidated by this fix, it ships folded directly into the current
+`PROMPT_VERSION 42` — **no bump to 43**.
+
+**Step 1 — full collision audit, not just the two known terms.** Cross-checked every
+`ALWAYS_IGNORE_INGREDIENTS` term against every trigger phrase in every list actually consumed via
+`maskIgnoredIngredients()`'s output (confirmed via grep of `pages/api/scan.js`: `MILK_DERIVED_INGREDIENTS`,
+`MEAT_DERIVED_INGREDIENTS`, `FORTIFIED_VITAMINS`, `NATURAL_COLORANTS`, `MEAT_INGREDIENT_TERMS`, plus the
+literal `'olive oil'` check — `allIngredientsPrefixedOrganic()` was confirmed to run on raw, unmasked
+text and is out of scope). Found **7 total collisions**, split into two structurally different shapes:
+
+| Term | Corrupts | Shape | Fixed by this change? |
+|---|---|---|---|
+| `culture` | `cultured milk`, `cultured pasteurized milk`, `cultured lowfat milk`, `cultured butter` (all `MILK_DERIVED_INGREDIENTS`) | letter-adjacent — embedded inside a larger word | ✅ yes |
+| `salt` | `unsalted butter`, `salted butter` (`MILK_DERIVED_INGREDIENTS`) | letter-adjacent — embedded inside a larger word | ✅ yes |
+| `yeast` | `selenium yeast` (`FORTIFIED_VITAMINS`, its *only* selenium trigger) | **bounded** — `yeast` is a genuine standalone word within the trigger, not embedded in a larger word | ❌ no — different bug shape, out of scope for a letter-adjacency fix; logged as its own item under "Pending Policy Decisions" |
+
+The `selenium yeast` case is real and live (confirmed: `containsFortifiedVitamins()` returns `true` on
+unmasked `"...selenium yeast..."`, `false` after masking) but a letter-adjacency boundary check can't
+fix it — `yeast` legitimately stands alone there, the same way it legitimately stands alone as its own
+ignorable ingredient everywhere else. Fixing it would need a different mechanism (e.g. excluding
+`'selenium yeast'` from ever being masked, or checking that one trigger against unmasked text). Left
+unfixed, per instruction, with a `test()` that documents the current (still-incorrect) behavior
+explicitly rather than silently omitting coverage.
+
+**Step 2 — the fix.** Added `isLetterAdjacentMatch(text, idx, term)` to `lib/scanHelpers.js`, mirroring
+the boundary-check shape already established in `lib/rulesEngine.js`'s
+`isAdjacentToLetterUnlessAllowlisted()` for the identical bug class on the trigger-matching side (see
+the July 2026 collision-word audit series). `maskIgnoredIngredients()`'s matching loop now skips masking
+any occurrence where the character immediately before or after is a letter, applied generally across
+every `ALWAYS_IGNORE_INGREDIENTS` term — not a one-off carve-out for `culture`/`salt` — so any other
+letter-adjacent collision (present or introduced later) is covered by construction. Confirmed genuinely
+standalone occurrences (bare `"cheese culture"`, bare `"salt"`) are still masked exactly as before.
+
+**Step 3 — tests.** New [lib/scanHelpers.test.js](lib/scanHelpers.test.js) (15 tests, this file's first
+test coverage) — all 6 confirmed letter-adjacent collisions now correctly flag `conventional_dairy`
+(`cultured milk`, `cultured pasteurized milk`, `cultured lowfat milk`, `cultured butter`, `unsalted
+butter`, `salted butter`); the exact Medium Cheddar and Bel Semisoft Cheese production repro strings
+(including the latter's garbled trailing OCR/packaging text, confirmed as a red herring — it doesn't
+affect the outcome); regression guards confirming the already-working Whole Milk Mozzarella / Light
+String Cheese cases are unaffected; regression guards confirming genuinely standalone `culture`/`salt`/
+`cultures` are still masked correctly, including a string-edge-boundary case (term at the very start or
+end of the text, where there's no adjacent character at all); and one test documenting the deliberately
+unresolved `selenium yeast` finding, with an explicit comment instructing future sessions to update
+(not silently delete) it if that gap is ever closed. Full suite: **1756 passing** (up from 1741), same
+one known pre-existing failure (the cross-list contradiction test from the collision-word audit series,
+unrelated, unchanged).
+
+**PROMPT_VERSION**: stays at **42**, per the Step 0 finding above — no bump, no `scan_cache` purge
+beyond what's already pending from the documented v41/v42 deploy-without-purge state. This fix changes
+real `flags`/`verdict` output going forward (any non-organic dairy product whose only dairy signal is a
+`cultured ___` or `un/salted ___` phrase now correctly gets `conventional_dairy` + red instead of a
+false clean/yellow), but since it ships before any v42-stamped row exists, there's nothing already
+cached under v42 that would need distinguishing from this fixed behavior.
+
+**Not deployed** — committed locally only, per instruction. `origin/mvp-beta` is unchanged.
+
+---
+
 ## Golden Master Snapshot (L1/L2 Unification Project — Stage 1)
 
 The rules engine (`lib/rulesEngine.js`) and the L1/L2 post-processing logic in `pages/api/scan.js`
@@ -4147,6 +4230,7 @@ Items deferred from the June 2026 unverified ingredients audit — pending team 
 - **Vitamin D3 mandatory fortification in organic milk** — FORTIFIED_VITAMINS caution flag fires on organic dairy products that use D3 as required by organic standards; may confuse users who expect a green for organic milk
 - **Node 8 vs Node 8b ordering for `en:eggs`** — found during the `is_meat` corroboration design review (July 2026): `'en:eggs'` is in `MEAT_CATEGORIES`, and in the L2 tree Node 8 (conventional meat) is evaluated before Node 8b (conventional eggs). An OFF-tagged egg product may be getting generic conventional-meat messaging instead of the dedicated egg messaging Node 8b was built for. The existing `isMeat is true for en:eggs` test (Suite H) only asserts the `isMeat` boolean, not which node actually fires or what flag/message the user sees, so this wasn't caught. Needs investigation before deciding on a fix.
 - **NEXT UP — `wheat`/`"wheatless"` semantic-negation false positive** (found during the July 2026 systematic bare-trigger audit, PROMPT_VERSION 37 session, deliberately excluded from that batch): a product labeled `"wheatless"` currently flags as *containing* wheat — the exact opposite of what the label claims. This is a structurally different bug than every collision fixed in that session (`corn`/`malt`/`farro`/`bha`/`beans`/`olean`/`rye`/`flax`/`miso`/`hing`) — those are all *unrelated-word* substring collisions fixed via `isAdjacentToLetterUnlessAllowlisted()`; `wheatless` is a *semantic negation* suffix, the same class of problem `isInFreeOrNonContext()` already solves for `"-free"`/`"non-"` (e.g. `"egg-free"`, `"canola-free"`). The fix is almost certainly extending that existing guard to also recognize `"-less"`, not adding a new letter-adjacency check. Needs its own session: confirm the fix doesn't accidentally suppress a real "wheat" declaration that happens to end in "less" for an unrelated reason (none currently known, but verify), add regression tests, and bump `PROMPT_VERSION` per the usual pattern since it changes real `flags`/`verdict` output.
+- **bare `'yeast'` corrupts the FORTIFIED_VITAMINS trigger `'selenium yeast'`** (found during the July 2026 `maskIgnoredIngredients()` word-boundary audit — see "Session — maskIgnoredIngredients() word-boundary fix" below): unlike the `culture`/`salt` collisions fixed in that session, `'yeast'` occurs as a genuine standalone word within `'selenium yeast'` (bounded by a space, not embedded inside a larger word) — so the letter-adjacency boundary check doesn't and shouldn't protect it; masking `'yeast'` there is "correctly" behaving per that check's own rule, just wrong for this one specific compound trigger. `'selenium yeast'` is FORTIFIED_VITAMINS's *only* selenium-related trigger (confirmed via grep — no bare `'selenium'` fallback), so this is a real, live information-loss bug: an organic product listing "selenium yeast" as a fortification ingredient silently fails to get the `fortified_vitamins` caution flag. Confirmed via direct testing (`containsFortifiedVitamins()` returns `true` on unmasked text, `false` after masking). Needs its own decision — options include excluding `'selenium yeast'` specifically from ever being masked, or having `containsFortifiedVitamins()` check against unmasked text for just this trigger — before implementing, since either approach has its own trade-offs worth reviewing first.
 
 ---
 
