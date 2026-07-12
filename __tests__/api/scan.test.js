@@ -3300,26 +3300,28 @@ describe('W. Phase A — unconditional flag injection', () => {
 
   // ── W5: organic sub-tree flags now evaluated despite an instant-red flag ──
 
-  test('W5: organic product + additives (red 40) + fortified vitamins → fortified_vitamins now injected alongside additives', async () => {
+  test('W5: organic product + additives (red 40) + fortified vitamins → fortified_vitamins now injected alongside additives, clearedBy stays "organic" (Part 2)', async () => {
     // Before Phase A, hasInstantRedFlag being true meant the organic branch
     // (and its fortified_vitamins/natural_colorants/olive-oil checks) was
     // never even reached — folic acid/cyanocobalamin would never have been
-    // evaluated at all.
+    // evaluated at all. Before Phase B, clearedBy was discarded to null
+    // whenever an instant-red flag fired, even on a genuinely organic
+    // product — Part 2 keeps clearedBy: 'organic' visible instead.
     mockFetchOnce(wResp({
       ingredientsText: 'organic oats, folic acid, cyanocobalamin, red 40',
       labelsTags:      ['en:usda-organic'],
     }));
     const res = makeRes();
     await handler(makeReq('POST', { barcode: '000000000924', userLevel: 2 }), res);
-    expect(res.body.verdict).toBe('red'); // additives still wins verdict/clearedBy, unchanged
-    expect(res.body.clearedBy).toBeNull();
+    expect(res.body.verdict).toBe('red'); // additives still wins verdict, unchanged
+    expect(res.body.clearedBy).toBe('organic'); // Part 2: no longer discarded to null
     expect(res.body.flags.some(f => f.category === 'additives')).toBe(true);
     const fortifiedFlag = res.body.flags.find(f => f.category === 'fortified_vitamins');
     expect(fortifiedFlag).toBeDefined();
     expect(fortifiedFlag.severity).toBe('caution');
   });
 
-  test('W5b: organic product + additives + natural colorants (annatto extract) → natural_colorants now injected alongside additives', async () => {
+  test('W5b: organic product + additives + natural colorants (annatto extract) → natural_colorants now injected alongside additives, clearedBy stays "organic"', async () => {
     mockFetchOnce(wResp({
       ingredientsText: 'organic rice, annatto extract, red 40',
       labelsTags:      ['en:usda-organic'],
@@ -3327,11 +3329,12 @@ describe('W. Phase A — unconditional flag injection', () => {
     const res = makeRes();
     await handler(makeReq('POST', { barcode: '000000000925', userLevel: 2 }), res);
     expect(res.body.verdict).toBe('red');
+    expect(res.body.clearedBy).toBe('organic');
     expect(res.body.flags.some(f => f.category === 'additives')).toBe(true);
     expect(res.body.flags.some(f => f.category === 'natural_colorants')).toBe(true);
   });
 
-  test('W5c: organic product + additives + olive oil → olive_oil_adulteration now injected alongside additives', async () => {
+  test('W5c: organic product + additives + olive oil → olive_oil_adulteration now injected alongside additives, clearedBy stays "organic"', async () => {
     mockFetchOnce(wResp({
       ingredientsText: 'organic olive oil, red 40, salt',
       labelsTags:      ['en:usda-organic'],
@@ -3339,6 +3342,7 @@ describe('W. Phase A — unconditional flag injection', () => {
     const res = makeRes();
     await handler(makeReq('POST', { barcode: '000000000926', userLevel: 2 }), res);
     expect(res.body.verdict).toBe('red');
+    expect(res.body.clearedBy).toBe('organic');
     expect(res.body.flags.some(f => f.category === 'additives')).toBe(true);
     expect(res.body.flags.some(f => f.category === 'olive_oil_adulteration')).toBe(true);
   });
@@ -3411,5 +3415,133 @@ describe('W. Phase A — unconditional flag injection', () => {
     const meatFlags = res.body.flags.filter(f => f.category === 'conventional_meat');
     expect(meatFlags).toHaveLength(1);
     expect(meatFlags[0].summary).toMatch(/gelatin/i);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// X. Phase B — clearedBy: 'organic' persists alongside an instant-red flag
+//
+// Part 2 of the L2 tree flag-injection change: hasInstantRedFlag still wins
+// verdict (red) immediately, but if the product is also organic-labeled,
+// clearedBy is now 'organic' instead of being discarded to null. Verdict
+// priority/logic itself is otherwise UNCHANGED.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe("X. Phase B — clearedBy 'organic' persists alongside an instant-red flag", () => {
+  /** Minimal OFF response builder for Suite X tests. */
+  function xResp({
+    productName     = 'Test Product',
+    ingredientsText = 'water, salt',
+    labelsTags      = [],
+    categoriesTags  = [],
+  } = {}) {
+    return {
+      status: 1,
+      product: {
+        product_name:     productName,
+        ingredients_text: ingredientsText,
+        labels_tags:      labelsTags,
+        categories_tags:  categoriesTags,
+      },
+    };
+  }
+
+  test('X1: organic + additives, none of the three organic-sub-tree conditions apply → verdict red, clearedBy "organic" still shows', async () => {
+    // "organic quinoa, sea salt, red 40" has no fortified-vitamin, colorant,
+    // or olive-oil signal at all — confirms clearedBy reflects certification
+    // status independent of whether any organic-sub-tree flag fired.
+    mockFetchOnce(xResp({
+      ingredientsText: 'organic quinoa, sea salt, red 40',
+      labelsTags:      ['en:usda-organic'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000940', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.clearedBy).toBe('organic');
+    expect(res.body.flags.some(f => f.category === 'additives')).toBe(true);
+    expect(res.body.flags.some(f => f.category === 'fortified_vitamins')).toBe(false);
+    expect(res.body.flags.some(f => f.category === 'natural_colorants')).toBe(false);
+    expect(res.body.flags.some(f => f.category === 'olive_oil_adulteration')).toBe(false);
+  });
+
+  test('regression X2: organic-clean-green case (no instant-red present) → clearedBy "organic", verdict green, unchanged', async () => {
+    mockFetchOnce(xResp({
+      ingredientsText: 'organic oats, organic honey, sea salt',
+      labelsTags:      ['en:usda-organic'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000941', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.clearedBy).toBe('organic');
+    expect(res.body.flags).toHaveLength(0);
+  });
+
+  test('regression X3: non-organic instant-red case → clearedBy stays null, unchanged', async () => {
+    mockFetchOnce(xResp({
+      ingredientsText: 'quinoa, sea salt, red 40',
+      labelsTags:      [],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000942', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.clearedBy).toBeNull();
+    expect(res.body.flags.some(f => f.category === 'additives')).toBe(true);
+  });
+
+  // ── X4: real-world shape — "The Great Organic Uncured Beef Hot Dog" ──────
+  //
+  // IMPORTANT: conventional_meat and clearedBy: 'organic' can never co-occur
+  // for a meat/dairy product under the current design. Phase A's meat/dairy
+  // injection block (pages/api/scan.js) is wrapped in `if (!hasOrganic) {...}`
+  // — a genuinely organic-certified product should NOT get a "conventional
+  // meat, no cert" flag, since it does have a cert. This is correct, not a
+  // bug: the task description's expectation of seeing "conventional_meat +
+  // additives AND clearedBy: 'organic' together" for this example turns out
+  // to be unreachable for any meat/dairy product as currently designed —
+  // confirmed by first writing the test as literally requested and watching
+  // it fail (verdict came back 'green': with hasOrganic true, Phase A never
+  // injected conventional_meat, so the product had zero flags at all).
+  //
+  // The real production barcode (025317161916) was originally found via the
+  // investigation's own query for rows where `is_meat === true`, an
+  // instant-red flag was present, no conventional_meat flag existed, AND
+  // `cleared_by !== 'organic'` — meaning the REAL cached row's clearedBy was
+  // already null, not 'organic', consistent with the known "product name
+  // says Organic but OFF has no real usda-organic tag" data gap documented
+  // in CLAUDE.md's Known Limitations. X4a reconstructs that real, honest
+  // shape. X4b demonstrates the hypothetical case where OFF DOES carry the
+  // real tag, to show the two fixes are internally consistent with each
+  // other rather than contradictory.
+
+  test('X4a: real-world shape — organic-named beef hot dog withOUT an actual OFF usda-organic tag (matches the real cached row) → conventional_meat + additives together, clearedBy stays null', async () => {
+    mockFetchOnce(xResp({
+      productName:     'The Great Organic Uncured Beef Hot Dog',
+      ingredientsText: 'organic uncured beef, water, sea salt, organic celery powder, sodium nitrite',
+      labelsTags:      [], // no real OFF usda-organic tag, despite the product name
+      categoriesTags:  ['en:beef'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '025317161916', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.clearedBy).toBeNull();
+    expect(res.body.flags.some(f => f.category === 'additives')).toBe(true);
+    const meatFlag = res.body.flags.find(f => f.category === 'conventional_meat');
+    expect(meatFlag).toBeDefined();
+    expect(meatFlag.severity).toBe('reject');
+  });
+
+  test('X4b: same ingredients, but WITH a real OFF usda-organic tag → conventional_meat correctly NOT injected, clearedBy "organic", additives still wins verdict', async () => {
+    mockFetchOnce(xResp({
+      productName:     'The Great Organic Uncured Beef Hot Dog',
+      ingredientsText: 'organic uncured beef, water, sea salt, organic celery powder, sodium nitrite',
+      labelsTags:      ['en:usda-organic'],
+      categoriesTags:  ['en:beef'],
+    }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '025317161917', userLevel: 2 }), res);
+    expect(res.body.verdict).toBe('red');
+    expect(res.body.clearedBy).toBe('organic');
+    expect(res.body.flags.some(f => f.category === 'additives')).toBe(true);
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
   });
 });

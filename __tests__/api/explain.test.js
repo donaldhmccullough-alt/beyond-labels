@@ -25,7 +25,7 @@ jest.mock('@anthropic-ai/sdk', () => {
 });
 
 const handler = require('../../pages/api/explain').default;
-const { parseExplanationResponse } = require('../../pages/api/explain');
+const { parseExplanationResponse, buildUserMessage } = require('../../pages/api/explain');
 
 function makeReq(method = 'POST', body = {}) {
   return { method, body };
@@ -79,6 +79,63 @@ describe('A. parseExplanationResponse()', () => {
       'Here is the explanation:\n{"summary":"Fine.","details":{}}\nLet me know if you need more.'
     );
     expect(result).toEqual({ summary: 'Fine.', details: {} });
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// A2. buildUserMessage() — clearedBy: 'organic' + verdict: 'red' (Phase B)
+//
+// This combination did not exist before the L2 tree flag-injection change
+// (Part 2/3): previously an instant-red flag always discarded clearedBy to
+// null, so buildUserMessage() never had to reason about an organic-cleared
+// product that was also red. Confirms the new combination routes through the
+// same "Flagged categories" branch as any other flagged product — clearedBy
+// is only ever consulted in flagsSection's "no flags" branches, which never
+// apply here since flags is non-empty.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe("A2. buildUserMessage() — clearedBy: 'organic' + verdict: 'red'", () => {
+  test('flags present + clearedBy "organic" + verdict "red" → routes through the normal "Flagged categories" branch, not a cert/cleared-specific one', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'additives', severity: 'reject', matchedIngredient: 'red 40', summary: 'x' }],
+      'Test Product',
+      'organic oats, folic acid, cyanocobalamin, red 40',
+      2,
+      'organic',
+      null
+    );
+    expect(message).toContain('Flagged categories:');
+    expect(message).toContain('additives (reject): found "red 40"');
+    // None of the "no flags" branch strings should appear — confirms clearedBy
+    // is not accidentally routing this into the cert_unconfirmed/default-yellow/
+    // pure_water text despite being 'organic'.
+    expect(message).not.toContain('could not confirm USDA organic certification');
+    expect(message).not.toContain('pure water product');
+    expect(message).not.toContain('did not meet Level 2 certification standards');
+  });
+
+  test('same combination but with a second flagged category (fortified_vitamins alongside additives) → both appear, still via the normal branch', () => {
+    const message = buildUserMessage(
+      'red',
+      [
+        { category: 'additives', severity: 'reject', matchedIngredient: 'red 40', summary: 'x' },
+        { category: 'fortified_vitamins', severity: 'caution', matchedIngredient: '', summary: 'y' },
+      ],
+      'Test Product',
+      'organic oats, folic acid, cyanocobalamin, red 40',
+      2,
+      'organic',
+      null
+    );
+    expect(message).toContain('Flagged categories:');
+    expect(message).toContain('additives (reject)');
+    expect(message).toContain('fortified_vitamins (caution)');
+  });
+
+  test('regression: clearedBy "organic" + verdict "green" + zero flags (the ordinary organic-clean case) is unaffected', () => {
+    const message = buildUserMessage('green', [], 'Test Product', 'organic oats, organic honey, sea salt', 2, 'organic', null);
+    expect(message).toContain('No concerning ingredients found — product passed all checks.');
   });
 });
 

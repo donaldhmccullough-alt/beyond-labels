@@ -498,8 +498,17 @@ function computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags,
 
     if (hasInstantRedFlag) {
       // Nodes 1–3 hit — synthetic / seed-oil / trans-fat contamination.
-      verdict   = 'red';
-      clearedBy = null;
+      verdict = 'red';
+      // Part 2 of the L2 tree flag-injection change (see CLAUDE.md): if the
+      // product also carries USDA Organic certification, clearedBy is now
+      // 'organic' instead of being discarded to null. The cert context stays
+      // visible even though verdict is red for an unrelated reason (a real
+      // synthetic additive/seed oil/trans fat is not excused by an organic
+      // label) — this holds whether or not any of the three organic
+      // sub-tree flags (fortified_vitamins/natural_colorants/
+      // olive_oil_adulteration) actually fired, since clearedBy describes
+      // certification status, not which concerns were found.
+      clearedBy = hasOrganic ? 'organic' : null;
 
     } else if (hasOrganic) {
       // ── Node 4: ORGANIC PATH ──────────────────────────────────────────────
