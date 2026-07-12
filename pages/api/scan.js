@@ -148,6 +148,17 @@ async function captureUnverifiedIngredients(ingredients, productName, barcode) {
  * parseExplanationResponse() in ./explain) — never surfaces raw,
  * malformed text as the explanation.
  *
+ * Three distinct failure causes all collapse into this same `null` return
+ * value (missing API key / thrown exception / unparseable response) — none
+ * of them are distinguishable from the stored scan_cache row alone, since
+ * the raw Claude response is never persisted. Each is logged separately
+ * here (console only — never persisted to scan_cache or any other table) so
+ * a real occurrence can be diagnosed after the fact instead of only
+ * inferred. The unparseable-response case additionally logs category/flag
+ * counts, since category count is the working theory for what drives
+ * truncation and this lets that theory be confirmed or ruled out with real
+ * data over time.
+ *
  * @param {string}   verdict
  * @param {object[]} flags
  * @param {string}   productName
@@ -157,7 +168,10 @@ async function captureUnverifiedIngredients(ingredients, productName, barcode) {
  */
 async function fetchExplanation(verdict, flags, productName, ingredientsText, userLevel, clearedBy = null, unverifiedReason = null) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) {
+    console.error('[scan] explanation fetch: missing API key');
+    return null;
+  }
 
   try {
     const client = new Anthropic({ apiKey });
@@ -173,8 +187,18 @@ async function fetchExplanation(verdict, flags, productName, ingredientsText, us
     });
 
     const rawText = message.content.find(b => b.type === 'text')?.text ?? '{}';
-    return parseExplanationResponse(rawText);
-  } catch {
+    const parsed = parseExplanationResponse(rawText);
+
+    if (!parsed) {
+      const categoryCount = new Set((flags || []).map(f => f.category)).size;
+      console.error(
+        `[scan] explanation fetch: unparseable response, category count: ${categoryCount}, flag count: ${(flags || []).length}`
+      );
+    }
+
+    return parsed;
+  } catch (err) {
+    console.error('[scan] explanation fetch: API error:', err);
     return null;
   }
 }

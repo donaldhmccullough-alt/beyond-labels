@@ -4038,6 +4038,67 @@ confirmed zero rows exist at `prompt_version = 42`, so there was nothing stale t
 
 ---
 
+### Session — ConcernCard rules-engine summary fallback + explanation-failure observability logging (July 2026)
+
+Follow-up to the "Nutty Buddy Creme Pies" investigation (barcode 024300043130, report-only, no code
+changed) into a `scan_cache` row with `explanation: null` and 7 flagged categories — the only
+null-explanation row in the entire table, and the only row above 5 categories. That investigation
+confirmed the `null` degradation itself is working as designed (not a regression to the old
+raw-JSON-leak bug), but surfaced two real, independent gaps: (1) `ConcernCard` renders nothing at all
+for a category when the AI explanation is missing, even though the rules engine already generates a
+perfectly good plain-language `flag.summary` for every flag, sitting unused in the same `scan_cache`
+row; (2) three structurally different failure causes (missing API key / thrown exception / genuinely
+unparseable response) all silently collapse into the same `explanation: null`, with no way to tell
+them apart after the fact — that gap is exactly why the investigation could confirm the fix was
+*working* but couldn't confirm *why* this specific row failed. This session closes both. Neither
+touches verdict/flags/explanation-generation logic — display and logging only.
+
+**Part 1 — `components/verdict/ConcernCard.jsx`.** Added `getFallbackSummary(flags)`, exported at
+module scope (same "extract for testability" pattern as `SwapsScreen.jsx`'s `FLAG_CATEGORY_MAP` — this
+project has no React rendering test infrastructure). Returns the **first** flag's `.summary`, not one
+paragraph per matched ingredient — a category like `conventional_crops` can carry a dozen-plus flags
+whose summaries are the same template sentence with only the ingredient name swapped (confirmed
+directly from the Nutty Buddy row's real data), so stacking all of them would read as repetitive noise.
+One representative sentence in the same single-paragraph slot the AI explanation normally occupies
+matches how the *working* AI explanation already behaves (one category-level explanation, not one per
+ingredient) — the ingredient chips above the text already list every matched ingredient regardless.
+`ConcernCard` now computes `displayExplanation = explanation || getFallbackSummary(flags)` and renders
+that instead of the raw `explanation` prop. Because `VerdictScreen.jsx` already passes
+`explanation?.details?.[cat]` (not the whole `explanation` object) into `ConcernCard`, this single
+change correctly covers both failure shapes named in the task — the whole AI explanation being `null`,
+and the whole explanation succeeding but one specific category's `details` entry being absent — without
+any special-casing, since both collapse to the same falsy `explanation` prop from `ConcernCard`'s point
+of view.
+
+**Part 2 — observability logging, `fetchExplanation()` (`pages/api/scan.js`) and the standalone
+`pages/api/explain.js` handler.** Added `console.error` at each of the three failure points, using this
+codebase's existing `[scan]`/(new) `[explain]` log-prefix convention:
+- Missing API key: `'[scan] explanation fetch: missing API key'` / `'[explain] explanation fetch: missing API key'`
+- Any thrown exception: `'[scan] explanation fetch: API error:', err` / `'[explain] explanation fetch: API error:', err`
+- Unparseable/truncated response: `` `[scan] explanation fetch: unparseable response, category count: ${N}, flag count: ${M}` `` (same shape for `[explain]`) — the raw Claude response text is never logged, only the counts. Category count is computed via `new Set(flags.map(f => f.category)).size`, not the raw flag count, since the working theory (category count driving truncation risk, not flag count) is specifically what this logging exists to confirm or rule out going forward.
+
+Console output only — nothing added to any `scan_cache` upsert or any other DB write, per instruction.
+
+**Tests — net +16, reconciled**: `__tests__/components/ConcernCard.test.js` (new file, **+10**) — direct
+unit tests of `getFallbackSummary()` (single flag, multiple flags returning only the first and not a
+joined/repeated list, missing/empty `summary` field, empty/undefined `flags`) plus the
+`explanation || getFallbackSummary(flags)` selection logic mirrored from the component (AI explanation
+present is never overridden by the fallback; AI explanation missing falls back correctly; the
+whole-object-null vs. single-category-missing scenarios are confirmed to hit the identical code path).
+`__tests__/api/scan.test.js` Suite T (**+3**: T5–T7) and `__tests__/api/explain.test.js` Suite C
+(**+3**: C5–C7) — each confirms the exact log message and argument for all three failure causes,
+including a deliberately-crafted 4-flags/3-categories fixture (trans_fats ×1, seed_oils ×2,
+conventional_crops ×1) proving the category count is a real `Set`-based dedup, not just the flag count
+relabeled. 10 + 3 + 3 = 16, matching 1756 → **1772 passing** exactly. Same one known pre-existing
+failure (the cross-list contradiction test from the collision-word audit series, unrelated, unchanged).
+
+**No `PROMPT_VERSION` bump** — confirmed no `analyzeIngredients()` `flags`/`verdict`/`clearedBy` impact;
+this is a rendering fallback plus console-only logging, nothing persisted differently to `scan_cache`.
+
+**Not deployed** — committed locally only, per instruction, for review before pushing.
+
+---
+
 ## Golden Master Snapshot (L1/L2 Unification Project — Stage 1)
 
 The rules engine (`lib/rulesEngine.js`) and the L1/L2 post-processing logic in `pages/api/scan.js`

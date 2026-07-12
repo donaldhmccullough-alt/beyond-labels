@@ -2696,6 +2696,71 @@ describe('T. fetchExplanation() — Claude response parsing', () => {
       expect.objectContaining({ max_tokens: 2000 })
     );
   });
+
+  // ── Observability logging (console only, never persisted to scan_cache) ──
+  // Three distinct failure causes previously collapsed into the same silent
+  // `explanation: null` with no way to tell them apart after the fact — see
+  // CLAUDE.md's "Nutty Buddy Creme Pies" investigation. These tests confirm
+  // each is now logged distinctly.
+
+  test('T5: missing API key logs a distinct message before returning null', async () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    mockFetchOnce(explanationOffResp());
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001005', userLevel: 2 }), res);
+
+    expect(res.body.explanation).toBeNull();
+    expect(errorSpy).toHaveBeenCalledWith('[scan] explanation fetch: missing API key');
+    expect(mockAnthropicCreate).not.toHaveBeenCalled();
+
+    errorSpy.mockRestore();
+  });
+
+  test('T6: a thrown exception (network/rate-limit/API error) logs the error object, distinct from the other two cases', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const simulatedError = new Error('simulated rate limit error');
+    mockAnthropicCreate.mockRejectedValueOnce(simulatedError);
+
+    mockFetchOnce(explanationOffResp());
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001006', userLevel: 2 }), res);
+
+    expect(res.body.explanation).toBeNull();
+    expect(errorSpy).toHaveBeenCalledWith('[scan] explanation fetch: API error:', simulatedError);
+
+    errorSpy.mockRestore();
+  });
+
+  test('T7: an unparseable/truncated response logs category count and flag count — the working theory for what drives truncation', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    // 4 flags across 3 distinct categories (trans_fats x1, seed_oils x2,
+    // conventional_crops x1) — deliberately flags > categories, so the log
+    // message's category count can only be correct if it's actually
+    // deduping by category (a Set), not just re-reporting the flag count.
+    mockAnthropicCreate.mockResolvedValueOnce({
+      content: [{ type: 'text', text: '```json\n{\n  "summary": "truncated mid-generation' }],
+    });
+    mockFetchOnce({
+      status: 1,
+      product: {
+        product_name:     'Multi-Category Truncation Test Product',
+        ingredients_text: 'partially hydrogenated oil, canola oil, soybean oil, sugar',
+        labels_tags:      [],
+        categories_tags:  [],
+      },
+    });
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001007', userLevel: 2 }), res);
+
+    expect(res.body.explanation).toBeNull();
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[scan] explanation fetch: unparseable response, category count: 3, flag count: 4'
+    );
+
+    errorSpy.mockRestore();
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════════════

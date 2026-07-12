@@ -223,4 +223,60 @@ describe('C. Handler — Claude response parsing', () => {
       expect.objectContaining({ max_tokens: 2000 })
     );
   });
+
+  // ── Observability logging (console only, never persisted anywhere) ──
+  // Mirrors the equivalent tests for fetchExplanation() in scan.test.js's
+  // Suite T — see CLAUDE.md's "Nutty Buddy Creme Pies" investigation.
+
+  test('C5: missing API key logs a distinct message before returning 500', async () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const res = makeRes();
+    await handler(makeReq('POST', { verdict: 'red', flags: [], productName: 'Test' }), res);
+
+    expect(res.statusCode).toBe(500);
+    expect(errorSpy).toHaveBeenCalledWith('[explain] explanation fetch: missing API key');
+    expect(mockAnthropicCreate).not.toHaveBeenCalled();
+
+    errorSpy.mockRestore();
+  });
+
+  test('C6: a thrown exception (network/rate-limit/API error) logs the error object, distinct from the other two cases', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const simulatedError = new Error('simulated rate limit error');
+    mockAnthropicCreate.mockRejectedValueOnce(simulatedError);
+
+    const res = makeRes();
+    await handler(makeReq('POST', { verdict: 'red', flags: [], productName: 'Test' }), res);
+
+    expect(res.statusCode).toBe(502);
+    expect(errorSpy).toHaveBeenCalledWith('[explain] explanation fetch: API error:', simulatedError);
+
+    errorSpy.mockRestore();
+  });
+
+  test('C7: an unparseable/truncated response logs category count and flag count — deduped by category, not just the raw flag count', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockAnthropicCreate.mockResolvedValueOnce({
+      content: [{ type: 'text', text: '```json\n{\n  "summary": "truncated mid-generation' }],
+    });
+    // 4 flags across 3 distinct categories — same shape as scan.test.js's T7,
+    // confirming the count is a Set-based dedup by category, not the flag count.
+    const flags = [
+      { category: 'trans_fats', severity: 'reject', matchedIngredient: 'hydrogenated' },
+      { category: 'seed_oils', severity: 'reject', matchedIngredient: 'canola oil' },
+      { category: 'seed_oils', severity: 'reject', matchedIngredient: 'soybean oil' },
+      { category: 'conventional_crops', severity: 'reject', matchedIngredient: 'sugar' },
+    ];
+    const res = makeRes();
+    await handler(makeReq('POST', { verdict: 'red', flags, productName: 'Test' }), res);
+
+    expect(res.statusCode).toBe(502);
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[explain] explanation fetch: unparseable response, category count: 3, flag count: 4'
+    );
+
+    errorSpy.mockRestore();
+  });
 });

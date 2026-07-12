@@ -223,6 +223,7 @@ export default async function handler(req, res) {
   // ── API key check ─────────────────────────────────────────────────────────
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
+    console.error('[explain] explanation fetch: missing API key');
     return res.status(500).json({ error: 'ANTHROPIC_API_KEY is not configured on this server.' });
   }
 
@@ -246,7 +247,14 @@ export default async function handler(req, res) {
     if (!parsed) {
       // Unparseable or genuinely truncated response (no closing brace found)
       // — treat the same as any other Claude-call failure. Never surface
-      // the raw, malformed text to the user.
+      // the raw, malformed text to the user. Logged (console only, never
+      // persisted) with category/flag counts — category count is the
+      // working theory for what drives truncation; see fetchExplanation()
+      // in pages/api/scan.js for the same logging on the primary call path.
+      const categoryCount = new Set((flags || []).map(f => f.category)).size;
+      console.error(
+        `[explain] explanation fetch: unparseable response, category count: ${categoryCount}, flag count: ${(flags || []).length}`
+      );
       return res.status(502).json({
         error:  'Failed to generate explanation.',
         detail: 'Claude returned an unparseable or truncated response.',
@@ -260,8 +268,10 @@ export default async function handler(req, res) {
 
   } catch (err) {
     if (err.status === 401) {
+      console.error('[explain] explanation fetch: API error:', err);
       return res.status(500).json({ error: 'Anthropic API key is invalid or expired.' });
     }
+    console.error('[explain] explanation fetch: API error:', err);
     return res.status(502).json({
       error:  'Failed to generate explanation.',
       detail: err.message,
