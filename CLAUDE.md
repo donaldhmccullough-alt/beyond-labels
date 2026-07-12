@@ -516,6 +516,8 @@ Only `confirmed` enables Approve outright. Any other state requires the admin to
 - **`approved`**: inserts one `swap_products` row (`source: 'scan_approved'`, all the submitted fields), then one `swap_candidate_reviews` row (`decision: 'approved'`, `swap_product_id` set to the new row's id; `note` set to `"approved without current scan_cache verification"` when the client's `confirmedCurrent` field is `false`, else `null`). The client sends `confirmedCurrent` computed from the verification status at submit time (`buildApprovePayload()`), not re-derived server-side — the server trusts the client's own status snapshot rather than re-running `getVerificationStatus()` itself.
 - **Partial-failure handling**: no real multi-table transaction (same "no stored procedures/RPC in this codebase" reasoning as the list endpoint's JS-side aggregation) — if the `swap_candidate_reviews` insert fails *after* the `swap_products` insert already succeeded, the `swap_products` row is deleted as a compensating action so it's never left orphaned (a swap that looks approved with no review record explaining why). This is "handle partial failure sensibly," not a true transaction — a hard crash between the two writes (as opposed to the second write returning an error) could still leave an orphaned row; that residual risk is accepted, consistent with every other multi-step Supabase write in this codebase.
 
+**⚠️ Never exercised by a real human click-through.** This write path (both `approved` and `rejected`) has automated test coverage only (`__tests__/api/admin/swap-candidates/review.test.js`) — no one has actually clicked Approve or Reject on a real candidate card in a running app and confirmed the resulting `swap_products`/`swap_candidate_reviews` rows look right end-to-end. It is live in production as of the July 12, 2026 deploy (see "Deploy status" below), so it *can* be triggered by a real admin right now — worth a real click-through on a real (or synthetic) candidate before trusting it for a real approval.
+
 **⚠️ Browser UI verification limitation, noted explicitly rather than claimed as done**: the pure logic (`getVerificationStatus`, form validation, payload shaping) and both API routes are thoroughly unit-tested and were exercised directly. The actual rendered page, however, could not be interactively verified end-to-end in this session's browser preview — a **freshly created, completely trivial Pages Router test page** (bare `useState` + `useEffect`, no imports from this project at all) exhibited the identical symptom (`useEffect` never firing) in the same preview environment, which points at a Pages-Router-specific limitation in that preview tooling rather than a defect in this page's code — but that inference wasn't fully proven, either. If this page doesn't render/redirect correctly in a real browser, start there.
 
 ---
@@ -3844,6 +3846,18 @@ cross-list contradiction test, unrelated, unchanged since the collision-word aud
 (the review screen and approve/reject actions) together give real scanned green-verdict products a path
 into `swap_products` without hand-curation, gated by human review and an explicit acknowledgment when
 a candidate's current status can't be automatically confirmed.
+
+**Deploy status: pushed and deployed, not just committed.** Phases 0 through 3b (`a344817` through
+`f71d889`) were pushed to `origin/mvp-beta` via a clean fast-forward on July 12, 2026. Per this
+project's own "committed ≠ deployed" discipline (see the deploy-gap incident elsewhere in this file),
+this was independently confirmed rather than assumed from the push succeeding: GitHub's commit status
+API (`GET /repos/.../commits/f71d889.../status`) shows a `Vercel` context with `state: success` and
+`description: "Deployment has completed"`, timestamped `2026-07-12T19:03:35Z`. So all of Phases 0–3b
+described above — the `swap_products` migration, subcategory support, Show More, and the full admin
+review workflow including the approve/reject write path — is live in production as of that timestamp,
+not merely sitting in a local branch. No `scan_cache` purge was run or needed as part of this push —
+none of these commits touch `analyzeIngredients()`/verdict logic, so it's unrelated to the separate,
+deliberately-deferred PROMPT_VERSION 41/42 purge decision documented under "Scan Cache Pattern" above.
 
 ---
 
