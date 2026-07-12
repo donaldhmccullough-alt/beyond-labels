@@ -395,16 +395,15 @@ const GAME_MEAT_CATEGORIES = new Set(['en:game-meats', 'en:game', 'en:wild-game'
 ## Swaps System (FULLY BUILT)
 
 ### Concept
-When a user taps "See Cleaner Swaps" on the VerdictScreen, the app surfaces curated store-bought alternatives from a Google Sheet database. Swaps are level-aware and category-matched to the scanned product.
+When a user taps "See Cleaner Swaps" on the VerdictScreen, the app surfaces curated store-bought alternatives from the `swap_products` Supabase table. Swaps are level-aware and category-matched to the scanned product.
 
-### Google Sheet
-- Sheet ID stored in `SWAP_SHEET_ID` env var
-- Fetched as CSV, cached in-memory for 1 hour
-- Column order (exact): `product_name, brand, category, barcode, certifications, why_it_passes, where_to_buy, image_url, swap_level`
-- `certifications`: semicolon-separated — must use exact strings `usda-organic` and/or `non-gmo-project-verified`
-- `why_it_passes`: semicolon-separated reasons (rendered as checklist in UI)
-- `where_to_buy`: comma-separated store names
-- `swap_level`: `1` (passes Level 1 criteria) or `2` (passes Level 2 strict criteria)
+### swap_products table (source of truth as of Phase 0, July 2026)
+Swap data lives in the `swap_products` Supabase table — see the `swap_products` entry under "Supabase → Tables" below for the full column list. Previously sourced from a public Google Sheet (`SWAP_SHEET_ID`, CSV export); migrated in Phase 0 of the swaps system overhaul so a later admin approval workflow (`source = 'scan_approved'`) has a real table to write to instead of a spreadsheet. `SWAP_SHEET_ID` is no longer read by `pages/api/swaps.js` — see "Env vars needed" below.
+- `pages/api/swaps.js` queries the full table via `getSupabaseServer()` (service role key, lazy-initialized inside the request handler — never a module-level client) and caches the result in-memory for 1 hour, same TTL and cache-invalidation-on-restart behavior as the old CSV pipeline.
+- `certifications`, `why_it_passes`, and `where_to_buy` are real Postgres `text[]` columns in the table. `pages/api/swaps.js` re-joins them into the same semicolon/comma-delimited strings the old CSV pipeline produced (`certifications`/`why_it_passes` → `;`-joined, `where_to_buy` → `,`-joined) before returning them, so the response shape is unchanged and `SwapCard.jsx`'s existing client-side `.split(';')`/`.split(',')` calls needed no changes.
+- `certifications` values: exact strings `usda-organic` and/or `non-gmo-project-verified` (unchanged convention from the Sheet era).
+- `swap_level`: `1` (passes Level 1 criteria) or `2` (passes Level 2 strict criteria) — stored as an `integer` in the table; `pages/api/swaps.js` normalizes it back to a string (`'1'`/`'2'`) on read so the existing tier-filtering logic (`r.swap_level === '2'`) needed zero changes.
+- One-time backfill from the Sheet: `scripts/migrateSwapsFromSheet.js` (`node scripts/migrateSwapsFromSheet.js [--force]`) — reuses the Sheet CSV fetch/parse logic as it existed in `pages/api/swaps.js` at migration time (duplicated into the script itself, since it's a plain `node` script and `pages/api/swaps.js` uses ES module syntax a bare `node` process can't parse — same limitation documented for `pages/api/scan.js` under "Golden Master Snapshot"). Refuses to insert if `swap_products` already has rows, unless `--force` is passed. Sets `source = 'curated'` on every migrated row.
 
 ### Level tiers
 | User level | swap_level=1 rows | swap_level=2 rows |
@@ -422,9 +421,9 @@ Valid values for the `category` column: `chips`, `snacks`, `cereal`, `condiments
 
 **Critical**: use exact OFF tag values (e.g. `en:cheeses`, not `cheese`). Substring matching caused false positives — `en:cheese-flavored-snacks` would wrongly match dairy. Exact set lookup (`normalized.has(t)`) prevents this.
 
-If no OFF tag matches, `productCategory` returns `null`. `SwapsScreen` falls back to a `FLAG_CATEGORY_MAP` derived from the top scan flag:
+If no OFF tag matches, `productCategory` returns `null`. `SwapsScreen` falls back to a `FLAG_CATEGORY_MAP` derived from the top scan flag — exported as a named export from `SwapsScreen.jsx` (module scope, not inside the component) specifically so it's a plain, testable data structure; see `__tests__/components/SwapsScreen.test.js`:
 ```js
-const FLAG_CATEGORY_MAP = {
+export const FLAG_CATEGORY_MAP = {
   trans_fats:          'condiments',
   seed_oils:           'snacks',
   conventional_crops:  'snacks',
@@ -432,23 +431,92 @@ const FLAG_CATEGORY_MAP = {
   natural_flavors:     'snacks',
   synthetic_additives: 'snacks',
   gluten_grains:       'cereal',
-  conventional_meat:   null,   // no product-category swap; user directed to local farm card
+  conventional_meat:   'meat',   // fixed July 2026 (Phase 1) — was null; see changelog
 };
 ```
 If both are null, the API returns all rows unfiltered.
 
+### Product subcategory mapping (Phase 1, July 2026 — bread scheme + `plant_milk` revised in a same-month follow-up session)
+5 of the 10 top-level categories have subcategory support — enough real subcategory variety within each to be worth splitting further for swap matching. The other 5 (`snacks`, `cereal`, `condiments`, `frozen`, `cooking_oils`) do not, and `productSubcategory` is always `null` for them.
+
+| Category | Subcategories |
+|---|---|
+| `chips` | `tortilla`, `potato`, `veggie`, `other` |
+| `dairy` | `milk`, `cheese`, `yogurt`, `butter` |
+| `meat` | `beef`, `poultry`, `pork`, `seafood`, `deli` |
+| `beverages` | `soda`, `juice`, `sparkling_water`, `coffee_tea`, `plant_milk` |
+| `bread` | `sprouted_grain`, `gluten_free`, `keto_low_carb`, `sandwich`, `bagels_muffins`, `tortillas_wraps` |
+
+`bread`'s subcategory scheme was redesigned in the follow-up session — the original `sliced`/`tortillas_wraps`/`bagels_buns` split didn't hold up against the real backfill results (most real bread products are diet/format-driven — sprouted, gluten-free, keto — not "sliced vs. not," and the original scheme had no bucket for any of that). `plant_milk` was added to `beverages` for the same reason: real oat/almond/soy/coconut milk products kept showing up unclassified since "milk" was only ever a `dairy` subcategory keyword, even though these products are filed under the `beverages` top-level category in `swap_products`.
+
+`SUBCATEGORY_TAG_MAP` (`lib/scanHelpers.js`, alongside `CATEGORY_TAG_MAP`) maps real, verified OFF `categories_tags` values to these subcategories — same exact-match discipline as `CATEGORY_TAG_MAP` (no substring matching). Every tag was confirmed against real OFF product data via direct barcode lookups (`GET /api/v0/product/{barcode}.json`, which stayed up both sessions) rather than the OFF search/facet API (down for bulk category queries at research time, both sessions) or guessed — see the git history of this file for the specific real barcodes checked per subcategory if that research needs to be redone later.
+
+**`beverages:plant_milk`** — confirmed across 8 real products spanning oat/almond/soy milk (3 independent brands each): every one carries both `en:plant-based-milk-alternatives` and `en:milk-substitutes` regardless of base ingredient. Notably, none carried `en:oat-milks`/`en:almond-milks` — the two tags already sitting in `CATEGORY_TAG_MAP`'s `dairy` list (untouched by this session; a real oat milk product actually routes to top-level `beverages` via `en:beverages`/`en:plant-based-beverages`, not to `dairy`, since those `dairy`-list tags don't match real product data either).
+
+**Four subcategories are intentionally left unmapped in `SUBCATEGORY_TAG_MAP`** — no confident, distinct real-tag evidence was found for any of them:
+- `chips:veggie` — real veggie-chip products (Sensible Portions, Terra, generic store brands) consistently carried the *same* tag potato chips do (`en:salty-snacks-made-from-potato`) or no useful tag at all — no distinct "veggie chips" tag family exists in OFF's real data, likely because most veggie chips are potato-starch-based and OFF categorizes by composition, not marketing name.
+- `meat:deli` — real deli-meat products (Oscar Mayer, Boar's Head, Aldi deli slices) were either sparsely tagged (empty `categories_tags`) or filed under their base protein (e.g. Oscar Mayer's own "Deli Fresh Oven Roasted Turkey Breast" carries `en:poultries`/`en:turkeys`, not a deli-specific tag) — no distinct "deli" tag family found.
+- `bread:keto_low_carb` and `bread:sandwich` — checked across 6 and 5 real products respectively (multiple brands each, including products literally named "Keto Bread" and "Sandwich Bread"): every one carries only the same generic `en:breads`/`en:sliced-breads`/`en:white-breads`/`en:wheat-breads` tags every other bread type already uses. No distinct tag family for either concept exists in OFF's real data — a "Keto Bread" and an ordinary sliced white loaf are tagged identically.
+
+A product in any of these four buckets simply falls back to category-level matching (`productSubcategory` stays `null`) — the same safe default any unmatched tag already produces. `chips:other` has no tag mapping either, by design — it's a leftover/manual-classification bucket, not something a live OFF tag should ever assert. The backfill script (below) *can* still classify all four of these — `chips:veggie`, `meat:deli`, `bread:keto_low_carb`, `bread:sandwich` — via keyword matching on curated product names, since that gap is specifically about live OFF *tag* evidence, not product-name text (a human reviewing a real, specific product name by hand doesn't have the same ambiguity a missing/incomplete OFF tag does).
+
+`mapProductSubcategory(category, categoriesTags)` (`lib/scanHelpers.js`) — takes the already-resolved top-level `productCategory` plus the raw `categoriesTags`, and returns the first matching subcategory or `null`. Called from `pages/api/scan.js` right after `mapProductCategory()`; the result is `productSubcategory`, included in the scan response and persisted to `scan_cache.product_subcategory`.
+
+`GET /api/swaps` accepts an optional `?subcategory=` param (free text, no server-side enum validation — matches the DB column's own lack of a `CHECK` constraint). When provided alongside `?category=`, the (category, subcategory) pool is used for the existing shuffle/tier/slice-to-20 logic *only if that narrower pool is non-empty* — zero subcategory matches silently falls back to the category-wide pool, so a swap row the backfill script couldn't confidently classify (subcategory `null`) never dead-ends to no swaps shown. This fallback is not treated as the "zero curated results" case — the AI fallback still only triggers when the category-wide pool itself is empty, unchanged from before subcategory support. `SwapsScreen.jsx` passes `productSubcategory` from the scan result alongside `category` — but only when a real `productCategory` was resolved (the flag-derived `fallbackCategory` path has no corresponding subcategory signal to pass).
+
 ### Randomization
-The API shuffles matching rows before slicing to 3, so users see different products across sessions. The Google Sheet cache is stable for 1 hour; the shuffle is fresh per request.
+The API shuffles matching rows before slicing to `RESULTS_PER_TIER` (20, raised from 3 in Phase 2, July 2026 — see "'Show More' expansion" below), so users see different products across sessions. The `swap_products` table query is cached in-memory for 1 hour; the shuffle is fresh per request.
+
+### "Show More" expansion (Phase 2, July 2026)
+`GET /api/swaps` returns up to `RESULTS_PER_TIER` (20) rows per tier instead of 3 — every category/subcategory/level filter, the shuffle, and the AI-fallback trigger condition are all otherwise byte-for-byte unchanged; only the slice count moved. `SwapsScreen.jsx` still renders only the first `INITIAL_VISIBLE_SWAPS` (3) items per tier initially, matching the pre-Phase-2 look exactly. Below a tier's cards, if that tier has more than 3 items **and** the tier came from `source: 'curated'` (never for AI-generated results), a "Show More" text link appears; tapping it reveals the rest of that tier's already-fetched items with **no second network request** — the full (up to 20) pool was already sitting in component state from the one fetch. It's a one-way expand — no collapse-back control. Good and Better tiers track independent `goodExpanded`/`betterExpanded` state, so expanding one never affects the other; both reset to collapsed whenever a new fetch starts (category/subcategory/userLevel change).
+
+The "how many to show" and "should the button appear" logic is intentionally two small pure functions — `getVisibleSwaps(items, expanded)` and `shouldShowExpandButton(items, expanded, source)` — exported at module scope from `SwapsScreen.jsx` alongside `INITIAL_VISIBLE_SWAPS`, same reasoning as the `FLAG_CATEGORY_MAP` extraction: this project has no React rendering test infrastructure (`jest.config.js` sets `testEnvironment: 'node'`, no `@testing-library/react`), so pulling the actual decision logic out into plain functions is what makes it unit-testable at all. See `__tests__/components/SwapsScreen.test.js`. The "Show More" button itself reuses the app's existing tappable-text-link style (amber, 600 weight, transparent background/border — the same pattern as the header's "← Verdict" button) rather than introducing a new visual treatment.
 
 ### AI fallback
 If 0 curated swaps exist for a category, Claude Sonnet is called to suggest 2-3 real products. The prompt is level-aware — Level 2 requires certification + no seed oils; Level 1 requires no synthetic additives or trans fats only.
 
 ### Adding new swap products
-Add rows directly to the Google Sheet. The app picks them up within 1 hour (cache TTL). Always verify:
+Insert rows directly into the `swap_products` table (service role key, e.g. via the Supabase SQL editor or table editor — no admin UI exists yet, that's a planned later phase). The app picks up new rows within 1 hour (cache TTL). Always verify:
 - No synthetic additives or trans fats (required for any level)
 - No seed oils, conventional crops, or natural flavors (required for `swap_level=2`)
-- `certifications` column uses exact strings only
-- `category` column uses one of the 9 exact values
+- `certifications` array uses exact strings only (`usda-organic`, `non-gmo-project-verified`)
+- `category` column uses one of the 9 exact values (see "Swap categories" above)
+- `source` defaults to `'curated'` — leave it unless the row came from the (not-yet-built) scan-approval workflow, which will use `'scan_approved'`
+
+### Admin swap-candidate review (Phase 3 complete, July 2026 — 3a: schema/auth/discovery; 3b: the review screen + approve/reject actions)
+Automatically surfaces real scanned products that are good swap candidates, instead of relying entirely on hand-curated rows. Direct-URL-only — `pages/admin/swap-candidates.jsx` has no nav link anywhere in the regular app UI, by design.
+
+**`lib/requireAdmin.js`** — the reusable admin-auth check every admin-only API route uses. The client sends its own Supabase session access token (`session.access_token` from `lib/auth.js`'s `getSession()`) as `Authorization: Bearer <token>`; `requireAdmin(req)` verifies it server-side via `supabase.auth.getUser(token)` — a real round-trip to Supabase Auth, not a local JWT decode, so an expired/revoked/forged token is rejected — then checks the resulting email against `ADMIN_EMAILS` (comma-separated, case-insensitive, whitespace trimmed). Returns the Supabase user object on success or `null` on any failure (missing/malformed header, invalid token, non-admin email, Supabase unavailable); callers respond `401` when it returns `null`. Reuses `getSupabaseServer()` (lazy, service-role) rather than constructing a second client.
+
+**`GET /api/admin/swap-candidates`** — `401` if `requireAdmin()` rejects the request. Otherwise:
+1. Query `scans` (not `scan_cache` — `scan_cache` only ever holds the *current* state per `(barcode, user_level)`, not historical scan events) for `verdict = 'green'` rows, group by barcode in JS, keep only barcodes with `>= 3` distinct `user_id` values. Rows with a null `barcode` or `user_id` (anonymous, not-signed-in scans) are skipped — they can't contribute to a "distinct users" count. Repeated scans by the same user count once, not per-scan.
+2. Exclude barcodes already present in `swap_products` — already a real swap, nothing to review.
+3. Exclude barcodes already present in `swap_candidate_reviews`, **regardless of decision** — a rejected barcode must never resurface, and an approved one is already reflected in `swap_products` via step 2 anyway.
+4. For every remaining candidate, join `scan_cache` rows for both `user_level` 1 and 2 (whichever exist — `scan_cache`'s own unique constraint on `(barcode, user_level)` already guarantees at most one current row per level, so no extra "most recent" ordering is needed) to attach `product_name`/`product_category`/`product_subcategory` and each level's current `verdict`, `explanation`, and `promptVersion` (the last one added in Phase 3b — see "Verification status" below). **Deliberately not filtered to `verdict = 'green'`** — a candidate may have gone green for enough distinct users historically (step 1) while its current `scan_cache` state at one level has since drifted (a rules-engine change, cache invalidation, etc.); reporting the real current per-level verdict lets an admin see that instead of a stale assumption baked into the response.
+5. Returns `{ candidates: [{ barcode, distinctScanCount, productName, productCategory, productSubcategory, levels: { [1]?: {verdict, explanation, promptVersion}, [2]?: {verdict, explanation, promptVersion} } }] }`. Early-returns `{ candidates: [] }` (skipping later queries entirely) as soon as no barcodes remain at any filtering stage — confirmed via test assertions on which tables actually got queried, not just the response shape.
+
+The `scans`-table aggregation is done in JS (fetch all `verdict='green'` rows, group/count in memory), not a SQL `GROUP BY ... HAVING`, following this codebase's existing convention of "simple queries to Supabase, business logic in JS" (e.g. `pages/api/swaps.js` fetches the entire `swap_products` table and filters/shuffles/tiers in JS) rather than introducing the project's first stored procedure / RPC function.
+
+**`pages/admin/swap-candidates.jsx`** (Phase 3b) — the actual review screen. On mount, fetches its own Supabase session token and calls `GET /api/admin/swap-candidates` with it; a `401` (or no session at all) hard-redirects to `/` via `window.location.href` (not `next/router`'s `router.replace()` — this page is Pages Router, the redirect target `/` is rendered by App Router, and crossing that boundary with a soft client-side navigation was observed to stall rather than complete in manual testing; a full-page redirect sidesteps that path entirely and is a reasonable cost for a rare, security-relevant redirect on an admin-only page). The session check itself is wrapped in an 8-second timeout (`getSessionWithTimeout()`) as a general defensive measure — an auth check must never be allowed to hang the page forever if the underlying SDK call stalls for any reason.
+
+Renders one card per candidate: product name/brand/barcode/distinct scan count, badges for whichever level(s) are present with their current verdict, a verification-status banner (see below), and an editable form — category/subcategory (pre-filled from the API response), a "why it passes" textarea (pre-filled from the higher-available level's cached `explanation.summary`, one reason per line), two certification checkboxes (`usda-organic`/`non-gmo-project-verified` — modeled as checkboxes rather than free text specifically so an invalid certification string is unrepresentable), a swap-level selector, and a dynamic purchase-links editor (add/remove retailer + affiliate URL pairs). Approve/Reject POST to `POST /api/admin/swap-candidates/review`.
+
+**Verification status** — `getVerificationStatus(candidate, currentPromptVersion)`, checked in priority order against whatever `GET /api/admin/swap-candidates` already returned (no extra network call):
+| State | Meaning | Banner tone |
+|---|---|---|
+| `no_cache` | Zero `scan_cache` levels present for this barcode at all | warn |
+| `stale_prompt_version` | At least one present level's `promptVersion` is behind the live `PROMPT_VERSION` constant (`lib/cacheVersion.js`) — checked *before* the green check, since a stale row's own verdict predates the current rules and can't be trusted regardless of what it says | warn |
+| `not_green` | Every present level is at the current `PROMPT_VERSION`, but at least one isn't `verdict === 'green'` | warn |
+| `confirmed` | At least one level present, all present levels are current *and* green | good |
+
+Only `confirmed` enables Approve outright. Any other state requires the admin to explicitly check "I'm approving without current verification" (`isApproveEnabled()`) — checked *in addition to* the form itself passing `validateApprovalForm()`, never in place of it.
+
+**`POST /api/admin/swap-candidates/review`** — single endpoint keyed by a `decision` field (`'approved' | 'rejected'`) rather than two separate routes, since both share almost all their validation and both ultimately insert into `swap_candidate_reviews`; only `'approved'` additionally inserts into `swap_products` first. `401` via `requireAdmin()` same as the list endpoint.
+- **`rejected`**: inserts one `swap_candidate_reviews` row (`decision: 'rejected'`, `note` = the optional reason, trimmed, or `null`). Never touches `swap_products`.
+- **`approved`**: inserts one `swap_products` row (`source: 'scan_approved'`, all the submitted fields), then one `swap_candidate_reviews` row (`decision: 'approved'`, `swap_product_id` set to the new row's id; `note` set to `"approved without current scan_cache verification"` when the client's `confirmedCurrent` field is `false`, else `null`). The client sends `confirmedCurrent` computed from the verification status at submit time (`buildApprovePayload()`), not re-derived server-side — the server trusts the client's own status snapshot rather than re-running `getVerificationStatus()` itself.
+- **Partial-failure handling**: no real multi-table transaction (same "no stored procedures/RPC in this codebase" reasoning as the list endpoint's JS-side aggregation) — if the `swap_candidate_reviews` insert fails *after* the `swap_products` insert already succeeded, the `swap_products` row is deleted as a compensating action so it's never left orphaned (a swap that looks approved with no review record explaining why). This is "handle partial failure sensibly," not a true transaction — a hard crash between the two writes (as opposed to the second write returning an error) could still leave an orphaned row; that residual risk is accepted, consistent with every other multi-step Supabase write in this codebase.
+
+**⚠️ Browser UI verification limitation, noted explicitly rather than claimed as done**: the pure logic (`getVerificationStatus`, form validation, payload shaping) and both API routes are thoroughly unit-tested and were exercised directly. The actual rendered page, however, could not be interactively verified end-to-end in this session's browser preview — a **freshly created, completely trivial Pages Router test page** (bare `useState` + `useEffect`, no imports from this project at all) exhibited the identical symptom (`useEffect` never firing) in the same preview environment, which points at a Pages-Router-specific limitation in that preview tooling rather than a defect in this page's code — but that inference wasn't fully proven, either. If this page doesn't render/redirect correctly in a real browser, start there.
 
 ---
 
@@ -478,7 +546,7 @@ Both return `null` when env vars are absent. Always null-check before using: `if
   - `verdict`, `flags` (jsonb), `ingredients` (text), `cleared_by` (text|null)
   - `unverified_ingredients` (jsonb), `explanation` (jsonb — `{summary, details}`)
   - `unverified_reason` (text|null) — `'not_found'` | `'no_ingredients'` | `null`
-  - `product_name`, `product_category` (text|null), `is_meat` (boolean, default false), `last_accessed_at`
+  - `product_name`, `product_category` (text|null), `product_subcategory` (text|null — Phase 1 swaps overhaul, July 2026, migration SQL in [supabase/migrations/20260712030000_add_product_subcategory_to_scan_cache.sql](supabase/migrations/20260712030000_add_product_subcategory_to_scan_cache.sql); null for any category without subcategory support, or when no subcategory tag matched within a covered category), `is_meat` (boolean, default false), `last_accessed_at`
   - Unique constraint on `(barcode, user_level)` — upserted on every fresh scan
   - Cache hit returns `source: 'cache'`; miss falls through to Open Food Facts
   - Invalidated by bumping `PROMPT_VERSION` in `lib/cacheVersion.js`
@@ -487,6 +555,21 @@ Both return `null` when env vars are absent. Always null-check before using: `if
   - `id`, `ingredient` (text, lowercase), `product_name`, `barcode`
   - `first_seen` (timestamptz), `occurrence_count` (integer)
   - Populated by `pages/api/scan.js` after each fresh scan (awaited, not fire-and-forget)
+- `swap_products` — source of truth for the Swaps System (Phase 0 migration, July 2026 — see "Swaps System" section above; migration SQL in [supabase/migrations/20260712010000_create_swap_products.sql](supabase/migrations/20260712010000_create_swap_products.sql)):
+  - `id` (uuid, PK, default `gen_random_uuid()`)
+  - `product_name` (text, not null), `brand` (text), `category` (text, not null), `subcategory` (text, nullable, no `CHECK`/enum constraint by design — Phase 1 swaps overhaul, July 2026; migration SQL in [supabase/migrations/20260712020000_add_subcategory_to_swap_products.sql](supabase/migrations/20260712020000_add_subcategory_to_swap_products.sql)), `barcode` (text, nullable)
+  - `certifications` (text[]), `why_it_passes` (text[]), `where_to_buy` (text[]), `image_url` (text)
+  - `purchase_links` (jsonb, not null, default `'[]'::jsonb` — Phase 3a swaps overhaul, July 2026; migration SQL in [supabase/migrations/20260712050000_add_purchase_links_to_swap_products.sql](supabase/migrations/20260712050000_add_purchase_links_to_swap_products.sql)). Each element will be shaped `{ retailer: string, affiliate_url: string }` once something populates it — added as a schema foundation only, not yet wired into any code path. `where_to_buy` (text[]) is unrelated and untouched — `pages/api/swaps.js` keeps reading/returning it exactly as before; the two columns are not migrated into each other.
+  - `swap_level` (integer, not null, check in `(1,2)`)
+  - `source` (text, not null, default `'curated'`, check in `('curated','scan_approved')`) — `'curated'` for hand-reviewed rows (including everything backfilled from the old Sheet); `'scan_approved'` reserved for the admin approval workflow (Phase 3a, July 2026, added the read-only candidate-discovery foundation for this — see "Admin swap-candidate review" below; the actual approve action that writes `source: 'scan_approved'` rows is Phase 3b, not yet built)
+  - `created_at`, `updated_at` (timestamptz, default `now()`)
+  - **RLS**: enabled, zero policies — same pattern as `verdict_shadow_diffs`. Read/written exclusively server-side via `getSupabaseServer()` (service role key, bypasses RLS); no anon SELECT/INSERT/UPDATE policy exists or is needed, since `pages/api/swaps.js`'s in-memory 1hr cache means the table itself is only hit once per hour per server instance, not per request
+- `swap_candidate_reviews` — records an admin's approve/reject decision on a swap candidate barcode (Phase 3a, July 2026; migration SQL in [supabase/migrations/20260712040000_create_swap_candidate_reviews.sql](supabase/migrations/20260712040000_create_swap_candidate_reviews.sql)), so a decided barcode never resurfaces in `GET /api/admin/swap-candidates` again:
+  - `id` (uuid, PK, default `gen_random_uuid()`)
+  - `barcode` (text, not null), `decision` (text, not null, check in `('approved','rejected')`)
+  - `reviewed_at` (timestamptz, not null, default `now()`), `note` (text, nullable)
+  - `swap_product_id` (uuid, nullable, references `swap_products(id)`) — populated by Phase 3b's (not yet built) approve action once it creates the corresponding `swap_products` row; always `null` for a `'rejected'` decision
+  - **RLS**: enabled, zero policies — same pattern as `swap_products`. Read/written exclusively via `getSupabaseServer()` from admin-only routes (see `lib/requireAdmin.js` below)
 
 ### Auth flow
 - Email/password signup with `emailRedirectTo: ${origin}/auth/callback`
@@ -499,7 +582,17 @@ NEXT_PUBLIC_SUPABASE_URL=          # used by both clients
 NEXT_PUBLIC_SUPABASE_ANON_KEY=     # client-side only (safe to expose)
 SUPABASE_SERVICE_ROLE_KEY=         # server-side only — NEVER use NEXT_PUBLIC_ prefix
 ANTHROPIC_API_KEY=                 # server-side only
-SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
+SWAP_SHEET_ID=                     # Google Sheet ID — NO LONGER READ by pages/api/swaps.js as of the
+                                    # Phase 0 swap_products migration (July 2026); still listed here in
+                                    # case of rollback, and scripts/migrateSwapsFromSheet.js still uses
+                                    # it for a one-time backfill re-run. Do not remove yet.
+ADMIN_EMAILS=                      # server-side only — comma-separated allowlist of admin email
+                                    # addresses (case-insensitive, whitespace around entries is
+                                    # trimmed), e.g. "alice@example.com,bob@example.com". Checked by
+                                    # lib/requireAdmin.js (Phase 3a, July 2026) against the email on a
+                                    # verified Supabase session token — see "Admin swap-candidate
+                                    # review" below. Unset means every request is rejected (no admins),
+                                    # not "admin check disabled" — there is no bypass.
 ```
 
 ---
@@ -523,9 +616,10 @@ SWAP_SHEET_ID=                     # Google Sheet ID for swap products database
 ### POST /api/scan
 - Body: `{ barcode: string, userLevel?: 1 | 2 }`
 - Flow: validate → sanitize barcode → check `scan_cache` (return immediately on hit) → fetch Open Food Facts → normalize labels → map `categories_tags` → run `analyzeIngredients(text, labels, userLevel)` → call Claude for explanation (skipped when `verdict === 'unverified'`) → upsert `scan_cache` → return result
-- Returns: `{ verdict, flags, clearedBy, productName, ingredients, barcode, source, found, labelsDetected, unverifiedIngredients, explanation, productCategory, unverifiedReason, isMeat, oliveCaveat }`
+- Returns: `{ verdict, flags, clearedBy, productName, ingredients, barcode, source, found, labelsDetected, unverifiedIngredients, explanation, productCategory, productSubcategory, unverifiedReason, isMeat, oliveCaveat }`
 - `oliveCaveat`: boolean, `true` when the L2 organic path hits the olive oil adulteration branch. Not yet persisted to `scan_cache` (no column); cache hits always return `false` until the column is added.
 - `productCategory`: one of the 9 swap categories or `null` if no OFF tag matched
+- `productSubcategory` (Phase 1 swaps overhaul, July 2026): a subcategory value for the 5 categories with subcategory support (`chips`, `dairy`, `meat`, `beverages`, `bread` — see "Swaps System" → "Product subcategory mapping"), or `null` for any other category or when no subcategory tag matched. Detected via `mapProductSubcategory()` in `lib/scanHelpers.js`, persisted to `scan_cache.product_subcategory`.
 - `unverifiedReason`: carries additional context for YELLOW and UNVERIFIED verdicts:
   - `'not_found'` — barcode not in the Open Food Facts database (`found: false`)
   - `'no_ingredients'` — product record exists in OFF but has no ingredient text (`found: true`)
@@ -566,10 +660,10 @@ Each flagged category is explained by ONE voice only. Sina owns: trans_fats, see
 **v19 changes**: Pure-water GREEN path added. `WATER_SAFE_INGREDIENTS` Set (water forms, naturally occurring minerals, CO2) and `allIngredientsAreWaterSafe()` helper added to `scan.js`. Post-waterfall check after cert_unconfirmed: if `verdict === 'yellow' && flags.length === 0 && clearedBy === null && allIngredientsAreWaterSafe(ingredientsText)` → set `verdict = 'green'` and `clearedBy = 'pure_water'`. New sixth `flagsSection` branch in `buildUserMessage()` for `clearedBy === 'pure_water'` — tells Claude to give a clean GREEN explanation without any cert caveats (organic cert is inapplicable to geological water sources). PROMPT_VERSION bumped 18 → 19.
 
 ### GET /api/swaps
-- Query params: `category` (one of 9 valid values, optional), `userLevel` (1 or 2, defaults to 2)
-- Flow: check in-memory cache (1hr TTL) → fetch Google Sheet CSV if stale → filter by category → filter/tag by swap_level → shuffle → slice to 3 per tier → AI fallback if 0 results
+- Query params: `category` (one of 10 valid values, optional), `subcategory` (free text, optional, Phase 1 — see "Swaps System" above), `userLevel` (1 or 2, defaults to 2)
+- Flow: check in-memory cache (1hr TTL) → query `swap_products` Supabase table if stale (Phase 0 — no longer a Google Sheet CSV; this bullet was stale until corrected in the Phase 2 session) → filter by category → narrow by subcategory if provided and non-empty → filter/tag by swap_level → shuffle → slice to `RESULTS_PER_TIER` (20, raised from 3 in Phase 2, July 2026 — see "Swaps System" → "'Show More' expansion") per tier → AI fallback if 0 results
 - Returns: `{ swaps: SwapRow[], source: 'curated' | 'ai' }`
-- Each swap row includes `tier: 'good' | 'better'` — used by SwapsScreen to render sections
+- Each swap row includes `tier: 'good' | 'better'` — used by SwapsScreen to render sections, and `subcategory` (Phase 1)
 - AI fallback prompt is level-aware — Level 2 requires certification + no seed oils; Level 1 requires no synthetic additives only
 
 ---
@@ -3246,6 +3340,506 @@ The `M. PROMPT_VERSION` contract test in `__tests__/api/scan.test.js` was update
 Full suite: **1515 passing** (up from 1494 at the end of the prior session), same one known
 pre-existing failure (the cross-list contradiction test, unrelated, unchanged, tracked separately
 since the collision-word audit series).
+
+---
+
+### Session — swaps data source migration, Phase 0: Google Sheet → swap_products (July 2026)
+
+Migrates the Swaps System's data source from the public Google Sheet (`SWAP_SHEET_ID`, CSV export)
+to a first-class Supabase table, `swap_products` — scoped strictly to the migration itself, per
+instruction: no changes to `VALID_CATEGORIES`, `CATEGORY_TAG_MAP`, the `conventional_meat` swap
+fallback mapping, pagination, or any UI. Phase 1 (an admin approval workflow building on top of this)
+is a separate, later session.
+
+**New table**: [supabase/migrations/20260712010000_create_swap_products.sql](supabase/migrations/20260712010000_create_swap_products.sql)
+— see the "swap_products" entry under "Supabase → Tables" above for the full column list. Same
+server-only RLS pattern as `verdict_shadow_diffs`: enabled, zero policies, read/written exclusively
+via `getSupabaseServer()`. **This migration must be run manually against the live Supabase database
+before the code in this session's commit is deployed** — per the project's documented deploy-gap and
+`olive_caveat` migration-application incidents, a migration file sitting in the repo is not the same
+claim as "applied to production."
+
+**`scripts/migrateSwapsFromSheet.js`** (new, one-time, run via `node`, not part of any API route) —
+fetches and parses the Sheet CSV using the same column order and parsing logic `pages/api/swaps.js`
+used at the time of this migration (duplicated into the script rather than imported, since the script
+runs under plain `node` and `pages/api/swaps.js` uses ES module `import`/`export` syntax a bare `node`
+process can't parse — the same limitation already documented for `pages/api/scan.js` under "Golden
+Master Snapshot"). Converts the Sheet's semicolon/comma-delimited strings into the table's real
+`text[]` columns, sets `source = 'curated'` on every row, and uses a lazy, function-scoped
+`getSupabaseServer()`-style client — mirroring `lib/supabaseServer.js`'s own lazy-init discipline
+rather than importing it directly, for the same ESM/CJS reason. Reads Supabase/Sheet credentials from
+`.env.local`/`.env` manually (plain `node` doesn't load Next's env files), same convention already
+established in `scripts/appendScanCacheToOffResults.js`. Refuses to insert if `swap_products` already
+has rows unless `--force` is passed, to guard against accidental duplicate runs.
+
+**`pages/api/swaps.js`** — the Google Sheet CSV fetch/parse code (`COLUMNS`, `parseCSV`, the Sheet
+`fetch()` call) was removed entirely; `getSwapRows()` now queries `swap_products` via
+`getSupabaseServer()` (lazy-initialized inside the function, never at module scope) and caches the
+full table result in the same in-memory, 1-hour-TTL `_cache` variable the CSV pipeline used. A new
+`normalizeSwapRow()` re-joins the table's `text[]` columns back into the same semicolon/comma-delimited
+strings the CSV pipeline produced (`certifications`/`why_it_passes` → `;`-joined, `where_to_buy` →
+`,`-joined) and stringifies `swap_level` back to `'1'`/`'2'` — so every line of the existing
+category-filter / swap_level-tiering / shuffle / slice-to-3 / AI-fallback logic below it is
+byte-for-byte unchanged, and the response shape (`{ swaps, source }`, each row still carrying
+`tier: 'good' | 'better'`) is identical to before. `SwapCard.jsx`'s existing client-side
+`.split(';')`/`.split(',')` calls needed no changes as a result.
+
+**`__tests__/api/swaps.test.js`** (new — this endpoint had zero test coverage before this session,
+per CLAUDE.md's own "Common Patterns" section). 18 tests across 5 suites: category filtering (3),
+swap_level tiering into good/better including the existing slice-to-3 behavior (4), the empty-result
+AI fallback trigger — including the no-category case correctly NOT triggering it, and the
+no-`ANTHROPIC_API_KEY` case correctly degrading to an empty array without ever calling the Claude
+client (4), response shape — including a dedicated check that array columns come back as delimited
+strings, not raw arrays, and that null DB columns normalize to `''` not `null` (4), and basic input
+validation (3). `getSupabaseServer()` is mocked; `jest.resetModules()` runs before every test since
+`pages/api/swaps.js`'s in-memory `_cache` is module-scoped and would otherwise leak mock data from
+one test into the next.
+
+**Migration run**: executed after the user ran the SQL migration against the live database (confirmed
+first via a live PostgREST query — `PGRST205` "Could not find the table" before the SQL ran, `200`
+with an empty array immediately after). `node scripts/migrateSwapsFromSheet.js` inserted **131 rows**
+into `swap_products`, matching the Sheet's own row count exactly. Verified end-to-end against the real
+local dev server (`GET /api/swaps?category=beverages&userLevel=1`): correct `good`/`better` tiering,
+`certifications`/`why_it_passes`/`where_to_buy` correctly re-joined into delimited strings (not raw
+arrays), `swap_level` correctly stringified — response shape byte-identical to the pre-migration CSV
+pipeline's output.
+
+**No PROMPT_VERSION bump** — this migration touches only the swaps recommendation feature, not
+`analyzeIngredients()`'s `flags`/`verdict`/`clearedBy` contract or anything `scan_cache` stores;
+`PROMPT_VERSION` gates the rules engine's verdict output specifically, unrelated to this change.
+
+Full suite: **1533 passing** (up from 1515 — 18 new `swaps.test.js` tests), same one known
+pre-existing failure (the cross-list contradiction test, unrelated, unchanged).
+
+---
+
+### Session — swaps subcategory support, Phase 1 (July 2026)
+
+Adds subcategory support for 5 of the 10 swap categories (`chips`, `dairy`, `meat`, `beverages`,
+`bread`) plus one bug fix (`conventional_meat` FLAG_CATEGORY_MAP fallback). Scoped strictly to this,
+per instruction — no changes to pagination or the (not-yet-built) admin approval workflow.
+
+**New columns**: `swap_products.subcategory` (text, nullable, no `CHECK`/enum constraint — deliberately
+free text, see [supabase/migrations/20260712020000_add_subcategory_to_swap_products.sql](supabase/migrations/20260712020000_add_subcategory_to_swap_products.sql))
+and `scan_cache.product_subcategory` (text, nullable, see
+[supabase/migrations/20260712030000_add_product_subcategory_to_scan_cache.sql](supabase/migrations/20260712030000_add_product_subcategory_to_scan_cache.sql)).
+Both purely additive — no `PROMPT_VERSION` bump, no cache invalidation; existing `scan_cache` rows
+read `product_subcategory: null` until rescanned, same pattern as `is_meat_category`/`is_meat_ingredient`
+and `olive_caveat` before them.
+
+**`SUBCATEGORY_TAG_MAP` / `mapProductSubcategory()`** (`lib/scanHelpers.js`) — see "Swaps System" →
+"Product subcategory mapping" above for the full subcategory list, the real-OFF-tag research method,
+and why `chips:veggie` and `meat:deli` are intentionally left unmapped (no confident distinct tag
+evidence found in real product data — veggie chips share potato chips' own tag; deli meats get filed
+under their base protein or carry no tag at all). Wired into `pages/api/scan.js` immediately after
+`mapProductCategory()`; the result (`productSubcategory`) is included in the scan response and
+persisted to `scan_cache.product_subcategory` on write, mirroring `productCategory` exactly.
+
+**`pages/api/swaps.js`** — new optional `?subcategory=` query param. When provided alongside
+`?category=`, narrows to the (category, subcategory) pool for the existing shuffle/tier/slice-to-3
+logic *only if that pool is non-empty*; zero subcategory matches falls back to the category-wide pool
+silently, so a swap row with no confidently-classified subcategory (`null`) never dead-ends to no
+swaps shown. This fallback is explicitly not treated as "zero curated results" — the AI fallback still
+only triggers when the category-wide pool itself is empty, unchanged from before this session.
+`normalizeSwapRow()` now also passes through `subcategory` on each response row.
+
+**`components/swaps/SwapsScreen.jsx`** — two changes:
+1. Passes `productSubcategory` from the scan result alongside `category` in the `GET /api/swaps` call
+   — but only when a real `productCategory` was resolved (the flag-derived `fallbackCategory` path has
+   no corresponding subcategory signal).
+2. **Bug fix**: `FLAG_CATEGORY_MAP.conventional_meat` changed from `null` to `'meat'`. This map was
+   written before `meat` existed as a real swap category (Phase 0 added it with real `swap_products`
+   rows); the stale `null` meant any scan whose only category signal was a `conventional_meat` flag
+   (no OFF `productCategory` resolved) dead-ended straight to the "Local Farm Upgrade" card with zero
+   curated or AI swaps shown, even though real meat swaps now exist. `FLAG_CATEGORY_MAP` was also
+   extracted from component-instance scope to module scope and given a named export, specifically so
+   this fix has a plain, testable data structure to assert against — this project has no React
+   rendering test infrastructure (`jest.config.js` sets `testEnvironment: 'node'`, no
+   `@testing-library/react`), so a component-render test wasn't an option; see
+   `__tests__/components/SwapsScreen.test.js`, a new file that imports the named export directly
+   without rendering the component (safe under `testEnvironment: 'node'` — the component function body,
+   which uses `useState`/`useEffect`/JSX, is never invoked, only defined).
+
+**`scripts/backfillSwapProductSubcategories.js`** (new, one-time, run via `node`) — best-effort
+subcategory classification for existing `swap_products` rows via simple keyword matching against
+`product_name + brand` (lowercased), **not** the OFF-tag-based `SUBCATEGORY_TAG_MAP` (swap_products
+rows carry no OFF `categories_tags` data). Only touches rows in the 5 covered categories whose
+`subcategory` is currently `null` — never overwrites an already-set value, so safe to re-run after new
+rows are added later. For each row, every keyword group for its category is tested; a row is only
+classified when **exactly one** group matches — zero or multiple (ambiguous, e.g. "beef bacon"
+matching both `beef` and `pork`) both leave `subcategory` null, same "don't guess when uncertain"
+discipline as `SUBCATEGORY_TAG_MAP` itself. Unlike the live-scan tag map, this keyword approach *can*
+classify `veggie` and `deli` (matching on `"veggie"`/`"vegetable"` or `"deli"`/`"ham"`/`"lunch meat"` in
+the product name) — that gap was specifically about live OFF *tag* evidence, not product name text.
+Run with `node scripts/backfillSwapProductSubcategories.js [--dry-run]`; prints a full list of rows
+left unclassified for manual review.
+
+**Migration run**: executed after the user ran both SQL migrations against the live database
+(confirmed first via a live PostgREST query against each new column — `swap_products?select=id,subcategory`
+and `scan_cache?select=barcode,product_subcategory` both returned `200`, not a missing-column error).
+`node scripts/backfillSwapProductSubcategories.js` then ran against the real 131-row `swap_products`
+table. **35 classified, 26 left null (ambiguous or no keyword match)**, out of 61 rows in the 5 covered
+categories (`chips` 12, `dairy` 14, `meat` 10, `beverages` 15, `bread` 10 = 61; the other 70 rows, in
+the 5 uncovered categories, were correctly untouched — reconciled via a direct per-category count
+query: 61 + 70 = 131, 35 + 26 = 61).
+
+By subcategory: `beef` 4, `poultry` 4, `pork` 2, `tortilla` 4, `potato` 3, `milk` 4, `yogurt` 4,
+`butter` 2, `coffee_tea` 5, `juice` 1, `sparkling_water` 1, `tortillas_wraps` 1.
+
+Unclassified rows (26) — for manual review:
+- **beverages** (8): Califia Farms Oat Barista Blend; Boxed Water (Boxed Water Is Better); Harmless
+  Harvest Organic Coconut Water; GT's Synergy Organic Kombucha (GT's Living Foods); Malk Organics Oat
+  Milk; Elmhurst 1925 Oat Milk; REBBL Organic Coconut Milk Elixir; Organic Valley Grassmilk Whole Milk
+  — none contain a `soda`/`juice`/`sparkling water`/`coffee`/`tea` keyword; several are plant milks,
+  which have no beverages-subcategory keyword group at all in this backfill's scheme (`milk` is a
+  `dairy` subcategory, not a `beverages` one, per the task's own subcategory list — these products are
+  filed under `beverages` in `swap_products`, so they can never keyword-match a `dairy` group).
+- **bread** (9): Dave's Killer Bread Organic 21 Whole Grains; Canyon Bakehouse Gluten Free Heritage
+  Style Bread; Rudi's Organic Bakery Sandwich Bread; Angelic Bakehouse Sprouted Grain Bread; Base
+  Culture Original Keto Bread; Food for Life Ezekiel 4:9 Sprouted Grain Bread; Food for Life Ezekiel
+  4:9 English Muffins; Alvarado Street Bakery Sprouted Wheat Bread; Silver Hills Sprouted Power Bread
+  — none contain `sliced`/`loaf`/`tortilla`/`wrap`/`bagel`/`bun`; these are all standard loaf-style
+  breads whose names just don't happen to say "sliced" or "loaf".
+- **dairy** (4): Siggi's Plain Whole Milk Yogurt; Chobani Plain Whole Milk Yogurt; Stonyfield Organic
+  Whole Milk Yogurt; Nancy's Organic Whole Milk Yogurt — each matched **both** the `milk` and `yogurt`
+  keyword groups (literally named "Whole Milk Yogurt"), which the backfill's "classify only on exactly
+  one match" rule correctly treats as ambiguous rather than guessing.
+- **chips** (5): Barnana Organic Plantain Chips (×2, two separate SKUs); Artisan Tropic Cassava Strips
+  Sea Salt; Brad's Organic Crunchy Kale Chips; Beanfields Sea Salt Bean Chips — plantain, cassava, kale,
+  and bean chips are all real chip products with no `tortilla`/`potato`/`veggie`/`vegetable` keyword
+  match; none of these snack-chip variants map onto the 4-value subcategory list at all.
+
+No `meat` rows were left unclassified — all 10 matched exactly one of `beef`/`poultry`/`pork`/`seafood`/`deli`.
+
+**Tests — net +37, reconciled explicitly since the arithmetic matters here**:
+- `__tests__/api/swaps.test.js`: **+6** (18 → 24) — new Suite F (F1–F6): narrowing, fallback on zero
+  matches, unchanged behavior when `subcategory` omitted, tiering within a narrowed pool, response
+  shape, no-category edge case. Zero modifications to existing suites A–E, zero removals. (The shared
+  `makeSwapProductRow()` helper gained a `subcategory: null` default field — an additive change to test
+  infrastructure, not a test case, and confirmed not to affect any existing assertion.)
+- `__tests__/api/scan.test.js`: **+28** (all new — brand-new Suite Y, appended at the end; suites A–X
+  untouched). Broken down: 19 from a `test.each` over `COVERED_CASES` (one real-tag case per confirmed
+  subcategory across the 5 covered categories), 5 from `test.each` over `UNCOVERED_CASES` (the 5
+  categories with no subcategory support, always `null`), 4 standalone (no-subcategory-tag-present for
+  chips and meat, empty `categories_tags`, the 404 response). 19+5+4=28.
+- `__tests__/components/SwapsScreen.test.js`: **+3** (new file — no prior test of `FLAG_CATEGORY_MAP`
+  existed anywhere in the codebase, so this was necessarily an addition, not an update to an existing
+  test).
+
+6 + 28 + 3 = 37, matching 1533 → **1570 passing** exactly. Same one known pre-existing failure (the
+cross-list contradiction test, unrelated, unchanged).
+
+**No `PROMPT_VERSION` bump** — same reasoning as Phase 0: this touches only the swaps recommendation
+feature and `scan_cache`'s purely-additive `product_subcategory` column, not `analyzeIngredients()`'s
+`flags`/`verdict`/`clearedBy` contract.
+
+---
+
+### Session — subcategory follow-up: plant_milk, bread redesign, chips 'other' default, dairy tie-break (July 2026)
+
+Follow-up to the Phase 1 subcategory session, fixing four gaps the first backfill run's results
+surfaced (61 rows in the 5 covered categories, 35 classified / 26 unclassified). See "Product
+subcategory mapping" above for the current (post-fix) subcategory table and per-subcategory tag
+research; this entry covers the change itself and the numbers.
+
+**1. `beverages:plant_milk` added.** Real oat/almond/soy/coconut milk products were showing up
+unclassified because "milk" was only ever a `dairy` subcategory keyword — these products are filed
+under the `beverages` top-level category in `swap_products`, so they could never match. Live-scan
+tag evidence: `en:plant-based-milk-alternatives` and `en:milk-substitutes`, confirmed across 8 real
+products (3 brands each of oat/almond/soy milk). Backfill keywords: oat/almond/soy/coconut/cashew/
+macadamia milk (space-optional, `oat\s?milk` matches both "oat milk" and "oatmilk"), "plant milk",
+"non-dairy milk", "barista blend".
+
+**2. `bread` redesigned.** `sliced`/`tortillas_wraps`/`bagels_buns` → `sprouted_grain`, `gluten_free`,
+`keto_low_carb`, `sandwich`, `bagels_muffins`, `tortillas_wraps`. Live-tag research found confident
+evidence for only 4 of the 6: `en:sprouted-wheat` (sprouted_grain), `en:gluten-free-breads`
+(gluten_free), `en:bagel-breads`/`en:english-muffins` (bagels_muffins), `en:flatbreads`/`en:wraps`
+(tortillas_wraps, carried over unchanged). `keto_low_carb` and `bread:sandwich` have **no**
+`SUBCATEGORY_TAG_MAP` entry — checked 6 and 5 real products respectively (multiple brands, including
+products literally named "Keto Bread" and "Sandwich Bread") and every one carries only the same
+generic `en:breads`/`en:sliced-breads`/`en:white-breads` tags every other bread type already uses.
+Backfill keywords: `sprouted` → sprouted_grain; `gluten[\s-]?free|\bgf\b` (word-boundary "gf", not
+substring, per instruction) → gluten_free; `\bketo\b|low[\s-]?carb` → keto_low_carb;
+`sandwich|sliced|\bloaf\b` → sandwich; `english muffin|\bbagel` → bagels_muffins (note: no longer
+matches bare "bun" — that was `bagels_buns`' scope, not `bagels_muffins`'); `tortilla|\bwrap` →
+tortillas_wraps (unchanged).
+
+**3. `chips` defaults to `'other'` on zero keyword matches — backfill script only, not live-scan.**
+`other` was always meant to be the 4th chips bucket (tortilla/potato/veggie/other); the fallback just
+wasn't implemented in the first backfill pass. `DEFAULT_SUBCATEGORY_ON_NO_MATCH = { chips: 'other' }`
+in `scripts/backfillSwapProductSubcategories.js` — applies only when `classify()` finds **zero**
+matching groups; an ambiguous multi-group match still stays `null`, unaffected. Deliberately **not**
+mirrored in `lib/scanHelpers.js`'s live-scan `mapProductSubcategory()`: an OFF product with no
+matching tag there could mean missing/incomplete tag data, not a genuine "other"-type product — that
+ambiguity doesn't exist when a human is reviewing one specific real curated product name by hand.
+
+**4. Dairy milk/yogurt tie-break.** A product name matching both the `milk` and `yogurt` keyword
+groups (e.g. "Whole Milk Yogurt") now resolves to `yogurt` — a general rule in `classify()`
+(`scripts/backfillSwapProductSubcategories.js`), not a one-off patch to the 4 rows
+that originally surfaced it. Scoped narrowly: only the exact `{milk, yogurt}` two-match combination
+triggers the tie-break; every other dairy multi-match combination (e.g. cheese+butter) is still
+genuinely ambiguous and stays `null`.
+
+**Re-run against the live 131-row table** (only rows with `subcategory IS NULL` are ever touched —
+verified the previous 35 non-null rows were structurally guaranteed untouched by the query itself, not
+just by chance, and confirmed directly via a live per-row query after the run): **21 newly classified,
+5 left null**, out of the 26 rows the first run left unclassified.
+
+By new subcategory: `plant_milk` 4, `sprouted_grain` 4, `other` 5, `yogurt` 4 (the tie-break
+reclassifications — dairy's total `yogurt` count is now 8: 4 from the first run + these 4),
+`gluten_free` 1, `keto_low_carb` 1, `sandwich` 1, `bagels_muffins` 1.
+
+Still unclassified (5): Boxed Water (Boxed Water Is Better) — no plant-milk or other beverages
+keyword; Harmless Harvest Organic Coconut Water — coconut *water*, not coconut *milk*, correctly not
+matched; GT's Synergy Organic Kombucha — no beverages keyword; Organic Valley Grassmilk Whole Milk —
+real dairy milk filed under `beverages` with no plant qualifier, correctly not matched as plant_milk;
+Dave's Killer Bread Organic 21 Whole Grains — no bread keyword from the new 6-value scheme.
+
+**Manual one-off fixes applied directly to `swap_products` after this session** (2 of the 5 rows
+above; not via the backfill script — these needed judgment calls a keyword rule shouldn't try to
+generalize from):
+- **Organic Valley Grassmilk Whole Milk** — `category` corrected `beverages` → `dairy` (it's real cow
+  milk, not a plant milk; it was simply miscategorized at the source), `subcategory` set to `milk`.
+- **Dave's Killer Bread Organic 21 Whole Grains** — `subcategory` set to `sandwich` (a standard loaf,
+  correctly the "sandwich" bucket; its name just never happened to say "sandwich"/"sliced"/"loaf").
+- **Boxed Water, Harmless Harvest Organic Coconut Water, GT's Synergy Organic Kombucha** —
+  confirmed left `null` deliberately, not reprocessed. No existing bucket fits (water and kombucha
+  aren't juice/soda/sparkling-water/coffee-tea/plant-milk); forcing a match into an ill-fitting bucket
+  would be worse than leaving them for manual review. **Future subcategory candidate**: a dedicated
+  `water`/`kombucha`-style bucket if volume in that space grows.
+
+**Final overall state** (verified via a fresh per-category-subcategory live query, after the manual
+fixes above): 131 total rows, **58 classified across the 5 covered categories** (35 from Phase 1 + 21
+from the follow-up session + 2 manual fixes), **3 permanently unclassified** (the water/kombucha trio
+above), 70 in the 5 uncovered categories (untouched throughout). `58 + 3 = 61` (the covered total),
+`61 + 70 = 131`. `bread` and `dairy` are now both fully classified (10/10 and 15/15 respectively —
+`dairy`'s row count rose from 14 to 15 and `beverages`' fell from 15 to 14 as a direct result of the
+Grassmilk category correction).
+
+**Tests — net +47, reconciled explicitly (per the standing instruction to reconcile counts, not just
+report file totals)**:
+- `__tests__/api/scan.test.js` (Suite Y): 28 → 32, **net +4**. Not a pure addition — 7 additions (2
+  `plant_milk` cases, 4 replacement bread cases for `sprouted_grain`/`gluten_free`/`bagels_muffins`×2,
+  1 new standalone "bread with only generic tags" test) minus 3 removals (the retired
+  `bread:sliced` and `bread:bagels_buns`×2 `test.each` entries). 7 − 3 = 4.
+- `__tests__/scripts/backfillSwapProductSubcategories.test.js`: new file, **net +43** — direct unit
+  tests of `classify()` (newly exported via a `require.main === module` guard so requiring the script
+  for tests doesn't trigger a live Supabase call). 15 for `plant_milk`, 17 for the bread redesign
+  (including a regression check that "Hamburger Buns" alone no longer matches `bagels_muffins`, unlike
+  the old `bagels_buns`), 4 for the chips `'other'` default (including confirming it's NOT applied to
+  any other category), 7 for the dairy tie-break (including a check that the tie-break does NOT
+  generalize to other ambiguous combinations like cheese+butter).
+- `__tests__/api/swaps.test.js` and `__tests__/components/SwapsScreen.test.js`: untouched this
+  session, 0 net change.
+
+4 + 43 = 47, matching 1570 → **1617 passing** exactly. Same one known pre-existing failure (the
+cross-list contradiction test, unrelated, unchanged).
+
+**No `PROMPT_VERSION` bump** — same reasoning as Phase 0/Phase 1: subcategory classification only,
+no `analyzeIngredients()` `flags`/`verdict`/`clearedBy` impact.
+
+---
+
+### Session — Phase 2: "Show More" expansion, no second network request (July 2026)
+
+Adds a client-side "Show More" expansion to swap results — see "Swaps System" → "'Show More'
+expansion" above for the full behavior. Scoped strictly to this; no pagination or admin-approval-
+workflow changes.
+
+**`pages/api/swaps.js`**: `RESULTS_PER_TIER` constant added (20, was a literal `3` in two `.slice(0,
+3)` calls). Every other line of the category/subcategory filtering, shuffle, swap_level tiering, and
+AI-fallback trigger condition (`swaps.length === 0 && category`) is untouched — confirmed by diff, not
+just by description. Also fixed a stale doc comment in the "API Routes" section that still described
+this endpoint as reading a Google Sheet CSV, left uncorrected since the Phase 0 migration.
+
+**`components/swaps/SwapsScreen.jsx`**: three new module-scope exports, same "extract for
+testability" reasoning as `FLAG_CATEGORY_MAP` (Phase 1) — this project has no React rendering test
+infrastructure, so pure functions are the only way to get real unit coverage on this logic:
+- `INITIAL_VISIBLE_SWAPS = 3`
+- `getVisibleSwaps(items, expanded)` — returns the first 3 items, or all of them once expanded
+- `shouldShowExpandButton(items, expanded, source)` — `true` only when `source !== 'ai'`, not already
+  expanded, and more than 3 items exist. The `source !== 'ai'` check is asserted explicitly rather than
+  relied on as a side effect of the AI path never populating `swaps` — the instruction was "never show
+  Show More for AI results," so that's now a direct, testable rule instead of an emergent one.
+
+New `goodExpanded`/`betterExpanded` state, independent per tier, both reset to `false` whenever a new
+fetch starts (category/subcategory/userLevel change) so a stale expansion never survives into a new
+scan's results. A new `source` state variable was also added (previously the fetched `data.source`
+was consulted once inline and discarded) specifically so `shouldShowExpandButton` has it to check.
+Level 2's flat list (previously unconditionally rendering every fetched "better" row) now goes through
+the same `visibleBetterSwaps`/`shouldShowExpandButton` path as Level 1's Better tier — Level 2 gets
+"Show More" too, since the instruction was "per tier," not "Level 1 only," and Level 2's one tier is
+still a tier.
+
+**Visual style**: the "Show More" button reuses the app's existing tappable-text-link pattern — same
+amber color, 600 weight, transparent background/border as the header's "← Verdict" button — rather
+than introducing a new visual treatment, per instruction.
+
+**Verified live, not just via unit tests**: built a throwaway `/dev-swaps-test` route rendering
+`SwapsScreen` directly against a real category (`condiments`, chosen because a live query confirmed it
+has more than 3 rows in both tiers), confirmed in the running dev server that (1) exactly 3 items per
+tier render initially with a "Show More" link below each, (2) tapping Good Swap's "Show More" reveals
+all remaining fetched items for that tier only — `read_network_requests` showed the exact same set of
+`/api/swaps` calls before and after the click, confirming zero new requests fired, (3) Better Swap's
+own "Show More" was untouched and still showed only its first 3 — confirming the two tiers expand
+independently, as required. The throwaway route was deleted after verification; it was never part of
+the app's real routing.
+
+**Tests — net +13, reconciled explicitly**:
+- `__tests__/api/swaps.test.js`: 24 → 27, **net +3**. B4 ("level-2 slices to at most 3 results") was
+  *modified in place* to assert the new 20-item cap against 25 available rows — not counted as a new
+  test, since it's the same test slot with an updated assertion. B5 (level-1 dual-tier 20-cap, 25+25
+  rows → 20+20), B6 (10 rows, between the old and new cap, returns all 10 — confirms the cap didn't
+  just move from 3 to some other wrong number), and B7 (1 row, the pre-Phase-2 small-count case, still
+  returns exactly what exists) are pure additions.
+- `__tests__/components/SwapsScreen.test.js`: 3 → 13, **net +10**, all additions — 1 for
+  `INITIAL_VISIBLE_SWAPS`, 4 for `getVisibleSwaps` (not expanded, expanded, ≤3 items unaffected, empty
+  array), 5 for `shouldShowExpandButton` (the normal true case, already-expanded, ≤3 items, AI source,
+  and AI+expanded+few-items combined to confirm every condition fails independently, not just the
+  first one checked).
+- No removals in either file, no other test files touched.
+
+3 + 10 = 13, matching 1617 → **1630 passing** exactly. Same one known pre-existing failure (the
+cross-list contradiction test, unrelated, unchanged).
+
+**No `PROMPT_VERSION` bump** — no `analyzeIngredients()` `flags`/`verdict`/`clearedBy` impact; this is
+a swaps-recommendation-display change only.
+
+---
+
+### Session — Phase 3a: admin swap-candidate foundation (July 2026)
+
+Foundation for surfacing real scanned products as swap candidates instead of relying entirely on
+hand-curated `swap_products` rows. **Explicitly 3a of 3** — schema, admin access control, and the
+candidate-discovery query only. No admin UI page, and no approve/reject action, exist yet (Phase 3b).
+See "Swaps System" → "Admin swap-candidate review" above for the full behavior.
+
+**New table `swap_candidate_reviews`** ([supabase/migrations/20260712040000_create_swap_candidate_reviews.sql](supabase/migrations/20260712040000_create_swap_candidate_reviews.sql))
+— `id`, `barcode`, `decision` (check in `('approved','rejected')`), `reviewed_at`, `note`,
+`swap_product_id` (nullable, FK to `swap_products(id)`, populated by Phase 3b's not-yet-built approve
+action). Same RLS pattern as `swap_products`: enabled, zero policies, service-role-only.
+
+**New column `swap_products.purchase_links`** ([supabase/migrations/20260712050000_add_purchase_links_to_swap_products.sql](supabase/migrations/20260712050000_add_purchase_links_to_swap_products.sql))
+— `jsonb not null default '[]'::jsonb`. Each element will be shaped `{ retailer, affiliate_url }` once
+something populates it — purely a schema foundation this session, not wired into any code path.
+`where_to_buy` (the existing `text[]` column) is deliberately untouched — no migration, no backfill,
+`pages/api/swaps.js` keeps reading/returning it exactly as before.
+
+**`lib/requireAdmin.js`** (new) — the reusable admin-auth check, built specifically so Phase 3b's
+approve/reject actions can reuse it rather than each admin route reinventing the check. No prior
+precedent existed in this codebase for verifying *which* signed-in user is calling an API route
+(`scan.js` doesn't need caller identity; `scanHistory.js` goes direct-to-Supabase client-side under
+RLS, never through an API route) — this is the first. Verifies the client-sent
+`Authorization: Bearer <supabase access token>` via a real `supabase.auth.getUser(token)` round-trip
+(rejects expired/revoked/forged tokens, unlike a local JWT decode), then checks the resulting email
+against the new `ADMIN_EMAILS` env var (comma-separated, case-insensitive, whitespace-trimmed).
+Reuses `getSupabaseServer()` rather than constructing a second Supabase client.
+
+**`GET /api/admin/swap-candidates`** (new) — `401` via `requireAdmin()` if the caller isn't an admin.
+Otherwise: aggregates `scans` (not `scan_cache`, which only holds current per-level state, not
+historical events) for `verdict='green'` rows with `>= 3` distinct `user_id`s per barcode (JS-side
+grouping, not a SQL `GROUP BY ... HAVING` — see the "Swaps System" section above for why this
+follows the project's existing "simple queries, business logic in JS" convention rather than
+introducing the first stored procedure); excludes barcodes already in `swap_products` or already
+present in `swap_candidate_reviews` (either decision — a rejected barcode must never resurface); joins
+`scan_cache` for the remaining candidates to attach product info and **both** L1 and L2 verdict data
+when present, deliberately not filtered to currently-green (a candidate's historical qualification and
+its current cached state can drift apart, and an admin should see that drift, not a stale assumption).
+
+**Tests — net +33, both entirely new files, reconciled explicitly**:
+- `lib/requireAdmin.test.js`: **+11** — valid admin token, non-admin email, missing header, malformed
+  header, empty-token header, Supabase auth error, thrown exception, unavailable Supabase client,
+  case-insensitive email match, multi-entry `ADMIN_EMAILS` with whitespace, and `ADMIN_EMAILS` unset
+  entirely (every user rejected, not "check disabled").
+- `__tests__/api/admin/swap-candidates.test.js`: **+22** across 7 suites — admin auth wiring (401,
+  200, 405-before-auth-check), the distinct-scanner threshold at exactly 2 (excluded) and exactly 3
+  (included) plus same-user-repeat-scan and null-`user_id` guards, `swap_products` exclusion,
+  `swap_candidate_reviews` exclusion for both decision values, the multi-level `scan_cache` join
+  (both levels present, only one level present, product info attached, no `scan_cache` row at all,
+  `explanation` passed through), and response-shape/early-return edge cases including asserting via
+  the mock's own call log which tables are (and are NOT) queried once a candidate pool empties out.
+
+11 + 22 = 33, matching 1630 → **1663 passing** exactly. Same one known pre-existing failure (the
+cross-list contradiction test, unrelated, unchanged). No modifications to any existing test file, no
+removals — both files are new.
+
+**No `PROMPT_VERSION` bump** — no `analyzeIngredients()` `flags`/`verdict`/`clearedBy` impact.
+
+---
+
+### Session — Phase 3b: admin review screen + approve/reject actions (3b of 3 — Phase 3 complete, July 2026)
+
+Builds the actual admin UI on top of Phase 3a's read-only discovery endpoint: the review screen
+(`pages/admin/swap-candidates.jsx`), the approve/reject action endpoint
+(`POST /api/admin/swap-candidates/review`), and the four-state verification-status logic that gates
+approval when a candidate's historical green verdict can no longer be confirmed current. Full design
+— the verification-status states, the single-endpoint approve/reject shape, and the compensating-delete
+partial-failure handling — is documented in the "Admin swap-candidate review" section under "Swaps
+System" above; this entry covers what changed and the test reconciliation.
+
+**`GET /api/admin/swap-candidates` extended** — each level's response object gained a `promptVersion`
+field (straight passthrough of `scan_cache.prompt_version`), specifically so the client can determine
+staleness against the live `PROMPT_VERSION` constant without an extra round-trip.
+
+**Pure-function extraction, same discipline as `FLAG_CATEGORY_MAP`/`getVisibleSwaps` in Phase 1/2** —
+this project has no React rendering test infrastructure (`testEnvironment: 'node'`), so every
+non-trivial decision in the new page is a plain, module-scope-exported function, not buried in
+component state: `getVerificationStatus()` (the four-state check), `validatePurchaseLinks()`,
+`validateApprovalForm()`, `isApproveEnabled()`, `buildApprovePayload()`, `buildRejectPayload()`,
+`buildInitialFormState()`.
+
+**Two defensive fixes made independent of any specific bug, both justified on their own merits:**
+`window.location.href` is used for the unauthenticated-redirect instead of `next/router`'s
+`router.replace()` — this page is Pages Router redirecting to `/`, which App Router renders, and a
+full-page redirect is a reasonable, cheap cost for a rare, security-relevant redirect on an admin-only
+page rather than relying on a cross-router soft navigation. The session check itself
+(`getSessionWithTimeout()`) is wrapped in an 8-second timeout — an auth gate should never be able to
+hang a page forever if the underlying SDK call stalls.
+
+**⚠️ Live browser verification not achieved this session — disclosed here rather than silently
+skipped.** The pure logic and both API routes are thoroughly unit-tested and exercised directly
+against real request/response shapes. The rendered page's actual runtime behavior (redirect-on-401,
+form interactions, submit flow) could not be confirmed interactively in this session's browser preview
+tooling: a bare, throwaway Pages Router test page containing nothing but a trivial `useState`/`useEffect`
+(no imports from this project at all) exhibited the identical symptom — the effect never firing — in
+the same preview environment, pointing at a tooling limitation specific to Pages Router pages in this
+preview harness (this is the first Pages Router UI page added to this project; every previously
+browser-verified page in this codebase has been under `app/`) rather than a defect in this page's own
+code. That inference is reasonably strong but not proven. If a future session finds this page failing
+to redirect or render in a real browser, start the investigation there rather than assuming the page
+itself is broken from scratch.
+
+**Tests — net +71, reconciled explicitly**:
+- `__tests__/api/admin/swap-candidates.test.js`: 22 → 23, **net +1** (E6 — `promptVersion` passthrough
+  from `scan_cache.prompt_version` into each level's response object).
+- `__tests__/pages/admin/swap-candidates.test.js` (new file): **+50** across 7 suites —
+  `getVerificationStatus()` (all four states, priority ordering when multiple conditions could apply,
+  the default-parameter case), `validatePurchaseLinks()`, `validateApprovalForm()`,
+  `isApproveEnabled()` (confirmed-status bypass vs. explicit-checkbox requirement), `buildApprovePayload()`
+  (why-it-passes line-splitting, certification-checkbox-to-array mapping, purchase-link filtering,
+  `confirmedCurrent` derivation), `buildRejectPayload()`, `buildInitialFormState()` (pre-fill from the
+  higher-available level, empty-candidate defaults). `lib/auth` is mocked so the test file never
+  constructs a real Supabase client via `lib/supabase.js`'s module-load-time singleton.
+- `__tests__/api/admin/swap-candidates/review.test.js` (new file): **+20** across 5 suites — admin auth
+  wiring (401 with zero Supabase queries made, 405-before-auth-check, valid-admin pass-through), input
+  validation (missing barcode, invalid `decision`, missing `product_name`/`category` on approve, invalid
+  `swap_level`), the reject flow (correct `swap_candidate_reviews` row, null-reason handling, confirms
+  `swap_products` is never touched, insert-failure → 500), the approve flow (correct `swap_products`
+  payload including `source: 'scan_approved'`, correct `swap_candidate_reviews` row with
+  `swap_product_id` linked, the `confirmedCurrent: false` → verification-note case, response shape), and
+  partial-failure handling (a failed `swap_products` insert never attempts the review insert; a failed
+  `swap_candidate_reviews` insert triggers the compensating delete of the just-created `swap_products`
+  row and returns 500; the success path never calls delete at all).
+
+1 + 50 + 20 = 71, matching 1663 → **1734 passing** exactly. Same one known pre-existing failure (the
+cross-list contradiction test, unrelated, unchanged since the collision-word audit series).
+
+**No `PROMPT_VERSION` bump** — no `analyzeIngredients()` `flags`/`verdict`/`clearedBy` impact.
+
+**Phase 3 of the swaps overhaul is now complete**: 3a (schema, admin auth, candidate discovery) + 3b
+(the review screen and approve/reject actions) together give real scanned green-verdict products a path
+into `swap_products` without hand-curation, gated by human review and an explicit acknowledgment when
+a candidate's current status can't be automatically confirmed.
 
 ---
 
