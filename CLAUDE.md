@@ -573,7 +573,9 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 40** (L1/L2 unification Stage 5c — `VERDICT_ENGINE_MODE=live` wired to `lib/verdictEngine.js`'s `computeCorrectedVerdict()` — see the "Session — L1/L2 unification Stage 5c" changelog entry below). Committed and pushed this session; **`VERDICT_ENGINE_MODE` has NOT yet been set to `live` in Vercel and `scan_cache` has NOT yet been invalidated** — this bump ships the cutover code, it does not activate it. See that changelog entry's "Stage 5c — pending activation steps" for the exact remaining manual sequence. Per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until verified live.
+**Current PROMPT_VERSION is 41** (meat detection fixes — `stripAllergenAdvisory()` "contains X% or less of" qualifier data-loss fix + "mechanically separated [species]" additive trigger — see the "Session — meat detection fixes" changelog entry below). `scan_cache` has **not yet been invalidated** for this bump — run `DELETE FROM scan_cache WHERE prompt_version < 41` in Supabase before/after deploying. Per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until verified live.
+
+Separately, PROMPT_VERSION 40 (L1/L2 unification Stage 5c — `VERDICT_ENGINE_MODE=live` wired to `lib/verdictEngine.js`'s `computeCorrectedVerdict()`) remains **not yet activated** — see the "Session — L1/L2 unification Stage 5c" changelog entry and its "Stage 5c — pending activation steps" for the exact remaining manual sequence (deploy confirmation, then `VERDICT_ENGINE_MODE=live` in Vercel, then cache invalidation). That activation is independent of and unaffected by this session's v41 bump.
 
 ### Cache Invalidation
 When PROMPT_VERSION is bumped, run `getCacheInvalidationSQL()` from `lib/cacheUtils.js` in the Supabase SQL editor to purge stale cache rows. Current version is 30. Run `DELETE FROM scan_cache WHERE prompt_version < 30` in Supabase to purge all stale rows before deploying.
@@ -3019,6 +3021,101 @@ of order:
 
 None of these five steps were performed as part of this session — they are explicitly deferred to a
 deliberate, separate activation pass, per instruction.
+
+---
+
+### Session — meat detection fixes: allergen-advisory data loss, MSM species trigger, unverified suppression (July 2026, PROMPT_VERSION 41)
+
+Follow-up to a prior investigation session (report-only, no code changed) that confirmed three
+issues found while auditing `scan_cache` data for meat products. This session implements all three
+as isolated, separately-tested fixes.
+
+**Fix 1 — `stripAllergenAdvisory()` data-loss bug on "contains X% or less of" phrasing.** The
+qualifier-stripping regex (`lib/rulesEngine.js`, `stripAllergenAdvisory()`) only recognized
+`"contains less than X% of"` — a label using the equally common `"contains X% or less of"` phrasing
+instead (with or without a trailing colon) fell through to the greedy bare-`"contains"` fallback,
+which deletes everything from `"contains"` to the ingredient list's final period. Confirmed real
+production impact: barcode 888313971800 ("Beef Franks," ingredients ending `"...contains 2% or less
+of salt, sorbitol, sodium lactate, natural flavorings, sodium phosphates, hydrolyzed corn protein,
+paprika, sodium diacetate, sodium erythorbate, sodium nitrite."`) had all five of the trailing
+additive/flavor ingredients silently deleted before trigger matching ever ran, producing only a
+`conventional_meat` flag when the correct result includes `conventional_crops`, `natural_flavors`,
+and four separate `additives` reject flags. Broadened the qualifier regex to accept either quantity
+phrasing (`"less than X%"` or `"X% or less"`) and made the trailing `"the following"`/colon handling
+colon-position-agnostic (`\s*(?:the\s+following)?:?\s*` instead of requiring the colon immediately
+after `"the following:"`), so a colon sitting directly against `"of"` with no space (`"...of: salt"`)
+is also handled correctly — an earlier attempt at this fix still required whitespace before the
+colon and silently failed on that exact real-world shape until corrected. 7 new tests (describe block
+75): the exact repro string, the colon variant, and regression guards confirming the existing
+`"less than"` qualifier stripping, the Kraft-style no-colon phrasing, the genuine bare `"Contains
+wheat."` advisory-stripping fallback, and the non-percentage `"one or more of the following"`
+qualifier are all unchanged.
+
+**Fix 2 — "mechanically separated meat" never matches real labels.** `SYNTHETIC_ADDITIVES` had only
+the literal phrase `'mechanically separated meat'` — real labels always name the species (`"MECHANICALLY
+SEPARATED CHICKEN"`, `"mechanically separated pork"`, etc.), never the generic word "meat," so this
+trigger never matched a real product; confirmed directly against two real cached products (Bologna,
+barcode 044700008577; Classic Franks, barcode 015900134014) where the species-qualified phrase landed
+in `unverified_ingredients` instead of flagging `additives`. Changed to a bare, species-agnostic
+`'mechanically separated'` trigger. Confirmed safe without a dedicated collision guard
+(`isAdjacentToLetterUnlessAllowlisted()`-style): at 23 characters, this is far too long and
+distinctive a phrase for any plausible accidental substring collision, unlike the short bare triggers
+(`corn`/`oats`/`ada`) that needed one. `matchedIngredient` now reports the bare trigger text
+(`'mechanically separated'`) rather than the old full literal phrase — the three pre-existing
+describe-22 tests were updated accordingly (regression guards confirming the original literal phrase
+still matches). Also confirmed `containsMeatIngredient()`/`isMeatIngredient` detection was **already
+correct** for both real-world repro fixtures independent of this fix, since bare `'chicken'`/`'pork'`
+(already in `MEAT_INGREDIENT_TERMS`) match the species word regardless of the "mechanically separated"
+prefix — so no `MEAT_INGREDIENT_TERMS` change was needed for this fix. 6 new tests (describe block 22,
+renamed to reflect the species-agnostic trigger): chicken/pork/turkey/beef variants via `test.each`, a
+mixed-species single-fire guard (confirms the flag doesn't double-fire per species word in the same
+ingredient list), and an unverified-ingredients regression check on the real Bologna repro string.
+
+**Fix 3 — meat/dairy corroboration arrays never suppress `unverified_ingredients`.**
+`MEAT_INGREDIENT_TERMS`, `MEAT_DERIVED_INGREDIENTS`, and `MILK_DERIVED_INGREDIENTS` were never spread
+into `ALL_TRIGGERS` (the array Pass 1 of unverified-token filtering checks against), so ingredients
+already corroborated by `containsMeatIngredient()`/`containsMeatDerived()`/`containsMilkDerived()` —
+e.g. `"chicken breast"` (barcode 051900016042, Oven Roasted Chicken Breast) and `"angus beef"`
+(barcode 044700073377, Jumbo Angus Beef Uncured Franks) — still showed up in
+`unverified_ingredients` despite `is_meat_ingredient: true` in the cached row. Confirmed the identical
+gap for dairy (`"whey protein concentrate"`). Spread all three arrays into `ALL_TRIGGERS`, mirroring
+how `FORTIFIED_VITAMINS` was added there for the same reason (see that array's own inline comment).
+7 new tests (describe block 76): suppression checks for all three real fixtures, matching
+flags/verdict-unaffected regression guards (confirms this is purely a Pass-1 display change), and an
+`"andouille sausage"` suppression check.
+
+**One pre-existing test updated as a necessary consequence of Fix 3, not a new bug**: describe block
+72's `"andouille sausage"` regression guard previously asserted the token *appears* in
+`unverifiedIngredients` as proof its tokenization wasn't corrupted by an unrelated Oxford-comma
+conjunction-stripping fix. That assertion no longer holds — `"sausage"` is a real
+`MEAT_INGREDIENT_TERMS` entry, so `"andouille sausage"` is now correctly suppressed as a real,
+already-corroborated meat product. Replaced the assertion with a check that the token isn't mangled
+into a stripped-prefix form (`"ouille sausage"`), which is what that test was actually meant to prove.
+
+**One known, accepted low-severity edge case from Fix 3 — flagged, not fixed, out of scope for this
+session**: bare `'ham'` in `MEAT_INGREDIENT_TERMS` would also suppress an unrelated real ingredient
+like `"Hamlin orange juice"` (a real Florida orange variety) from the unverified review queue via
+substring match, since `ALL_TRIGGERS`'s Pass-1 filter is substring-only, not word-boundary-aware.
+Display-only (no flags/verdict impact) and mirrors already-accepted substring risk elsewhere in
+`ALL_TRIGGERS` — see the collision-word audit series above for the same accepted-risk shape on other
+bare short triggers. Left for a future session's review rather than fixed here, per instruction to
+keep this session scoped to the three confirmed fixes.
+
+**PROMPT_VERSION bumped 40 → 41 — covers Fixes 1 and 2 only.** Both change real `flags`/`verdict`
+output for previously-cached products: Fix 1 for any product using `"contains X% or less of"`
+phrasing (most severely, processed-meat products with several trailing additive/preservative
+ingredients after the qualifier — exactly the shape that silently lost real reject-severity flags);
+Fix 2 for any mechanically-separated-meat product (bologna, hot dogs, classic franks) that previously
+showed zero `additives` flag for its processing method. Run `DELETE FROM scan_cache WHERE
+prompt_version < 41` in Supabase before/after deploying. **Fix 3 does NOT bump `PROMPT_VERSION`** —
+it only changes the display-only `unverified_ingredients` list, never `flags`/`verdict`, consistent
+with how the Batch 6/7/9 whole-food whitelist entries shipped previously. The `M. PROMPT_VERSION`
+contract test in `__tests__/api/scan.test.js` was updated to assert `41`.
+
+Full suite: **1494 passing** (up from 1474; +20 net across all three fixes), same one known
+pre-existing failure (the cross-list contradiction test — `coconut sugar`, `flax seeds`, `sweet
+potato`, `quinoa`, `amaranth`, `teff`, `date sugar`, `lactic acid starter culture` — unrelated to this
+session, unchanged, tracked separately since the collision-word audit series).
 
 ---
 
