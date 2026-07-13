@@ -4190,21 +4190,57 @@ fallback fix: `unverifiedReason` is not part of `analyzeIngredients()`'s `flags`
 contract, which is what `PROMPT_VERSION` gates. Confirmed this fix touches nothing else in either
 function.
 
-**The 8 existing bad rows are NOT self-healing and were NOT purged.** Because `PROMPT_VERSION` isn't
-bumping, these rows' `prompt_version: 40` won't fall behind the live constant the way the earlier
-Nutty Buddy Creme Pies row did — the cache-read's `.eq('prompt_version', PROMPT_VERSION)` filter will
-keep treating them as fresh hits indefinitely, continuing to serve `unverified_reason: null` to any
-future re-scan of these exact barcodes regardless of `VERDICT_ENGINE_MODE`. Recommended (not run) a
-targeted, fingerprint-matched cleanup — the same pattern already established for the "raw truncated
-JSON" fix rather than a disproportionate full-table version bump:
+**⚠️ CORRECTION (made the same day, during deploy verification) — the "8 existing bad rows are NOT
+self-healing" claim below was wrong; left in place per this project's non-rewrite convention rather
+than edited, with the correction here instead.** That claim assumed the live `PROMPT_VERSION` still
+matched these rows' stored `prompt_version: 40`, without actually checking. It doesn't —
+`lib/cacheVersion.js`'s `PROMPT_VERSION` was already `42` (bumped in an earlier, unrelated session,
+independent of anything in this fix), meaning these 8 rows were **already stale relative to the live
+constant before this investigation even started**, regardless of whether this session bumped it
+further. The cache-read's `.eq('prompt_version', PROMPT_VERSION)` filter (`pages/api/scan.js:818`)
+already excludes them from ever being served as a hit. **Confirmed directly**: a single live re-scan
+of barcode 011110638434 (Band Pretzel Thins) returned `source: 'open-food-facts'` (a fresh fetch, not
+a cache hit) and correctly upserted the *same row* (`id: eeb16b2d-...`, `created_at` unchanged) to
+`prompt_version: 42` with `unverified_reason: 'no_ingredients'` — silently self-healed by the upsert's
+`(barcode, user_level)` conflict key, no manual intervention needed. Re-checked the other 7 barcodes
+immediately after: all still sitting untouched at `prompt_version: 40`/`unverified_reason: null`,
+confirming the fix only affects whichever barcode is actually re-scanned, not all 8 at once. **No
+purge is strictly required** — each of the remaining 7 will self-heal identically on its own next
+scan. A targeted `DELETE` (SQL below, still valid if wanted for faster/proactive cleanup rather than
+waiting on organic re-scan traffic) remains optional, not required:
 ```sql
 DELETE FROM scan_cache
 WHERE verdict = 'unverified' AND ingredients IS NULL AND unverified_reason IS NULL;
 ```
-Confirmed this matches exactly the 8 known-bad rows and nothing else at investigation time.
 
-**Not deployed** — committed locally only, per instruction, pending review of this fix and the
-Step 0 `VERDICT_ENGINE_MODE` finding before deciding next steps.
+**Original (incorrect) claim, left for context**: ~~The 8 existing bad rows are NOT self-healing and
+were NOT purged. Because `PROMPT_VERSION` isn't bumping, these rows' `prompt_version: 40` won't fall
+behind the live constant... keep treating them as fresh hits indefinitely...~~ — see the correction
+above; this was based on not having checked the actual live `PROMPT_VERSION` value at the time.
+
+**Confirmed pushed and deployed to production July 13, 2026** (not just committed). Before pushing,
+`git fetch` + `git merge-base --is-ancestor origin/mvp-beta HEAD` confirmed a clean fast-forward with
+no divergence — local `HEAD` (`cefea17`) sat directly on top of `origin/mvp-beta`'s prior tip
+(`773b9a6`, the ConcernCard deploy-status docs commit), and `git push --dry-run` showed a simple
+`773b9a6..cefea17` fast-forward before the real push ran. Pushed via `git push origin mvp-beta`;
+confirmed `origin/mvp-beta` moved to `cefea17` via a post-push `git fetch` + `git log`. Deploy
+confirmed via GitHub's commit status API — the `Vercel` context for `cefea17` shows `state: success`,
+`description: "Deployment has completed"`, timestamped `2026-07-13T02:49:48Z`.
+
+**`VERDICT_ENGINE_MODE` set to `'legacy'` in Vercel (Production and Preview)** as part of this
+activity — a deliberate, explicit choice to stand down Stage 5c's live-cutover experiment following
+this investigation, not an accidental revert. No build-log/deployment-metadata access was available
+locally to confirm the env var change took effect without a live check, so verification fell through
+to the live-scan path: re-scanned barcode 011110638434 (Band Pretzel Thins, one of the 8 known-affected
+barcodes) via the manual "Enter Barcode" entry on `beyond-labels-eight.vercel.app`. Result: `verdict:
+'unverified'`, `ingredients: null`, **`unverifiedReason: 'no_ingredients'`** (no longer `null`) —
+confirmed both in the raw `/api/scan` network response and in the rendered `VerdictScreen`, which
+showed the correct message ("We found this product but it has no ingredient data on file. We can't
+screen what we can't see — check the label directly.") instead of the old misleading generic fallback.
+Since both `computeVerdictLegacy()` (already correct) and the now-fixed `computeCorrectedVerdict()`
+produce identical output for this exact scenario, this result doesn't by itself distinguish which
+function actually ran — but it directly confirms the deploy is live and the bug is fixed in production
+regardless of which mode is active, which was the actual goal of this check.
 
 ---
 
