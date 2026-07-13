@@ -27,7 +27,7 @@ const FLAG_KEYWORDS = {
   'Vegan': ['milk', 'egg', 'meat', 'beef', 'pork', 'chicken', 'fish', 'gelatin', 'honey', 'whey', 'casein', 'lard'],
 };
 
-function getUnverifiedCopy(unverifiedReason, isMeat, userLevel) {
+export function getUnverifiedCopy(unverifiedReason, isMeat, userLevel) {
   if (unverifiedReason === 'no_ingredients' && isMeat && userLevel === 1) {
     return "We couldn't find the ingredient list for this product. Flip the package over and read the label before buying — skip it if you see any synthetic chemicals, artificial additives, artificial flavors, or preservatives.";
   }

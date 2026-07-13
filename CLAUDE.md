@@ -4130,6 +4130,84 @@ data, only how existing data renders and is logged.
 
 ---
 
+### Session — computeCorrectedVerdict() missing no_ingredients default (July 2026)
+
+Follow-up to an investigation session (report-only, no code changed) into "Band Pretzel Thins"
+(barcode 011110638434, user_level 2) — a `scan_cache` row with `verdict: 'unverified'`,
+`ingredients: null`, and, unlike every other unverified case in the app, `unverified_reason: null`
+instead of `'no_ingredients'`. That investigation traced the divergence to `lib/verdictEngine.js`'s
+`computeCorrectedVerdict()` and found the same gap in **8 rows total — every unverified-verdict row
+in the entire `scan_cache` table**, all clustered in a single 21-minute window on 2026-07-12
+(`15:17:35`–`15:38:22`), all `prompt_version: 40`. Open Food Facts was confirmed (via a live, read-only
+check) to genuinely have a product record for all 8 barcodes — this was never a data problem.
+
+**Root cause**: `pages/api/scan.js`'s `computeVerdictLegacy()` has always initialized
+`unverifiedReason = !ingredientsText ? 'no_ingredients' : null` (line 223-224) — a guarantee that
+verdict `'unverified'` always carries a real reason, since `analyzeIngredients()` only returns
+`'unverified'` on that exact same falsy-ingredients condition. `lib/verdictEngine.js`'s
+`computeCorrectedVerdict()` — the Stage 5a/5c "corrected" engine, used only when
+`VERDICT_ENGINE_MODE=live` — initialized `unverifiedReason = null` unconditionally and never set
+`'no_ingredients'` anywhere; the default simply wasn't ported over when this engine was built. The
+bug is invisible under the default/legacy path (which was always correct) and only manifests when
+`VERDICT_ENGINE_MODE=live` is active — per the Stage 5c changelog, that activation was documented as
+"pending... not yet done," so this most likely reflects a contained testing window rather than an
+ongoing production state, though that could not be confirmed directly (no Vercel CLI/API token
+available locally) — see the investigation session's Step 0 for the indirect evidence and where to
+check directly in the Vercel dashboard.
+
+**Fix**: `lib/verdictEngine.js` — `unverifiedReason` now initializes as
+`!ingredientText ? 'no_ingredients' : null`, mirroring `computeVerdictLegacy()`'s exact pattern.
+Confirmed via direct trace this can't be overwritten downstream (the only other reassignment,
+`'cert_unconfirmed'`, requires `verdict === 'yellow'`, mutually exclusive with `'unverified'`).
+
+**Side effect closed**: `components/verdict/VerdictScreen.jsx`'s `getUnverifiedCopy()` already had
+correct, more honest `'no_ingredients'` copy (including meat-specific L1/L2 messaging) — it was
+always unreachable in live mode because `unverifiedReason` never carried the value it checks for.
+Exported `getUnverifiedCopy()` (previously private) so it's directly testable, same pattern as
+`ConcernCard.jsx`'s `getFallbackSummary()`. Confirmed reachable end-to-end for both the non-meat case
+(Band Pretzel Thins → *"We found this product but it has no ingredient data on file..."*) and the
+real meat case (barcode 051900401657, Hickory Smoked Turkey Breast → the USDA-organic-seal-specific
+L2 copy, not the generic fallback).
+
+**Tests — net +9**: `lib/verdictEngine.test.js` (+6) — `computeCorrectedVerdict()` with falsy
+`ingredientText` (both `null` and `''`) now correctly returns `'no_ingredients'`; a real
+ingredient-bearing product is unaffected (`unverifiedReason` stays `null` when verdict isn't
+unverified); the real meat fixture at both user levels confirms `unverifiedReason` + `isMeat` both
+correct; two "downstream reachability" tests feed the engine's real output directly into
+`getUnverifiedCopy()` and assert the exact correct string comes back for both the meat and non-meat
+cases, explicitly ruling out the old generic fallback string. `__tests__/api/scan.test.js` Suite V
+(+3) — exercises the real `/api/scan` handler end-to-end: live mode now correctly returns
+`unverifiedReason: 'no_ingredients'` for the exact OFF response shape barcode 011110638434 actually
+returns (product record present, no `ingredients_text` field at all); a **contrast test** confirms
+legacy mode (`VERDICT_ENGINE_MODE` unset) was already correct for the identical fixture and remains
+so, unaffected by this fix (only `computeCorrectedVerdict()` was touched); and the real turkey-breast
+meat fixture confirms `isMeat: true` alongside the correct reason in the actual HTTP response. Full
+suite: **1781 passing** (up from 1772), same one known pre-existing failure (the cross-list
+contradiction test from the collision-word audit series, unrelated, unchanged).
+
+**No `PROMPT_VERSION` bump** — same reasoning as the `is_meat` Phase 1/2 sessions and the ConcernCard
+fallback fix: `unverifiedReason` is not part of `analyzeIngredients()`'s `flags`/`verdict`/`clearedBy`
+contract, which is what `PROMPT_VERSION` gates. Confirmed this fix touches nothing else in either
+function.
+
+**The 8 existing bad rows are NOT self-healing and were NOT purged.** Because `PROMPT_VERSION` isn't
+bumping, these rows' `prompt_version: 40` won't fall behind the live constant the way the earlier
+Nutty Buddy Creme Pies row did — the cache-read's `.eq('prompt_version', PROMPT_VERSION)` filter will
+keep treating them as fresh hits indefinitely, continuing to serve `unverified_reason: null` to any
+future re-scan of these exact barcodes regardless of `VERDICT_ENGINE_MODE`. Recommended (not run) a
+targeted, fingerprint-matched cleanup — the same pattern already established for the "raw truncated
+JSON" fix rather than a disproportionate full-table version bump:
+```sql
+DELETE FROM scan_cache
+WHERE verdict = 'unverified' AND ingredients IS NULL AND unverified_reason IS NULL;
+```
+Confirmed this matches exactly the 8 known-bad rows and nothing else at investigation time.
+
+**Not deployed** — committed locally only, per instruction, pending review of this fix and the
+Step 0 `VERDICT_ENGINE_MODE` finding before deciding next steps.
+
+---
+
 ## Golden Master Snapshot (L1/L2 Unification Project — Stage 1)
 
 The rules engine (`lib/rulesEngine.js`) and the L1/L2 post-processing logic in `pages/api/scan.js`

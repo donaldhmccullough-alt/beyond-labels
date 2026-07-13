@@ -3265,6 +3265,79 @@ describe('V. Live mode (VERDICT_ENGINE_MODE=live)', () => {
     expect(res.body.flags.some(f => f.category === 'conventional_eggs')).toBe(true);
     expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(true);
   });
+
+  // ── BUG FIX — unverified_reason: 'no_ingredients' end-to-end through the real
+  // handler, at live mode AND legacy mode. Reproduces the real production bug
+  // (8 real scan_cache rows, e.g. barcode 011110638434 "Band Pretzel Thins") —
+  // OFF returns a real product with no ingredients_text field at all, exercised
+  // through the actual /api/scan handler rather than calling
+  // computeCorrectedVerdict() directly (see lib/verdictEngine.test.js for the
+  // unit-level coverage of the same fix).
+
+  test('BUG FIX — live mode: a product with no ingredients_text in OFF now correctly sets unverifiedReason "no_ingredients" in the real response', async () => {
+    process.env.VERDICT_ENGINE_MODE = 'live';
+    getSupabaseServer.mockReturnValueOnce(makeFakeSbForLive());
+
+    // ingredients_text omitted entirely — same shape OFF actually returns for
+    // barcode 011110638434 (confirmed live: status 1, real product_name, no
+    // ingredients_text/ingredients_text_en field at all).
+    mockFetchOnce({
+      status: 1,
+      product: {
+        product_name:    'Band Pretzel Thins',
+        labels_tags:     [],
+        categories_tags: [],
+      },
+    });
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000915', userLevel: 2 }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.verdict).toBe('unverified');
+    expect(res.body.ingredients).toBeNull();
+    expect(res.body.unverifiedReason).toBe('no_ingredients'); // was null before the fix
+  });
+
+  test('CONTRAST — legacy mode (VERDICT_ENGINE_MODE unset) was ALREADY correct for the same no-ingredients fixture, and remains correct: unverifiedReason "no_ingredients" both before and after this fix, since only computeCorrectedVerdict() was touched', async () => {
+    getSupabaseServer.mockReturnValueOnce(makeFakeSbForLive());
+
+    mockFetchOnce({
+      status: 1,
+      product: {
+        product_name:    'Band Pretzel Thins',
+        labels_tags:     [],
+        categories_tags: [],
+      },
+    });
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000916', userLevel: 2 }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.verdict).toBe('unverified');
+    expect(res.body.ingredients).toBeNull();
+    expect(res.body.unverifiedReason).toBe('no_ingredients');
+  });
+
+  test('BUG FIX — live mode: the real Hickory Smoked Turkey Breast case (meat, no ingredients) sets unverifiedReason "no_ingredients" AND isMeat true in the real response', async () => {
+    process.env.VERDICT_ENGINE_MODE = 'live';
+    getSupabaseServer.mockReturnValueOnce(makeFakeSbForLive());
+
+    mockFetchOnce({
+      status: 1,
+      product: {
+        product_name:    'Hickory Smoked Turkey Breast & White Turkey | Lean',
+        labels_tags:     [],
+        categories_tags: ['en:turkeys', 'en:meats'],
+      },
+    });
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000000917', userLevel: 2 }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.verdict).toBe('unverified');
+    expect(res.body.unverifiedReason).toBe('no_ingredients');
+    expect(res.body.isMeat).toBe(true);
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════════════
