@@ -1,8 +1,12 @@
 'use client';
-import { useState } from 'react';
-import { signIn, signUp, signInWithGoogle, signInWithApple, requestPasswordReset } from '@/lib/auth';
+import { useState, useEffect } from 'react';
+import { signIn, signUp, signInWithGoogle, signInWithApple, requestPasswordReset, resendConfirmationEmail } from '@/lib/auth';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// UX-only cooldown for the "Resend confirmation email" button — Supabase
+// already rate-limits resend() server-side (see lib/auth.js), this just
+// keeps the button from inviting an easily-avoidable 429 in the first place.
+const RESEND_COOLDOWN_SECONDS = 30;
 
 export default function AuthModal({ onClose, onSuccess, defaultTab = 'signin' }) {
   const [tab, setTab] = useState(defaultTab); // 'signin' | 'signup'
@@ -10,7 +14,6 @@ export default function AuthModal({ onClose, onSuccess, defaultTab = 'signin' })
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
 
   // ── Forgot password ──────────────────────────────────────────────────────
   const [forgotOpen, setForgotOpen] = useState(false);
@@ -18,6 +21,20 @@ export default function AuthModal({ onClose, onSuccess, defaultTab = 'signin' })
   const [resetError, setResetError] = useState('');
   const [resetSent, setResetSent] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+
+  // ── Signup email confirmation ────────────────────────────────────────────
+  const [signupConfirmOpen, setSignupConfirmOpen] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendMsg, setResendMsg] = useState('');
+  const [resendErr, setResendErr] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  // Self-scheduling countdown — re-fires every second while resendCooldown > 0.
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setTimeout(() => setResendCooldown((s) => Math.max(0, s - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [resendCooldown]);
 
   function openForgotPassword() {
     setResetEmail(email); // carry over whatever they'd already typed on the sign-in tab
@@ -55,7 +72,6 @@ export default function AuthModal({ onClose, onSuccess, defaultTab = 'signin' })
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
-    setSuccessMsg('');
     if (!email || !password) { setError('Please enter your email and password.'); return; }
     if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
     setLoading(true);
@@ -64,8 +80,13 @@ export default function AuthModal({ onClose, onSuccess, defaultTab = 'signin' })
       const { data, error: authError } = await fn(email, password);
       if (authError) { setError(authError.message); return; }
       if (tab === 'signup' && data?.user && !data.session) {
-        // Email confirmation required
-        setSuccessMsg('Check your email to confirm your account, then sign in.');
+        // Email confirmation required — Supabase already sent one via
+        // signUp() itself, so arm the resend cooldown immediately rather
+        // than leaving the button hot for an instant, easily-avoidable 429.
+        setResendMsg('');
+        setResendErr('');
+        setResendCooldown(RESEND_COOLDOWN_SECONDS);
+        setSignupConfirmOpen(true);
         return;
       }
       onSuccess?.(data?.user || data?.session?.user);
@@ -75,6 +96,43 @@ export default function AuthModal({ onClose, onSuccess, defaultTab = 'signin' })
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleResendConfirmation() {
+    if (resendLoading || resendCooldown > 0) return;
+    setResendErr('');
+    setResendMsg('');
+    setResendLoading(true);
+    try {
+      const { error: resendError } = await resendConfirmationEmail(email);
+      if (resendError) {
+        setResendErr(resendError.message || 'Something went wrong. Please try again.');
+        // If this is the server's own rate-limit response, it names the real
+        // remaining wait time — use that instead of guessing, so the cooldown
+        // shown stays accurate even if our local timer drifted from the
+        // server's (e.g. after the tab was backgrounded).
+        const match = /after (\d+) seconds?/i.exec(resendError.message || '');
+        setResendCooldown(match ? parseInt(match[1], 10) : RESEND_COOLDOWN_SECONDS);
+      } else {
+        setResendMsg('Confirmation email resent — check your inbox.');
+        setResendCooldown(RESEND_COOLDOWN_SECONDS);
+      }
+    } catch {
+      setResendErr('Something went wrong. Please try again.');
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    } finally {
+      setResendLoading(false);
+    }
+  }
+
+  function handleWrongEmail() {
+    // email/password are left as-is in state (never cleared on signup
+    // success) so the user can fix a typo'd address without retyping a
+    // password too — they just land back on the still-filled sign-up form.
+    setSignupConfirmOpen(false);
+    setResendMsg('');
+    setResendErr('');
+    setResendCooldown(0);
   }
 
   async function handleGoogle() {
@@ -112,7 +170,55 @@ export default function AuthModal({ onClose, onSuccess, defaultTab = 'signin' })
         {/* Drag handle */}
         <div style={{ width: 40, height: 4, background: 'var(--cream-dark)', borderRadius: 2, margin: '0 auto 20px' }} />
 
-        {forgotOpen ? (
+        {signupConfirmOpen ? (
+          <>
+            {/* Heading */}
+            <h2 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: 22, fontWeight: 700, color: 'var(--text-dark)', marginBottom: 6, textAlign: 'center' }}>
+              Check your email
+            </h2>
+            <p style={{ fontSize: 13, color: 'var(--text-light)', textAlign: 'center', marginBottom: 20, lineHeight: 1.5 }}>
+              We sent a confirmation link to <strong>{email}</strong>. Click the link to activate your account, then come back and sign in.
+            </p>
+
+            {resendErr && (
+              <div style={{ background: '#FDEDEC', border: '1px solid #C0392B33', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: '#C0392B' }}>
+                {resendErr}
+              </div>
+            )}
+            {resendMsg && (
+              <div style={{ background: '#EAFAF1', border: '1px solid #27AE6033', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: '#1E8449' }}>
+                {resendMsg}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleResendConfirmation}
+              disabled={resendLoading || resendCooldown > 0}
+              style={{ width: '100%', height: 52, background: 'var(--amber)', color: 'white', border: 'none', borderRadius: 14, fontSize: 16, fontWeight: 700, cursor: (resendLoading || resendCooldown > 0) ? 'default' : 'pointer', opacity: (resendLoading || resendCooldown > 0) ? 0.7 : 1, transition: 'opacity 0.15s' }}
+            >
+              {resendLoading
+                ? 'Sending...'
+                : resendCooldown > 0
+                  ? `Resend available in ${resendCooldown}s`
+                  : 'Resend confirmation email'}
+            </button>
+
+            <button
+              onClick={handleWrongEmail}
+              style={{ width: '100%', marginTop: 14, background: 'none', border: 'none', color: 'var(--text-light)', fontSize: 14, cursor: 'pointer', minHeight: 44, textDecoration: 'underline' }}
+            >
+              ← Wrong email? Go back
+            </button>
+
+            <button
+              onClick={onClose}
+              style={{ width: '100%', marginTop: 2, background: 'none', border: 'none', color: 'var(--text-light)', fontSize: 13, cursor: 'pointer', minHeight: 44 }}
+            >
+              Close
+            </button>
+          </>
+        ) : forgotOpen ? (
           <>
             {/* Heading */}
             <h2 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: 22, fontWeight: 700, color: 'var(--text-dark)', marginBottom: 6, textAlign: 'center' }}>
@@ -172,8 +278,8 @@ export default function AuthModal({ onClose, onSuccess, defaultTab = 'signin' })
 
         {/* Tab switcher */}
         <div style={{ display: 'flex', gap: 4, background: 'var(--cream-dark)', borderRadius: 12, padding: 4, marginBottom: 20 }}>
-          <button style={tabStyle('signin')} onClick={() => { setTab('signin'); setError(''); setSuccessMsg(''); }}>Sign In</button>
-          <button style={tabStyle('signup')} onClick={() => { setTab('signup'); setError(''); setSuccessMsg(''); }}>Create Account</button>
+          <button style={tabStyle('signin')} onClick={() => { setTab('signin'); setError(''); }}>Sign In</button>
+          <button style={tabStyle('signup')} onClick={() => { setTab('signup'); setError(''); }}>Create Account</button>
         </div>
 
         {/* Social buttons */}
@@ -240,11 +346,6 @@ export default function AuthModal({ onClose, onSuccess, defaultTab = 'signin' })
           {error && (
             <div style={{ background: '#FDEDEC', border: '1px solid #C0392B33', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: '#C0392B' }}>
               {error}
-            </div>
-          )}
-          {successMsg && (
-            <div style={{ background: '#EAFAF1', border: '1px solid #27AE6033', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: '#1E8449' }}>
-              {successMsg}
             </div>
           )}
 

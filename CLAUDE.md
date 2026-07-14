@@ -4433,6 +4433,106 @@ pending the deploy itself.
 
 ---
 
+### Session — resend confirmation email on signup (July 2026)
+
+Prompted by the same category of gap the forgot-password feature closed at login, but at signup:
+until now, a user who signed up and never got the confirmation email (spam filter, typo, slow
+delivery) had no path forward — `AuthModal.jsx` only showed a one-line inline message
+("Check your email to confirm your account, then sign in.") above the still-visible sign-up form,
+with no resend option and no way to fix a mistyped address.
+
+**Investigated before implementing, not assumed.** Confirmed directly against the live Supabase
+project (not from documentation or memory) that email confirmation is actually required here —
+queried `{SUPABASE_URL}/auth/v1/settings` with the anon key and got `mailer_autoconfirm: false`,
+`disable_signup: false`, `external.email: true`. This meant `signUp()` genuinely does return
+`{ user, session: null }` on signup and the feature was needed, not moot. Also confirmed via the
+installed `@supabase/auth-js` source that `resend({ type: 'signup', email })` is the correct call,
+and that Supabase already rate-limits it server-side (a plain `AuthApiError` with `.status === 429`,
+no dedicated rate-limit error class) — the client-side cooldown added here is a UX layer on top of
+that, not a reimplementation of it.
+
+**`lib/auth.js`**: new `resendConfirmationEmail(email)` wrapper, same shape/style as
+`requestPasswordReset()` — wraps `supabase.auth.resend({ type: 'signup', email, options:
+{ emailRedirectTo } })`, reusing the same `${origin}/auth/callback` redirect `signUp()` itself
+already uses (no `?type=recovery` param — that's specific to the password-recovery flow and doesn't
+apply here).
+
+**`components/auth/AuthModal.jsx`**: the old one-line inline `successMsg` banner (never anything but
+this one message, and now entirely dead code — removed along with its state) is replaced by a
+dedicated "Check your email" screen, following the same bottom-sheet-branch pattern as the existing
+forgot-password screen (`signupConfirmOpen` alongside `forgotOpen`, both branches of the same
+three-way conditional render). It shows:
+- The email address that was submitted, so the user can visually confirm it's correct.
+- A **"Resend confirmation email"** button with a 30-second cooldown (`RESEND_COOLDOWN_SECONDS`),
+  armed immediately when the screen first appears (Supabase already sent one via `signUp()` itself,
+  so the button doesn't invite an instant, easily-avoidable 429) and re-armed after every resend
+  attempt. On a real 429 from the server, the cooldown re-arms from the server's own stated wait time
+  (parsed via `/after (\d+) seconds?/i` from the error message) rather than the fixed default, so it
+  stays accurate even if the client's local timer drifted from the server's.
+- A **"← Wrong email? Go back"** link, returning to the sign-up form with `email`/`password` left
+  exactly as they were (neither is ever cleared on signup success) — a typo is a quick edit, not a
+  full re-type.
+- A **"Close"** link — an escape hatch the original inline-message flow never had, since the sign-up
+  form (with its own "Continue without signing in" cancel button) isn't rendered behind this screen.
+
+**Tests**: 3 new tests in `lib/auth.test.js` for `resendConfirmationEmail()` — the call shape
+(`type: 'signup'`, email, `emailRedirectTo` matching `signUp()`'s own), the success return shape, and
+a returned 429-shaped error (with both `.message` and `.status` asserted) propagating without
+throwing. Full suite: 1790 passing (up from 1787), same one known pre-existing failure (the
+cross-list contradiction test from the collision-word audit series, unrelated, unchanged).
+
+**⚠️ Verification status — deliberately partial, not a gap that was missed.** Two of the three usual
+verification layers are done; the third is explicitly blocked on external infrastructure, not on
+anything left to fix in this code:
+1. **Full test suite** — 1790 passing, confirmed above.
+2. **Live browser-driven UI testing** — done, via a real click-through of the actual rendered
+   component (not just unit tests of the underlying logic). Two real, unmocked signup attempts
+   against the live Supabase project surfaced two pieces of real infrastructure behavior worth
+   recording for future sessions: (a) this project has some form of server-side email-format
+   validation that rejects `@example.com`-style test addresses outright with `"Email address ...
+   is invalid"` — not a bug in this feature, a legitimate GoTrue-side check; (b) the project's
+   outbound email-sending quota is easily exhausted by testing — a `bltest.signup.1720900000@gmail.com`
+   attempt hit `"email rate limit exceeded"`. Confirmed via the Supabase Admin Users API
+   (`GET /auth/v1/admin/users`, service-role key, read-only) immediately after that no orphaned
+   `auth.users` row was left behind by that attempt — exactly 3 users exist in the table, matching
+   what existed before this session. To actually exercise the new UI despite the exhausted quota,
+   `window.fetch` was mocked for the `/auth/v1/signup` and `/auth/v1/resend` endpoints only (every
+   other request passed through untouched) — this exercises 100% of this feature's own code (the
+   state transition, the confirmation screen render, the live cooldown countdown, the resend
+   success/error paths) with only the network response faked, not any of the logic under test.
+   Confirmed working this way: the confirmation screen renders with the correct email; the initial
+   30s cooldown counts down live and correctly disables/enables the button; a successful resend shows
+   the green confirmation message and re-arms the cooldown; a simulated 429 with message `"For
+   security purposes, you can only request this after 42 seconds."` correctly displays that exact
+   server message and re-arms the cooldown to 42s (not the 30s default) — proving the regex-based
+   wait-time parsing works against a realistic server error shape; "Wrong email? Go back" correctly
+   returns to the sign-up form with the mistyped address still present and editable.
+3. **Real end-to-end email round-trip (real send → real inbox → real click → real signed-in
+   session)** — **not yet done, blocked on the same exhausted email quota** surfaced in step 2, not
+   on any known code issue. `/app/auth/callback/page.jsx`'s confirmation handling (the `token_hash`/
+   PKCE/hash-fragment resolution, the `'success'` checkmark screen, the auto-redirect into the app)
+   was **not modified by this feature at all** — it's the same code path the password-recovery
+   session already verified end-to-end live (see the "password-reset feature manually verified
+   end-to-end" entry immediately above), just reached via a different query-param combination
+   (`type=signup`, GoTrue's own default, vs. the recovery flow's explicit `?type=recovery`). That
+   gives real, if indirect, confidence in the landing side of the loop — but the actual real-email
+   send → click → land-signed-in sequence specific to *this* feature's new UI has not been walked
+   end-to-end with a live inbox.
+
+**Follow-up, tracked the same way the password-reset session's own verification gap was tracked
+until it was closed**: once Supabase's email-sending quota resets (unknown exact window — dependent
+on whatever the project's current mailer/rate-limit configuration is), do one real signup with a
+fresh, real, reachable address; confirm the initial email arrives, the "Check your email" screen's
+countdown/resend behave the same as they did under the mocked test above, and clicking the real link
+lands signed-in in the app. If the resend button's real 429 behavior (not the simulated one) ever
+gets exercised for real, that's an extra confirmation worth noting too, but isn't required to close
+this out — the simulated 429 test already exercises the exact same client-side code path.
+
+**No `PROMPT_VERSION` bump** — this is an auth-feature addition with no `analyzeIngredients()`
+`flags`/`verdict`/`clearedBy` impact, and no `scan_cache` schema or contract change.
+
+---
+
 ## Golden Master Snapshot (L1/L2 Unification Project — Stage 1)
 
 The rules engine (`lib/rulesEngine.js`) and the L1/L2 post-processing logic in `pages/api/scan.js`
