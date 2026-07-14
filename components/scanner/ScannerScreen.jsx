@@ -14,6 +14,19 @@ import { getUserLevel } from '@/lib/userLevel';
 import { PROMPT_VERSION } from '@/lib/cacheVersion';
 import { formatTime, createHistoryTapHandler } from '@/lib/scanHistory';
 
+const OFFLINE_MESSAGE = '📶 No internet connection — check your connection and try again.';
+const GENERIC_ERROR_MESSAGE = 'Something went wrong. Please try again.';
+
+// fetch() only *rejects* (as opposed to resolving with a non-ok status) when
+// the request never reached a server at all — no connectivity, DNS failure, a
+// dropped connection mid-request. Per the Fetch spec that's always a
+// TypeError; a real HTTP error status resolves normally, and a malformed
+// JSON body from res.json() throws SyntaxError instead — so this won't
+// misclassify either of those as "offline."
+export function isNetworkError(err) {
+  return err instanceof TypeError;
+}
+
 export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
   const [scanning, setScanning] = useState(false);
   const [scanUsage, setScanUsage] = useState({ scanCount: 0, resetDate: '' });
@@ -80,6 +93,16 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
   async function processBarcode(barcode) {
     setScanError(null);
     setScanning(true);
+
+    // Proactive check — point-in-time only, no online/offline listeners.
+    // Skips the fetch attempt entirely when the browser already knows it's
+    // offline, rather than waiting on a doomed network request to fail.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setScanError(OFFLINE_MESSAGE);
+      setScanning(false);
+      return;
+    }
+
     try {
       const res = await fetch('/api/scan', {
         method: 'POST',
@@ -107,7 +130,7 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
       onScanResult(data);
     } catch (err) {
       console.error('Scan error:', err);
-      setScanError('Something went wrong. Please try again.');
+      setScanError(isNetworkError(err) ? OFFLINE_MESSAGE : GENERIC_ERROR_MESSAGE);
     } finally { setScanning(false); }
   }
 
@@ -189,7 +212,7 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
       </button>
 
       {scanError && (
-        <p style={{ textAlign: 'center', marginTop: 8, fontSize: 13, color: '#C0392B', fontWeight: 500, padding: '0 16px' }}>
+        <p style={{ textAlign: 'center', marginTop: 8, fontSize: 13, color: scanError === OFFLINE_MESSAGE ? 'var(--amber)' : '#C0392B', fontWeight: 500, padding: '0 16px' }}>
           {scanError}
         </p>
       )}

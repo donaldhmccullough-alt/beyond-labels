@@ -4533,6 +4533,77 @@ this out — the simulated 429 test already exercises the exact same client-side
 
 ---
 
+### Session — offline scan detection (July 2026)
+
+Prompted by a real usability gap for how this app is actually used: scanning happens in stores,
+where signal is often spotty, but scanning with no connection previously showed the same generic
+"Something went wrong. Please try again." message as any other failure — cryptic, and unhelpful
+since retrying does nothing while still offline. Explicitly scoped as detection-and-messaging only,
+not full offline support — no service worker, no offline caching.
+
+**Investigated before implementing.** Traced `processBarcode()` in `ScannerScreen.jsx`: the single
+`fetch('/api/scan', ...)` call site had exactly one `catch` block covering every failure mode with
+one message, no distinction between offline, a malformed request, or a genuine server crash — a full
+codebase grep for `navigator.onLine`/`instanceof TypeError`/`offline` turned up nothing. Also
+confirmed, and left alone as working-as-designed and out of scope: `processBarcode()` never checks
+`res.ok` before parsing JSON, but that's intentional — `/api/scan` uses HTTP status as a
+data-carrying signal (e.g. a 404 "not in Open Food Facts" response still carries a real
+`{verdict: 'unverified', ...}` body `onScanResult(data)` is built to render as an unverified card),
+so "product not found" was never actually shown via this error paragraph at all.
+
+**`components/scanner/ScannerScreen.jsx`**:
+- `isNetworkError(err)` — new exported pure function: `err instanceof TypeError`. `fetch()` only
+  *rejects* (rather than resolving with a non-ok status) when the request never reached a server at
+  all — no connectivity, DNS failure, a dropped connection mid-request — and per the Fetch spec
+  that's always a `TypeError`; a malformed JSON body from `res.json()` throws `SyntaxError` instead,
+  so this can't misclassify a parse failure or a real HTTP error status as "offline."
+- `processBarcode()`'s catch block now branches: `setScanError(isNetworkError(err) ? OFFLINE_MESSAGE
+  : GENERIC_ERROR_MESSAGE)` — every other failure type keeps the original, unchanged generic message.
+- A proactive `navigator.onLine === false` check added at the very top of `processBarcode()`, before
+  the fetch is even attempted — point-in-time only, no `online`/`offline` event listeners (a
+  live-updating listener was considered and deliberately skipped as unneeded complexity: the user
+  actively initiates each scan attempt, so checking connectivity at the moment of action is
+  sufficient without needing to track connectivity changes while idle).
+- Copy: `"📶 No internet connection — check your connection and try again."` Rendered in
+  `var(--amber)` (`#D4872A`) instead of the existing hard red (`#C0392B`) used for the generic
+  fallback — amber is already this app's "caution, not necessarily broken" color elsewhere (Level 1
+  seed-oil/conventional-crop messaging), which fits "you're just out of signal" better than the
+  alarm-red reserved for a genuine unexpected failure. The color is derived directly from
+  `scanError === OFFLINE_MESSAGE` rather than adding a second piece of state.
+
+**Tests**: `__tests__/components/ScannerScreen.test.js` (new — this component had no test coverage
+before this session), following the same `require()`-only, no-rendering pattern as
+`ConcernCard.test.js`/`getFallbackSummary` (this project has no React rendering test infrastructure —
+`testEnvironment: 'node'`, no `@testing-library/react`). 8 tests directly against `isNetworkError()`:
+both a Chrome-style (`"Failed to fetch"`) and Firefox-style (`"NetworkError..."`) `TypeError` message
+→ `true`; a bare `TypeError` with no message → `true` (confirms classification is by type, not
+message text, since message wording isn't reliable across browsers); a `SyntaxError` → `false`; a
+plain `Error` → `false`; and three defensive non-Error cases (`undefined`, a string, `null`) →
+`false`. Full suite: 1798 passing (up from 1790), same one known pre-existing failure (the
+cross-list contradiction test from the collision-word audit series, unrelated, unchanged).
+
+**⚠️ Fully verified live in the browser — no pending/blocked verification items**, unlike both
+auth-related sessions earlier the same day (the forgot-password/change-password feature's real-click
+verification and the resend-confirmation-email feature's real-email round-trip, both of which
+depended on external infrastructure — a real inbox, Supabase's email-sending quota — that wasn't
+available in-session). This feature has no external dependency to wait on: `navigator.onLine` and
+`window.fetch` were mocked directly in a live dev-server browser session (not just unit-tested) to
+drive the real, rendered `ScannerScreen` component through its manual-entry flow three ways, and all
+three were confirmed:
+1. `navigator.onLine = false` → offline message rendered, computed color `rgb(212, 135, 42)`
+   (`#D4872A`, amber) — the proactive check path.
+2. `navigator.onLine = true` + `fetch` rejecting with `TypeError('Failed to fetch')` → same offline
+   message, same amber — the reactive catch-block path.
+3. `fetch` rejecting with a plain `Error` (simulating a genuine non-network bug) → unchanged
+   `"Something went wrong. Please try again."`, computed color `rgb(192, 57, 43)` (`#C0392B`, red) —
+   confirming other real error types keep their original, distinct messaging and were not swallowed
+   into the new offline path.
+
+**No `PROMPT_VERSION` bump** — this is a client-side scanner UX fix with no `analyzeIngredients()`
+`flags`/`verdict`/`clearedBy` impact, and no `scan_cache` schema or contract change.
+
+---
+
 ## Golden Master Snapshot (L1/L2 Unification Project — Stage 1)
 
 The rules engine (`lib/rulesEngine.js`) and the L1/L2 post-processing logic in `pages/api/scan.js`
