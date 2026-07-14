@@ -636,6 +636,14 @@ ADMIN_EMAILS=                      # server-side only — comma-separated allowl
                                     # verified Supabase session token — see "Admin swap-candidate
                                     # review" below. Unset means every request is rejected (no admins),
                                     # not "admin check disabled" — there is no bypass.
+CRON_SECRET=                       # server-side only — a random string (≥16 chars) that gates
+                                    # pages/api/cron/process-account-deletions.js. Vercel automatically
+                                    # sends `Authorization: Bearer <CRON_SECRET>` on every cron-triggered
+                                    # request once this env var exists in the Vercel project (Vercel's
+                                    # own documented mechanism — Vercel does NOT auto-generate the value,
+                                    # it must be set manually). Unset means every request to that route
+                                    # is rejected (401), including Vercel's own scheduled trigger — there
+                                    # is no bypass. See "Account Deletion" below.
 ```
 
 ---
@@ -4601,6 +4609,281 @@ three were confirmed:
 
 **No `PROMPT_VERSION` bump** — this is a client-side scanner UX fix with no `analyzeIngredients()`
 `flags`/`verdict`/`clearedBy` impact, and no `scan_cache` schema or contract change.
+
+---
+
+## Account Deletion (with grace period)
+
+**✅ FULLY VERIFIED END-TO-END AGAINST REAL INFRASTRUCTURE — see "Verification status" below.** This
+feature performs real, hard-to-reverse deletion (a real Supabase Auth user, permanently). Investigated
+and planned before writing any code; the plan was reviewed and approved, including two explicit
+product decisions, before implementation began. A follow-up session then ran the entire flow —
+request, restore, and an actual triggered hard-delete — against the live Supabase project, not just
+unit tests. See "Verification status" for the full account of that session, including a real mix-up
+with a real account that was caught and safely resolved before any irreversible step ran.
+
+### Design
+
+User requests deletion (ProfileScreen → Account section → "Delete Account") → re-enters current
+password + types "DELETE" to confirm (both required before the button even enables — this needs to
+be hard to trigger by accident, unlike Change Password) → account is flagged pending-deletion with a
+scheduled date ~14 days out, NOT deleted immediately → user is signed out on that submission. Signing
+back in during the grace period shows a blocking interstitial ("Your account is scheduled for
+deletion on [date] — want to keep it?") with a single "Restore my account" button (no separate
+decline/sign-out option — an explicit product decision). After the grace period lapses, a daily
+Vercel Cron job hard-deletes the Auth user, anonymizes their `scans` rows (`user_id → NULL`, rows
+kept — matches how the app already treats anonymous scan rows in the swap-candidate distinct-user
+counting), and leaves `scan_cache` completely untouched (shared product data, not personal).
+
+### Data model — `account_deletions` table, not Supabase Auth metadata
+
+Investigated whether Supabase Auth's `user_metadata`/`app_metadata` could hold this instead of a new
+table. Rejected: `user_metadata` is user-writable via the client's own session
+(`supabase.auth.updateUser({ data })`) — a user could clear their own pending-deletion flag directly,
+bypassing the app. `app_metadata` is service-role-only (safe from that), but the GoTrue Admin API has
+no way to query "all users where `app_metadata.scheduled_for <= now()`" — the cron job would have to
+paginate every user via `admin.listUsers()` and filter in JS, which doesn't scale.
+
+**`account_deletions`** ([supabase/migrations/20260714000000_create_account_deletions.sql](supabase/migrations/20260714000000_create_account_deletions.sql)),
+same RLS-enabled-zero-policies-server-only pattern as `swap_candidate_reviews`/`swap_products`/
+`verdict_shadow_diffs`:
+```sql
+CREATE TABLE account_deletions (
+  user_id       UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  requested_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  scheduled_for TIMESTAMPTZ NOT NULL
+);
+```
+**One refinement found during investigation, not in the original task framing**: `user_id` references
+`auth.users(id)` directly, **not** `profiles(id)`. `profiles` rows are created lazily (upsert on first
+onboarding write — see `lib/auth.js`), so a user who signs up but never finishes onboarding may have
+no `profiles` row at all; anchoring to `profiles(id)` would make requesting deletion fail its own FK
+constraint for that user. Every signed-up user has an `auth.users` row immediately, so that's the safe
+anchor — the same cross-schema FK pattern `profiles.id → auth.users(id)` already uses. `user_id` is
+the primary key (not a separate `id` + unique constraint) since a user can only have one pending
+request at a time.
+
+**Another finding worth recording**: `scans.user_id` is a Foreign Key to `profiles.id`, **not**
+directly to `auth.users.id` (confirmed via PostgREST's OpenAPI introspection, service-role key,
+read-only — `GET {SUPABASE_URL}/rest/v1/` with `Accept: application/openapi+json`). Could not retrieve
+the exact `ON DELETE` clause on either `scans.user_id → profiles.id` or the documented-but-unconfirmable
+`profiles.id → auth.users.id` (no direct Postgres connection available in this environment, and
+PostgREST's introspection describes FK *targets*, not their delete actions) — but this doesn't matter
+for correctness: a **NULL** value in a FK column trivially satisfies any FK constraint regardless of
+its `ON DELETE` clause, so the cron job's explicit ordering (anonymize `scans` → delete `profiles` →
+delete the Auth user) makes correctness independent of whatever those two clauses actually are.
+
+### `lib/requireUser.js`
+
+Mirrors `lib/requireAdmin.js`'s identity-verification step (`Authorization: Bearer <token>` →
+`supabase.auth.getUser(token)`, a real round-trip to Supabase Auth, not a local JWT decode) without
+the admin-email allowlist check — for routes that only need to know "who is this, really" so they can
+scope a query to that user's own data. Used by all three account routes below: a user can request
+deletion of, check the status of, or restore only their own `account_deletions` row, because the row
+they're allowed to touch is derived from the verified token, never from anything the request body or
+query string claims.
+
+### API routes
+
+- **`POST /api/account/request-deletion`** — identity-verified, inserts into `account_deletions` via
+  `.upsert(row, { onConflict: 'user_id', ignoreDuplicates: true })` (= `INSERT ... ON CONFLICT
+  (user_id) DO NOTHING`). **Double-submit is an explicit product decision**: a second request while
+  one is already pending is silently ignored — it does **not** reset the 14-day clock. The response
+  always re-reads the row after the upsert rather than echoing back the locally-computed
+  `scheduled_for` — if this was a duplicate that got silently ignored, the real row still holds the
+  *original* request's date, and the response must reflect what's actually true in the database, not
+  what this specific call attempted (caught and fixed during implementation, with a dedicated test —
+  see "Tests" below).
+- **`GET /api/account/deletion-status`** — identity-verified, returns `{ pending, scheduledFor }` for
+  the caller's own account only. Called from `app/page.jsx`'s `onAuthStateChange` `SIGNED_IN` handler.
+- **`POST /api/account/restore`** — identity-verified, deletes the caller's own `account_deletions`
+  row. Naturally idempotent (deleting an already-gone row is 0-rows-affected, not an error).
+
+None of the three ever trust a client-supplied user id — the row each one touches is always derived
+from `requireUser()`'s independently-verified token, mirroring `requireAdmin.js`'s own reasoning.
+
+### `pages/api/cron/process-account-deletions.js` — the scheduled hard-delete sweep
+
+`GET`-only (not POST, unlike every other route in this codebase — Vercel Cron sends GET), gated by a
+shared secret rather than a user session (there is no signed-in user involved in a cron trigger):
+checks `Authorization: Bearer <CRON_SECRET>` against the `CRON_SECRET` env var, 401 on any mismatch or
+if the env var is unset (no bypass). **Confirmed against Vercel's current documentation (fetched live,
+not from memory) rather than assumed**: Vercel does **not** auto-generate `CRON_SECRET` — it must be
+set manually as a project env var — but once it exists, Vercel automatically sends
+`Authorization: Bearer <that value>` on every cron-triggered request; this is Vercel's own documented
+mechanism, not something invented for this project.
+
+For every `account_deletions` row whose `scheduled_for` has passed:
+1. **Atomically claim it** — `DELETE ... WHERE user_id = :id AND scheduled_for <= now() RETURNING
+   user_id`. Zero rows returned means a concurrent `restore()` call already won the race (or a
+   duplicate cron invocation already processed it) — skip. Deliberately a single conditional `DELETE`,
+   not a separate `SELECT` then `DELETE` — avoids a window where two invocations could both "see" the
+   row as still-due and both attempt to process the same user.
+2. **Anonymize `scans`**: `UPDATE scans SET user_id = NULL WHERE user_id = :id` — before touching
+   `profiles`/`auth.users`, per the FK reasoning above. `scan_cache` is deliberately untouched.
+3. **`DELETE FROM profiles WHERE id = :id`** — explicit, not relied-upon cascade.
+4. **`supabase.auth.admin.deleteUser(id)`** — the actual hard delete. Also cascades cleanup of this
+   user's `account_deletions` row via `ON DELETE CASCADE`, though step 1 already removed it explicitly.
+
+**⚠️ A real design flaw found and fixed during implementation, before this ever ran once — worth
+recording since it's the kind of thing that's easy to miss.** The first draft treated the claim (step
+1) and the destructive work (steps 2-4) as one unit inside a single try/catch: if step 2, 3, or 4
+failed *after* a successful claim, the naive version would leave that user permanently stuck — claimed
+(so no longer in `account_deletions`), partially processed, but never tracked for retry by any future
+sweep, since the next day's query only looks at what's still *in* `account_deletions`. Fixed by
+wrapping steps 2-4 in their own nested try/catch: any failure there **re-inserts** the
+`account_deletions` row with `scheduled_for = now()` (immediately due again on the next daily run) and
+the **original** `requested_at` (carried through from the initial query, not fabricated fresh). If that
+re-insert itself fails, it's logged as `CRITICAL` — the user's Auth record still exists but is no
+longer tracked for automatic retry, and would need manual intervention; this residual risk (no true
+multi-step transaction) is accepted, consistent with the same reasoning already documented for
+`pages/api/admin/swap-candidates/review.js`'s compensating-delete on partial failure.
+
+**Idempotency is a hard requirement, confirmed from Vercel's own docs, not a nice-to-have**: cron
+delivery is best-effort — a scheduled run can be silently skipped, or the same run can fire more than
+once, and Vercel never retries a failure. This sweep tolerates both: a missed run is simply caught up
+by the next day's query (`WHERE scheduled_for <= now()` picks up anything still outstanding, not just
+"due today"); a duplicate invocation finds nothing left to claim for anything the first invocation
+already finished; a partial failure is retried automatically via the re-schedule mechanism above. Each
+user is processed in its own try/catch so one failure can't abort the rest of the sweep.
+
+### `vercel.json`
+
+```json
+"crons": [
+  { "path": "/api/cron/process-account-deletions", "schedule": "0 6 * * *" }
+]
+```
+Daily at 06:00 UTC — arbitrary but reasonable; a 14-day grace period has no need for finer granularity.
+Confirmed Hobby-plan cron restrictions (once/day, up-to-an-hour jitter) don't matter here since daily
+satisfies them either way.
+
+### UI
+
+- **`components/profile/DeleteAccountModal.jsx`** — mirrors `ChangePasswordModal.jsx`'s structure.
+  `isDeleteReady(password, confirmText)` exported at module scope (same no-rendering-test-infra
+  reasoning as `ConcernCard.jsx`/`getFallbackSummary`) — both fields required, confirmation text
+  matched exactly (case-sensitive, no trimming) against `"DELETE"`. On submit: `signIn()` to verify the
+  password (client-side, same pattern as `ChangePasswordModal`) → `POST /api/account/request-deletion`
+  with the fresh session's access token → `signOut()`. Mirrors `ProfileScreen.jsx`'s own
+  `handleSignOut()` pattern exactly for notifying the parent: `onSignOut` is called explicitly after
+  `signOut()` settles, rather than relying solely on the async `onAuthStateChange` listener, since
+  `signOut()`'s local-fallback path (a network failure during the sign-out call itself) never fires
+  Supabase's own `SIGNED_OUT` event — the same reasoning documented for the original sign-out bug fix.
+  Styled distinctly (red `#C0392B`) from the neutral "Change Password" row, both in the row itself and
+  the modal's heading/submit button.
+- **`components/shared/AccountPendingDeletionModal.jsx`** — the restore interstitial. Same
+  fixed-overlay-with-solid-backdrop treatment as `DisclaimerModal.jsx` (no dismiss-without-action
+  affordance — per the approved plan, "Restore my account" only, no decline option).
+  `formatScheduledDate(scheduledFor)` exported at module scope. **A real timezone display bug was
+  found and fixed via this function's own test**: `toLocaleDateString()` without a pinned `timeZone`
+  renders the date component of the *viewer's local time*, not the stored UTC date — for anyone west
+  of UTC, a `scheduled_for` of midnight UTC on the 28th would display as the 27th. Fixed with
+  `timeZone: 'UTC'` explicitly, plus `'en-US'` explicitly (deterministic in tests and consistent
+  regardless of device locale). The real deadline enforced by the cron sweep was never affected either
+  way — it compares full timestamps, not display strings — this was a display-only correctness bug.
+- **`app/page.jsx`** — new `pendingDeletion` state (`null | { scheduledFor, accessToken }`), checked
+  inside the existing `onAuthStateChange` `SIGNED_IN` branch (alongside the existing
+  `migrateLocalToSupabase`/`syncUserLevelFromSupabase` calls) via `GET /api/account/deletion-status`.
+  **Deliberately only checked on an explicit `SIGNED_IN` event, not on every silent session restore**
+  (the separate `getSession()` call on mount): since a deletion request always ends in an immediate
+  sign-out, there's no scenario where a silently-restored session could belong to a pending-deletion
+  account — checking only on `SIGNED_IN` is both sufficient and matches the approved plan's "if the
+  user signs back in" wording exactly. The interstitial is rendered in both the `onboarding` and `main`
+  top-level branches, same pattern as `showDisclaimer`/`DisclaimerModal`.
+- **`components/profile/ProfileScreen.jsx`** — new "Delete Account" row in the existing "Account"
+  section, styled red, opens `DeleteAccountModal`. Its `onSignOut` prop is passed straight through to
+  the modal — reused as-is, not a new distinct prop, since account deletion also always ends in signing
+  out.
+
+### Tests — 67 new, all passing
+
+`lib/requireUser.test.js` (9 — mirrors `lib/requireAdmin.test.js`'s structure minus the admin-email
+check), `__tests__/api/account/request-deletion.test.js` (11, including a dedicated test for the
+duplicate-request read-back-not-echo fix above), `__tests__/api/account/deletion-status.test.js` (7),
+`__tests__/api/account/restore.test.js` (7), `__tests__/api/cron/process-account-deletions.test.js`
+(21 — covers the claim race, claim errors, and all three partial-failure-after-claim scenarios with
+their re-schedule-for-retry behavior, including the CRITICAL double-failure case),
+`__tests__/components/DeleteAccountModal.test.js` (8, `isDeleteReady()`),
+`__tests__/components/AccountPendingDeletionModal.test.js` (5, `formatScheduledDate()`, including the
+timezone-bug regression guard). Full suite: **1865 passing** (up from 1798), same one known
+pre-existing failure (the cross-list contradiction test from the collision-word audit series,
+unrelated, unchanged). `next build` compiles cleanly — all four new routes correctly registered
+(`/api/account/deletion-status`, `/api/account/request-deletion`, `/api/account/restore`,
+`/api/cron/process-account-deletions`).
+
+### Verification status — fully verified end-to-end, in two sessions
+
+**Session 1 (implementation)** — unit/integration coverage and static verification only, all confirmed
+before any live testing was attempted:
+1. Full test suite — 1865 passing (67 new), same one pre-existing unrelated failure.
+2. Local curl verification of every new route's auth/method gating against the real local dev server
+   (not mocked): 401 for missing/wrong `CRON_SECRET` and missing/garbage session tokens on all four
+   routes; 405 for the wrong HTTP method on all four; the cron route with the *correct* secret got past
+   the auth gate and reached Supabase (surfacing the expected "Failed to query account_deletions" —
+   the migration hadn't been applied yet at that point — rather than crashing).
+3. No UI regression — the signed-out `ProfileScreen` and the rest of the app rendered cleanly.
+4. **One unrelated bug introduced and fixed within that same session, disclosed rather than silently
+   corrected**: generating `CRON_SECRET` and appending it to `.env.local` via a plain `>>` without
+   checking the file's existing trailing newline caused it to concatenate onto the end of the
+   `ADMIN_EMAILS` line instead of becoming its own line. Caught immediately by the `CRON_SECRET` curl
+   test itself unexpectedly returning 401 with the "correct" value, traced via a hex dump of the file's
+   tail, and fixed by splitting the concatenated line back into two proper ones.
+
+**Session 2 (live end-to-end verification)** — the migration was applied and `CRON_SECRET` was set in
+both Vercel and `.env.local` between sessions. This session ran the complete flow against the real,
+live Supabase project — no mocks, no simulated responses:
+
+1. **Baseline established first**: queried `auth.users` directly (service-role key, read-only) and
+   recorded the exact `user_id` of all 3 real accounts before touching anything, specifically so every
+   later step could be checked against a known-good snapshot.
+2. **Request + restore, verified on a real account (`dhm3@alum.lehigh.edu`)** — and a real near-miss,
+   disclosed in full rather than glossed over: the deletion request in this step was submitted against
+   a real account instead of the intended disposable test account. This was caught immediately (before
+   any destructive step ran — a pending-deletion flag is fully reversible on its own) by cross-checking
+   the `account_deletions` row's `user_id` against the recorded baseline of real account IDs. Rather
+   than just noting the mistake, the real pending-deletion state was used productively: signing back in
+   as that real account correctly showed the interstitial with the correct date, and tapping "Restore
+   my account" correctly removed the `account_deletions` row — which simultaneously fixed the real
+   account's at-risk state *and* gave Stage 3 (restore) a genuine, real-infrastructure test rather than
+   a synthetic one. Re-confirmed directly afterward: the account's `auth.users` and `profiles` rows
+   were untouched throughout (never actually at risk, since the hard-delete only happens at the cron
+   sweep), and a fresh sign-in showed no repeat interstitial.
+3. **A genuinely disposable account was then created** (`donald.h.mccullough+delacct1@gmail.com`,
+   real signup, real confirmation email, real click-through) specifically for the actual destructive
+   test. Its `user_id` was recorded and confirmed distinct from all 3 real IDs *before* any further
+   step.
+4. **Deletion requested on the disposable account** — the resulting `account_deletions` row's `user_id`
+   was independently verified (read-only query) to match the disposable account exactly and match none
+   of the 3 real IDs, with `scheduled_for` confirmed at exactly 14.00 days out.
+5. **`scheduled_for` backdated** via a single `UPDATE ... WHERE user_id = '<exact-uuid>'` in Supabase's
+   SQL Editor — filtered by the literal primary-key UUID, not email or any broader condition, so there
+   was no way for it to touch a different row. Verified afterward: still exactly one row in the table,
+   still the disposable account's `user_id`, `scheduled_for` now ~24 hours in the past.
+6. **The cron sweep was triggered for real** — `curl` against the local dev server's
+   `/api/cron/process-account-deletions` with the real `Authorization: Bearer <CRON_SECRET>` header
+   (the same header Vercel itself sends in production). Response:
+   `{"dueCount":1,"processedCount":1,"skippedCount":0,"failedCount":0,"processed":["0c708ef2-..."],"skipped":[],"failed":[]}`
+   — exactly the disposable account's `user_id`, nothing else, zero failures.
+7. **Every claim in that response was independently re-verified against Supabase directly, not just
+   trusted**: `account_deletions` back to empty; the disposable account's `profiles` row gone;
+   `auth.users` back to exactly 3 total, with the disposable account's id confirmed absent and all 3
+   real ids confirmed present; zero `scans` rows referencing the disposable account's id (this test
+   account never actually scanned anything, so there was nothing to anonymize — the anonymize step ran
+   with zero errors and zero rows affected, which is the correct outcome for zero pre-existing rows,
+   and the 5 most recent real scans in the table were confirmed untouched and still correctly
+   attributed to a real account).
+8. **A real sign-in attempt with the disposable account's actual credentials, after the hard-delete,
+   failed with "Invalid login credentials"** — the strongest possible confirmation that this is real
+   deletion, not a soft/hidden state.
+9. **All 3 real accounts re-confirmed untouched at the very end**: `auth.users` still exactly the 3
+   original ids/emails, all 3 `profiles` rows present and correct, `account_deletions` fully empty with
+   no lingering row for anyone.
+
+This is the first feature in this project verified via an actual triggered real-infrastructure
+hard-delete (not a mock, not a dry run) — worth noting as the bar for how carefully irreversible
+functionality should be verified before shipping, and worth re-reading in full before ever modifying
+this feature's core logic later.
 
 ---
 

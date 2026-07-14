@@ -26,6 +26,7 @@ import ProfileScreen from '@/components/profile/ProfileScreen';
 import BottomNav from '@/components/shared/BottomNav';
 import AuthModal from '@/components/auth/AuthModal';
 import DisclaimerModal from '@/components/shared/DisclaimerModal';
+import AccountPendingDeletionModal from '@/components/shared/AccountPendingDeletionModal';
 
 export default function Home() {
   const [appScreen, setAppScreen] = useState('loading');
@@ -39,6 +40,9 @@ export default function Home() {
   const [user, setUser] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
+  // null | { scheduledFor: string, accessToken: string } — see the
+  // SIGNED_IN handler below and CLAUDE.md "Account Deletion".
+  const [pendingDeletion, setPendingDeletion] = useState(null);
 
   useEffect(() => {
     // Show disclaimer once — before any onboarding or main screen.
@@ -76,6 +80,30 @@ export default function Home() {
         // Sync user_level from Supabase — Supabase wins for signed-in users
         const syncedLevel = await syncUserLevelFromSupabase(newUser.id);
         if (syncedLevel) setUserLevelState(syncedLevel);
+
+        // Check for a pending account-deletion request — only on an
+        // explicit SIGNED_IN event, not on every silent session restore
+        // (see the getSession() call above): a deletion request always
+        // ends in an immediate sign-out, so there's no scenario where a
+        // silently-restored session could belong to a pending-deletion
+        // account. See CLAUDE.md "Account Deletion".
+        if (session?.access_token) {
+          try {
+            const res = await fetch('/api/account/deletion-status', {
+              headers: { Authorization: `Bearer ${session.access_token}` },
+            });
+            if (res.ok) {
+              const data = await res.json();
+              if (data.pending) {
+                setPendingDeletion({ scheduledFor: data.scheduledFor, accessToken: session.access_token });
+              }
+            }
+          } catch {
+            // Non-fatal — if the check itself fails (network blip), fall
+            // through to normal app use rather than blocking sign-in
+            // entirely on a transient issue.
+          }
+        }
       }
     });
 
@@ -229,6 +257,13 @@ export default function Home() {
           <LaunchScreen score={assessmentScore} onLaunch={handleLaunch} />
         )}
         {showDisclaimer && <DisclaimerModal onAccept={handleDisclaimerAccept} />}
+        {pendingDeletion && (
+          <AccountPendingDeletionModal
+            scheduledFor={pendingDeletion.scheduledFor}
+            accessToken={pendingDeletion.accessToken}
+            onRestored={() => setPendingDeletion(null)}
+          />
+        )}
       </div>
     );
   }
@@ -276,6 +311,13 @@ export default function Home() {
       )}
 
       {showDisclaimer && <DisclaimerModal onAccept={handleDisclaimerAccept} />}
+      {pendingDeletion && (
+        <AccountPendingDeletionModal
+          scheduledFor={pendingDeletion.scheduledFor}
+          accessToken={pendingDeletion.accessToken}
+          onRestored={() => setPendingDeletion(null)}
+        />
+      )}
     </div>
   );
 }

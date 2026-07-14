@@ -15,6 +15,7 @@ import { formatTime, createHistoryTapHandler } from '@/lib/scanHistory';
 import DisclaimerModal from '@/components/shared/DisclaimerModal';
 import PrivacyPromiseModal from '@/components/shared/PrivacyPromiseModal';
 import ChangePasswordModal from '@/components/profile/ChangePasswordModal';
+import DeleteAccountModal from '@/components/profile/DeleteAccountModal';
 
 const FREE_SCAN_LIMIT = 15;
 
@@ -26,6 +27,7 @@ export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRe
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [showPrivacyPromise, setShowPrivacyPromise] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   // Scan history tap state
   // tapInFlightRef is the authoritative guard — a ref is synchronous and survives
   // unmount/remount without React 18 concurrent mode timing issues.
@@ -369,6 +371,16 @@ export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRe
               <span style={{ fontSize: 14, color: 'var(--text-dark)', fontWeight: 500 }}>Change Password</span>
               <span style={{ fontSize: 16, color: 'var(--text-light)' }}>›</span>
             </button>
+
+            {/* Delete Account — styled distinct (red) from the neutral rows
+                above it; a destructive action, unlike Change Password. */}
+            <button
+              onClick={() => setShowDeleteAccount(true)}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'none', border: 'none', borderTop: '1px solid rgba(0,0,0,0.06)', padding: '0 16px', minHeight: 48, cursor: 'pointer', textAlign: 'left' }}
+            >
+              <span style={{ fontSize: 14, color: '#C0392B', fontWeight: 500 }}>Delete Account</span>
+              <span style={{ fontSize: 16, color: '#C0392B' }}>›</span>
+            </button>
           </div>
         )}
 
@@ -417,6 +429,7 @@ export default function ProfileScreen({ user, userLevel = 1, onLevelChange, onRe
       {showDisclaimer && <DisclaimerModal onAccept={() => setShowDisclaimer(false)} />}
       {showPrivacyPromise && <PrivacyPromiseModal onClose={() => setShowPrivacyPromise(false)} />}
       {showChangePassword && <ChangePasswordModal user={user} onClose={() => setShowChangePassword(false)} />}
+      {showDeleteAccount && <DeleteAccountModal user={user} onClose={() => setShowDeleteAccount(false)} onSignOut={onSignOut} />}
     </div>
   );
 }
