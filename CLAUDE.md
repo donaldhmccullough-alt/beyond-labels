@@ -578,6 +578,47 @@ Both return `null` when env vars are absent. Always null-check before using: `if
 - `/app/auth/callback/page.jsx` handles PKCE code, token_hash OTP, and hash-fragment sessions
 - Sign-out calls `clearScanLocalStorage()` to prevent data leaking between users
 
+**Forgot password (signed-out)** — added July 2026, see changelog; prompted by the sign-out
+investigation finding the app had no way to recover a forgotten password at all. `AuthModal.jsx`'s
+sign-in tab has a "Forgot password?" link that swaps the modal into a self-contained forgot-password
+view (email input → `requestPasswordReset(email)` in `lib/auth.js`, which wraps
+`supabase.auth.resetPasswordForEmail(email, { redirectTo })`). The confirmation message ("If an
+account exists for that email, we've sent a link...") is shown unconditionally regardless of the
+call's actual result, to avoid account enumeration — Supabase's own API already doesn't reveal
+whether the email exists, and the client deliberately doesn't add a distinction on top of that.
+
+`redirectTo` is `${origin}/auth/callback?type=recovery` — the `?type=recovery` query param is
+appended directly by `requestPasswordReset()` rather than left to Supabase's own email template,
+specifically because it survives unchanged regardless of which of the three shapes
+`/auth/callback` resolves the link through (PKCE `code`, `token_hash` OTP, or an implicit
+hash-fragment session — query string and hash fragment are independent, so this works even in the
+hash-fragment case). `/app/auth/callback/page.jsx` checks `searchParams.get('type') === 'recovery'`
+once at the top of `handleCallback()` and, if true, routes to a `'recovery'` status instead of the
+normal post-auth redirect — after whichever of the three branches actually established the session.
+This is strictly additive: signUp's `emailRedirectTo` and the OAuth `redirectTo` never set this
+param, so their existing behavior is untouched.
+
+The `'recovery'` status renders a "Set a new password" form directly inline in the callback page
+(same self-contained styled-card pattern the page already uses for `'confirming'`/`'success'`/
+`'error'` — no separate route). Submitting calls `updatePassword(newPassword)` in `lib/auth.js`
+(wraps `supabase.auth.updateUser({ password })`), then redirects to `/` — the recovery link already
+establishes a real, valid session, so no re-sign-in is needed after the password is set.
+
+**Change password (signed-in)** — added July 2026, see changelog. `ProfileScreen.jsx` has a new
+"Account" section (only rendered when `user` is truthy) with a "Change Password" row, following the
+same tappable-row pattern as the "Legal & Privacy" section. Opens `ChangePasswordModal.jsx`
+(`components/profile/`) — a bottom-sheet modal matching `DisclaimerModal`/`PrivacyPromiseModal`'s
+visual pattern, with current/new/confirm password fields. Supabase's `updateUser({ password })`
+doesn't itself require re-entering the current password (it works off the already-active session) —
+the modal verifies the current password anyway, as a UX/security safeguard against changing the
+password from an already-unlocked device without knowing it, by calling the existing `signIn()`
+wrapper with the user's own email before calling `updatePassword()`.
+
+Both flows enforce an 8-character minimum client-side (`password.length < 8`), matching Supabase's
+project-level password policy — see the "8-character password minimum" changelog entry below. This
+minimum is checked in three places: `AuthModal.jsx`'s sign-up form, `ChangePasswordModal.jsx`, and
+the "set new password" screen in `/app/auth/callback/page.jsx`.
+
 ### Env vars needed
 ```
 NEXT_PUBLIC_SUPABASE_URL=          # used by both clients
@@ -4241,6 +4282,154 @@ Since both `computeVerdictLegacy()` (already correct) and the now-fixed `compute
 produce identical output for this exact scenario, this result doesn't by itself distinguish which
 function actually ran — but it directly confirms the deploy is live and the bug is fixed in production
 regardless of which mode is active, which was the actual goal of this check.
+
+---
+
+### Session — forgot password + change password (July 2026)
+
+Prompted directly by a gap the sign-out bug investigation surfaced: Beyond Labels had no way for a
+user to recover a forgotten password, and no way to change one while signed in. Built both, following
+the project's existing conventions rather than inventing new patterns — the `lib/auth.js` wrapper
+style (`{ data, error }` return shape, `!supabase` guard), the `DisclaimerModal`/`PrivacyPromiseModal`
+bottom-sheet pattern, and `/auth/callback`'s existing PKCE/token_hash/hash-fragment session handling.
+Full behavior is documented under "Auth flow" above; this entry covers what changed and why.
+
+**`lib/auth.js`**: two new wrapper functions, `requestPasswordReset(email)` (wraps
+`supabase.auth.resetPasswordForEmail`) and `updatePassword(newPassword)` (wraps
+`supabase.auth.updateUser({ password })`), placed alongside `signIn`/`signUp`/`signOut` — same error
+handling and return-shape conventions as the existing wrappers. Sign-in, sign-up, and sign-out logic
+itself is completely untouched.
+
+**`AuthModal.jsx`**: added a "Forgot password?" link (sign-in tab only) that swaps the modal body into
+a self-contained forgot-password view — email input, "Send Reset Link," and a generic confirmation
+message shown regardless of outcome (deliberately does not distinguish success from failure, to avoid
+account enumeration — matches Supabase's own `resetPasswordForEmail` behavior of never revealing
+whether an email is registered). A "← Back to Sign In" link returns to the normal tabs. Verified live
+in the browser: the email typed on the sign-in tab carries over into the forgot-password view, and
+submitting it against a real (dev) Supabase project produces the confirmation state cleanly with no
+console errors.
+
+**`/app/auth/callback/page.jsx`**: added exactly one new branch — `isRecovery = searchParams.get('type')
+=== 'recovery'`, checked once, then consulted after whichever of the three existing session-establishing
+paths (PKCE `code`, `token_hash` OTP, hash-fragment `getSession()`) succeeds. When true, routes to a
+new `'recovery'` status (a "Set a new password" form rendered inline in the same styled-card layout the
+page already uses) instead of the normal post-auth redirect-home. The PKCE/OTP/hash-fragment handling
+itself was not changed — confirmed by only touching the one line after each branch's existing success
+path, never the verification calls themselves. `requestPasswordReset()` deliberately appends
+`?type=recovery` to `redirectTo` itself (rather than relying on Supabase's email template to add it),
+since a query-string param survives unchanged across all three flow shapes, including the hash-fragment
+case where the token data lives after a `#`, not in the query string.
+
+**`ProfileScreen.jsx` + `components/profile/ChangePasswordModal.jsx`** (new file): a "Change Password"
+row in a new "Account" section (only rendered when `user` is truthy — matches the existing
+sign-in-gated sections), opening a bottom-sheet modal built on the exact same structure as
+`DisclaimerModal`/`PrivacyPromiseModal`. Supabase's `updateUser({ password })` doesn't itself require
+re-entering the current password (it operates on the already-active session) — the modal verifies the
+current password anyway, before allowing the change, by calling the existing `signIn()` wrapper with
+the signed-in user's own email; a rejected verification surfaces as "Current password is incorrect,"
+distinct from any other Supabase error.
+
+**Verified**: full test suite (`npx jest --testPathIgnorePatterns=".claude/worktrees"`) — 1787 passing,
+same one known pre-existing failure (the cross-list contradiction test from the collision-word audit
+series, unrelated, unchanged) — up from 1781 (6 new tests for `requestPasswordReset()`/`updatePassword()`
+in `lib/auth.test.js`, following the existing sign-out test file's mocking conventions). `next build`
+completes with no errors. The forgot-password flow was exercised live end-to-end in the browser preview
+(see above). **The recovery "set new password" screen and the Change Password modal were not exercised
+end-to-end live** — doing so requires either a real password-recovery email round-trip (not available
+in this environment) or real Supabase credentials to sign in with, neither of which this session had
+access to. Both were verified via: `next build` compiling cleanly, unit tests on the underlying
+`lib/auth.js` functions, and direct code/JSX review confirming both components structurally mirror
+already-render-verified patterns in this codebase (`DisclaimerModal`/`PrivacyPromiseModal` for the
+modal; the callback page's own existing `'success'`/`'error'` card layout for the recovery screen). If
+either screen doesn't render/behave correctly in a real run, start there.
+
+**Dashboard items flagged, not verified** (per the task's explicit request to report rather than
+assume): (1) the redirect URL allowlist — this reuses the already-allow-listed `/auth/callback` path
+with a `?type=recovery` query string appended, which should match without a new dashboard entry, but
+wasn't independently confirmed against the Supabase project's actual allowlist config; (2) the "Reset
+Password" email template — Supabase ships a working default, no dashboard change is required for the
+feature to function, though the wording/branding may be worth customizing later; (3) the 6-character
+password minimum used client-side matches the pre-existing sign-up rule in `AuthModal.jsx`, but the
+actual Supabase-project-configured minimum was not checked; (4) recovery link expiry uses Supabase's
+default OTP expiry, dashboard-configurable, no code-side dependency.
+
+**No `PROMPT_VERSION` bump** — this is an auth-feature addition with no `analyzeIngredients()`
+`flags`/`verdict`/`clearedBy` impact, and no `scan_cache` schema or contract change.
+
+---
+
+### Session — 8-character password minimum, matching Supabase's dashboard setting (July 2026)
+
+Follow-up to the forgot-password/change-password session immediately above, whose "Dashboard items
+flagged, not verified" note explicitly called out that the client-side 6-character password minimum
+was assumed, not confirmed, against the actual Supabase project setting. Supabase's server-side
+minimum has since been raised to 8 characters (a dashboard change made directly, not by this
+session) — this session brings the three places that assumed 6 back in sync with it.
+
+**Changed, all three from `< 6` / "at least 6 characters" to `< 8` / "at least 8 characters"**:
+- [components/auth/AuthModal.jsx:60](components/auth/AuthModal.jsx:60) — sign-up form validation
+- [app/auth/callback/page.jsx:100](app/auth/callback/page.jsx:100) — the "set new password" recovery screen
+- [components/profile/ChangePasswordModal.jsx:27-28](components/profile/ChangePasswordModal.jsx:27) — change-password modal
+
+**`lib/auth.test.js`**: the `updatePassword()` "propagates a returned error" test mocks a
+Supabase-shaped error message (`'Password should be at least 6 characters'`) purely as a
+representative example of an error `updatePassword()` should pass through unmodified — `updatePassword()`
+itself has no client-side length check of its own, so this wasn't a behavioral assertion tied to any
+real minimum. Updated the mocked text to `'Password should be at least 8 characters'` for consistency
+with the new real minimum, so a future reader doesn't mistake the stale mock text for a lingering `6`
+somewhere in the app's actual validation.
+
+**Confirmed via broad grep** (`6 character|length < 6|length >= 6|6-character|at least 6`, case-insensitive,
+across `*.{js,jsx}`) that no other file references the old 6-character minimum — the four locations
+above were the complete set. CLAUDE.md's own prose in the "Auth flow" section (added by the prior
+session) was also updated to say 8, not 6, and the file locations are now cited directly instead of
+just describing the rule.
+
+**Verified**: full test suite (`npx jest --testPathIgnorePatterns=".claude/worktrees"`) — 1787 passing,
+same one known pre-existing failure (the cross-list contradiction test from the collision-word audit
+series, unrelated, unchanged), matching the exact count from the prior session — this change only
+edited existing test assertions, it didn't add or remove any tests. `next build` completes with no
+errors.
+
+**No `PROMPT_VERSION` bump** — same reasoning as the prior session: no `analyzeIngredients()`
+`flags`/`verdict`/`clearedBy` impact, no `scan_cache` change.
+
+---
+
+### Session — password-reset feature manually verified end-to-end (July 2026)
+
+Closes out the verification gap both prior sessions in this series flagged explicitly: the
+"forgot password + change password" changelog entry noted the recovery screen and Change Password
+modal "were not exercised end-to-end live," and the follow-up 6→8 character minimum session inherited
+that same gap unchanged. The product owner has now manually walked through both flows in local dev
+and confirmed they work correctly, including the strongest possible check — signing out and back in
+with a newly-set password to confirm the change actually took effect against the real Supabase project
+(new password works, old password no longer does).
+
+**Both flows confirmed working end-to-end**:
+- **Forgot password**: `AuthModal.jsx`'s "Forgot password?" link → real recovery email received →
+  clicking the link correctly lands on the `'recovery'` status screen in
+  `/app/auth/callback/page.jsx` (not stuck on "Confirming…", not an error card) → the 8-character
+  minimum and password-match validation both correctly reject bad input inline → a valid submission
+  calls `updatePassword()` and redirects into the app already signed in, with no separate sign-in step
+  needed (confirming the recovery link's session carries through as designed).
+- **Change password**: `ChangePasswordModal.jsx`'s "Account" section row (Profile, signed-in only) →
+  modal renders with current/new/confirm fields → wrong current password correctly rejected via the
+  `signIn()`-based verification step → the 8-character minimum and password-match validation both
+  correctly reject bad input → a valid submission updates the password and the modal auto-closes.
+- Tested locally against the real hosted Supabase project (`wqubkpddzbcfrfubemrm.supabase.co`, not a
+  local Supabase CLI instance) — the `redirectTo: ${origin}/auth/callback?type=recovery` URL
+  (`http://localhost:3000/...` in this case) was confirmed to be on the project's allowed-redirects
+  list by the recovery email actually arriving and the link working, resolving the one piece of
+  dashboard config the implementation session couldn't verify from code alone.
+
+**No code changes in this session** — purely a verification pass. The 8-character minimum introduced
+in the immediately preceding session was verified as part of this same walkthrough (both the "under 8
+rejected" and "8+ accepted" cases, in both the recovery screen and the Change Password modal).
+
+This upgrades the feature's status from "implemented, unit-tested, and partially live-verified" to
+"implemented, unit-tested, and fully live-verified end-to-end" — safe to treat as production-ready
+pending the deploy itself.
 
 ---
 

@@ -1,6 +1,8 @@
 'use client';
 import { useState } from 'react';
-import { signIn, signUp, signInWithGoogle, signInWithApple } from '@/lib/auth';
+import { signIn, signUp, signInWithGoogle, signInWithApple, requestPasswordReset } from '@/lib/auth';
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function AuthModal({ onClose, onSuccess, defaultTab = 'signin' }) {
   const [tab, setTab] = useState(defaultTab); // 'signin' | 'signup'
@@ -10,12 +12,52 @@ export default function AuthModal({ onClose, onSuccess, defaultTab = 'signin' })
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
+  // ── Forgot password ──────────────────────────────────────────────────────
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [resetSent, setResetSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+
+  function openForgotPassword() {
+    setResetEmail(email); // carry over whatever they'd already typed on the sign-in tab
+    setResetError('');
+    setResetSent(false);
+    setForgotOpen(true);
+  }
+
+  function closeForgotPassword() {
+    setForgotOpen(false);
+    setResetError('');
+    setResetSent(false);
+    setResetEmail('');
+  }
+
+  async function handleForgotPasswordSubmit(e) {
+    e.preventDefault();
+    setResetError('');
+    if (!resetEmail || !EMAIL_RE.test(resetEmail)) {
+      setResetError('Please enter a valid email address.');
+      return;
+    }
+    setResetLoading(true);
+    try {
+      await requestPasswordReset(resetEmail);
+    } catch {
+      // Fall through to the generic confirmation below regardless — never
+      // reveal whether the email exists in the system.
+    } finally {
+      setResetLoading(false);
+      setResetSent(true);
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     setSuccessMsg('');
     if (!email || !password) { setError('Please enter your email and password.'); return; }
-    if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
+    if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
     setLoading(true);
     try {
       const fn = tab === 'signup' ? signUp : signIn;
@@ -70,6 +112,56 @@ export default function AuthModal({ onClose, onSuccess, defaultTab = 'signin' })
         {/* Drag handle */}
         <div style={{ width: 40, height: 4, background: 'var(--cream-dark)', borderRadius: 2, margin: '0 auto 20px' }} />
 
+        {forgotOpen ? (
+          <>
+            {/* Heading */}
+            <h2 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: 22, fontWeight: 700, color: 'var(--text-dark)', marginBottom: 6, textAlign: 'center' }}>
+              Reset your password
+            </h2>
+            <p style={{ fontSize: 13, color: 'var(--text-light)', textAlign: 'center', marginBottom: 20, lineHeight: 1.5 }}>
+              {resetSent
+                ? "If an account exists for that email, we've sent a link to reset your password."
+                : "Enter your email and we'll send you a link to reset your password."}
+            </p>
+
+            {!resetSent && (
+              <form onSubmit={handleForgotPasswordSubmit}>
+                <div style={{ marginBottom: 16 }}>
+                  <input
+                    type="email"
+                    placeholder="Email address"
+                    value={resetEmail}
+                    onChange={e => setResetEmail(e.target.value)}
+                    style={inputStyle}
+                    autoComplete="email"
+                  />
+                </div>
+
+                {resetError && (
+                  <div style={{ background: '#FDEDEC', border: '1px solid #C0392B33', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: '#C0392B' }}>
+                    {resetError}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={resetLoading}
+                  style={{ width: '100%', height: 52, background: 'var(--amber)', color: 'white', border: 'none', borderRadius: 14, fontSize: 16, fontWeight: 700, cursor: 'pointer', opacity: resetLoading ? 0.7 : 1, transition: 'opacity 0.15s' }}
+                >
+                  {resetLoading ? 'Sending...' : 'Send Reset Link'}
+                </button>
+              </form>
+            )}
+
+            <button
+              onClick={closeForgotPassword}
+              style={{ width: '100%', marginTop: 14, background: 'none', border: 'none', color: 'var(--text-light)', fontSize: 14, cursor: 'pointer', minHeight: 44, textDecoration: 'underline' }}
+            >
+              ← Back to Sign In
+            </button>
+          </>
+        ) : (
+        <>
         {/* Heading */}
         <h2 style={{ fontFamily: 'var(--font-playfair), Georgia, serif', fontSize: 22, fontWeight: 700, color: 'var(--text-dark)', marginBottom: 6, textAlign: 'center' }}>
           {tab === 'signup' ? 'Create your account' : 'Welcome back'}
@@ -122,7 +214,7 @@ export default function AuthModal({ onClose, onSuccess, defaultTab = 'signin' })
               autoComplete="email"
             />
           </div>
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: tab === 'signin' ? 6 : 16 }}>
             <input
               type="password"
               placeholder="Password"
@@ -132,6 +224,18 @@ export default function AuthModal({ onClose, onSuccess, defaultTab = 'signin' })
               autoComplete={tab === 'signup' ? 'new-password' : 'current-password'}
             />
           </div>
+
+          {tab === 'signin' && (
+            <div style={{ textAlign: 'right', marginBottom: 16 }}>
+              <button
+                type="button"
+                onClick={openForgotPassword}
+                style={{ background: 'none', border: 'none', color: 'var(--amber)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+              >
+                Forgot password?
+              </button>
+            </div>
+          )}
 
           {error && (
             <div style={{ background: '#FDEDEC', border: '1px solid #C0392B33', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: '#C0392B' }}>
@@ -164,6 +268,8 @@ export default function AuthModal({ onClose, onSuccess, defaultTab = 'signin' })
         <p style={{ textAlign: 'center', marginTop: 14, fontSize: 11, color: 'var(--text-light)', lineHeight: 1.5 }}>
           By signing in you agree to our Terms of Service and Privacy Policy.
         </p>
+        </>
+        )}
       </div>
     </div>
   );
