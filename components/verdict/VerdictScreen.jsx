@@ -7,8 +7,10 @@ const MVP_MODE = true;
 import { useState, useEffect } from 'react';
 import { getProfile, getTotalScans, shouldShowNudge, markNudgeDismissed } from '@/lib/userProfile';
 import { formatTime } from '@/lib/scanHistory';
+import { hasReportedScan } from '@/lib/verdictReports';
 import rulesEngine from '@/lib/rulesEngine';
 import ConcernCard from './ConcernCard';
+import ReportVerdictModal from './ReportVerdictModal';
 
 const { LEVEL_1_YELLOW_CATEGORIES } = rulesEngine;
 
@@ -43,6 +45,8 @@ export function getUnverifiedCopy(unverifiedReason, isMeat, userLevel) {
 export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, onBack, onStartOnboarding }) {
   const [explanation, setExplanation] = useState(null);
   const [loadingExplanation, setLoadingExplanation] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reported, setReported] = useState(false);
 
   // MVP_MODE: nudge milestone tracking kept but not rendered
   const [nudgeMilestone, setNudgeMilestone] = useState(null);
@@ -56,6 +60,10 @@ export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, o
     const total = getTotalScans();
     const milestone = shouldShowNudge(total);
     setNudgeMilestone(milestone);
+  }, [scanResult]);
+
+  useEffect(() => {
+    setReported(scanResult?.barcode ? hasReportedScan(scanResult.barcode) : false);
   }, [scanResult]);
 
   useEffect(() => {
@@ -207,6 +215,20 @@ export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, o
         </div>
       )}
 
+      {/* Report Wrong Verdict trigger — hidden once this exact scan has already been reported */}
+      {scanResult.barcode && !reported && (
+        <button
+          onClick={() => setReportModalOpen(true)}
+          style={{
+            display: 'block', margin: '8px 16px 0', background: 'none', border: 'none',
+            color: 'var(--text-light)', fontSize: 13, textAlign: 'left', cursor: 'pointer',
+            minHeight: 44, padding: '4px 0',
+          }}
+        >
+          Something look wrong? Report it
+        </button>
+      )}
+
       {/* Concern cards */}
       {Object.keys(byCategory).length > 0 && (
         <div style={{ marginTop: 16 }}>
@@ -279,6 +301,17 @@ export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, o
 
       {/* Bottom padding */}
       <div style={{ height: 24 }} />
+
+      {reportModalOpen && (
+        <ReportVerdictModal
+          scanResult={scanResult}
+          userLevel={userLevel}
+          onClose={() => {
+            setReportModalOpen(false);
+            setReported(scanResult?.barcode ? hasReportedScan(scanResult.barcode) : false);
+          }}
+        />
+      )}
     </div>
   );
 }

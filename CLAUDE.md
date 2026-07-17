@@ -572,6 +572,13 @@ Both return `null` when env vars are absent. Always null-check before using: `if
   - `reviewed_at` (timestamptz, not null, default `now()`), `note` (text, nullable)
   - `swap_product_id` (uuid, nullable, references `swap_products(id)`) — populated by Phase 3b's (not yet built) approve action once it creates the corresponding `swap_products` row; always `null` for a `'rejected'` decision
   - **RLS**: enabled, zero policies — same pattern as `swap_products`. Read/written exclusively via `getSupabaseServer()` from admin-only routes (see `lib/requireAdmin.js` below)
+- `verdict_reports` — "Report Wrong Verdict" user feedback (July 2026, see "Report Wrong Verdict" section below; migration SQL in [supabase/migrations/20260717000000_create_verdict_reports.sql](supabase/migrations/20260717000000_create_verdict_reports.sql)):
+  - `id` (uuid, PK, default `gen_random_uuid()`)
+  - `user_id` (uuid, nullable, references `auth.users(id)` **ON DELETE SET NULL**, not CASCADE) — a report is feedback about a product, not personal data tied to the reporter, so it should survive account deletion. Mirrors how the account-deletion cron job anonymizes (not deletes) `scans.user_id` rather than dropping those rows.
+  - `barcode` (text, not null), `product_name` (text, nullable), `verdict` (text, not null), `flags` (jsonb, nullable), `user_level` (integer, nullable)
+  - `reason` (text, not null — one of `'wrong_verdict'`, `'missing_ingredient'`, `'confusing_explanation'`, `'other'`, enforced at the API layer, not a DB `CHECK` constraint — same "no enum DB constraint" choice already made for `swap_products.subcategory`), `comment` (text, nullable)
+  - `created_at` (timestamptz, not null, default `now()`)
+  - **RLS**: enabled, zero policies — same pattern as `account_deletions`/`swap_products`/`swap_candidate_reviews`/`verdict_shadow_diffs`. Read/written exclusively via `getSupabaseServer()` from `pages/api/reports/verdict.js`
 
 ### Auth flow
 - Email/password signup with `emailRedirectTo: ${origin}/auth/callback`
@@ -4609,6 +4616,98 @@ three were confirmed:
 
 **No `PROMPT_VERSION` bump** — this is a client-side scanner UX fix with no `analyzeIngredients()`
 `flags`/`verdict`/`clearedBy` impact, and no `scan_cache` schema or contract change.
+
+---
+
+## Report Wrong Verdict
+
+Adds a lightweight feedback mechanism so a user who thinks a verdict is wrong can say so, without
+building anything close to a support ticket system. Followed the exact same shape as the account
+deletion feature's own request-a-thing → server records it → no built-in review UI yet pattern —
+this was a deliberate reuse of an already-reviewed design, not independently re-derived.
+
+**`verdict_reports`** table — see "Supabase" → "Tables" above for the full column list. Same
+RLS-enabled-zero-policies-server-only pattern as `account_deletions`/`swap_candidate_reviews`.
+`user_id` is `ON DELETE SET NULL`, not `CASCADE` — a report is feedback about a *product*, not
+personal data belonging to the reporter, so (unlike `account_deletions`, which really is about the
+reporter) it should survive account deletion rather than being purged with it. `reason` is
+constrained to a fixed enum, but — matching `swap_products.subcategory`'s own precedent for a
+column with no real need for a DB-level `CHECK` — enforced at the API layer, not in Postgres.
+
+**`pages/api/reports/verdict.js`** — `POST` only. Deliberately **not** built on `lib/requireUser.js`
+the way every account-deletion route is: those routes exist specifically to act on the caller's own
+account, so a missing/invalid token is a hard 401 there. A verdict report has no such requirement —
+anyone should be able to submit one, signed in or not. So this route calls `requireUser(req)` for
+its verification behavior only (a real round-trip to Supabase Auth when a token is present, same as
+every other route), but treats its `null` result — which already covers "no header," "malformed
+header," and "invalid/expired token" identically — as "anonymous report," never as a reason to
+reject the request. Validates `barcode`/`verdict` are non-empty strings and `reason` is one of the
+four allowed values (400 otherwise); uses the lazy `getSupabaseServer()` pattern (never a
+module-level client — see the documented June 2026 incident under "What NOT to Do"); awaits the
+insert before responding, per the Vercel serverless await-before-`res.json()` pattern. Every failure
+path (missing Supabase client, insert error, a thrown exception) is caught and returned as
+`{ success: false, error }` rather than throwing — this endpoint is called after a scan has already
+succeeded and rendered, so nothing here should ever be capable of breaking that.
+
+**UI**: `components/verdict/VerdictScreen.jsx` gained a small "Something look wrong? Report it" text
+link (`var(--text-light)`, no button chrome, `minHeight: 44`) directly below the AI summary card —
+one entry point per scan, not duplicated onto `ConcernCard.jsx`, per the task's own v1 scoping.
+`components/verdict/ReportVerdictModal.jsx` (new) follows `ChangePasswordModal.jsx`'s bottom-sheet
+structure exactly (fixed overlay, `rgba(0,0,0,0.55)` backdrop, cream card, Playfair heading) with a
+4-option radio-style reason picker, an optional multiline comment, and an amber-gradient "Submit
+Report" button that's disabled (grey, matching the existing disabled-button style constants) until a
+reason is selected. Submission calls `getSession()` from `lib/auth.js` best-effort — when a session
+exists its access token is sent as `Authorization: Bearer`, when it doesn't the report still submits,
+just anonymously; this mirrors `ChangePasswordModal`/`DeleteAccountModal`'s existing pattern of
+reading a fresh token right before the call rather than threading a `user` prop through. On success,
+the modal shows a brief "✓ Thanks — we'll look into it." confirmation and auto-closes after 1.5s
+(the same `setTimeout(() => onClose?.(), 1500)` pattern `ChangePasswordModal.jsx` already uses,
+picked as the simpler of the two options the task offered, consistent with this codebase's stated
+bias toward simplicity). On failure, an inline error renders and the modal stays open for a retry —
+verified live (see below), this is exactly what happens today.
+
+**Spam guard — `lib/verdictReports.js`** (new): `hasReportedScan(barcode)` / `markScanReported(barcode)`,
+a `localStorage` array under `bl_reported_scans` capped at 50 entries (newest first,
+`slice(0, MAX_ENTRIES)`), mirroring `lib/userProfile.js`'s `bl_scan_history` cap pattern exactly.
+`VerdictScreen` checks this on every new `scanResult` (a `useEffect` keyed on `scanResult`, since the
+barcode changes per scan) and hides the "Report it" link entirely when the current barcode is
+already in the list; a successful submission calls `markScanReported()` before the confirmation
+renders, and closing the modal re-checks the list so the link disappears without needing a page
+reload. This is explicitly a light UX guard, not real abuse prevention — the server has no
+corresponding rate limit, matching the task's own instruction not to over-engineer it.
+
+**Tests**: `__tests__/api/reports/verdict.test.js` (new, 16 tests, mirroring
+`__tests__/api/account/request-deletion.test.js`'s structure) — method wiring (non-POST → 405,
+`requireUser`/Supabase never touched); validation (missing `barcode`, missing `verdict`, invalid
+`reason`, all four valid `reason` values accepted via `test.each`); successful submission with no
+auth header (user_id `null`), with a valid auth header (user_id from the verified token, never a
+client-supplied one), and with an invalid/expired token (falls back to anonymous rather than
+rejecting — the one behavior this route is deliberately built to guarantee differently from every
+`requireUser`-gated route); the full insert payload shape, including optional fields defaulting to
+`null` when omitted; and failure handling (Supabase unavailable, an insert error, a thrown exception
+— all three return `{ success: false, error }` without throwing). Full suite: **1881 passing** (up
+from 1865), same one known pre-existing failure (the cross-list contradiction test from the
+collision-word audit series, unrelated, unchanged).
+
+**⚠️ Migration not yet applied to production — confirmed live, not assumed.** `next build` compiles
+cleanly with `/api/reports/verdict` correctly registered, and the full flow was exercised live in a
+real browser against the real, running dev server and the real Supabase project (not a mock): typed
+a comment, selected "The verdict seems wrong," submitted, and the request reached the real
+`/api/reports/verdict` endpoint, which reached the real Supabase project and got back
+`"Could not find the table 'public.verdict_reports' in the schema cache"` — i.e.
+`20260717000000_create_verdict_reports.sql` has not been run against the live database yet. This is
+expected, not a bug: it's the same "migration file committed ≠ migration applied" gap this project
+has hit (and now deliberately checks for) on every prior new-table session, from `olive_caveat`
+onward. The failure path itself was directly confirmed working as designed on this real error: the
+modal stayed open with the inline error text shown, "Submit Report" remained available to retry, and
+closing the modal via Cancel left the "Report it" link still visible (confirming `markScanReported()`
+correctly never ran on a failed submission). **Run `20260717000000_create_verdict_reports.sql`
+against the live Supabase database before this feature can actually record a report in production.**
+
+**Explicitly out of scope, per the task** — no admin review/triage screen for submitted reports (a
+future session, following the same Phase 3a/3b split `swap_candidate_reviews` used), no
+email/Slack notification on new reports, no `PROMPT_VERSION` bump (this doesn't touch
+`analyzeIngredients()` output), no rate limiting beyond the `localStorage` guard described above.
 
 ---
 
