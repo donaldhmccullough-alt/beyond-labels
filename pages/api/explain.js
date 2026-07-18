@@ -22,6 +22,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { PROMPT_VERSION } from '../../lib/cacheVersion';
 import { ANTHROPIC_MODEL } from '../../lib/aiConfig';
+import * as Sentry from '@sentry/nextjs';
 
 export { PROMPT_VERSION };
 
@@ -224,6 +225,10 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     console.error('[explain] explanation fetch: missing API key');
+    Sentry.captureMessage('[explain] explanation fetch: missing API key', {
+      level: 'error',
+      tags: { route: 'explain', reason: 'missing_api_key', userLevel },
+    });
     return res.status(500).json({ error: 'ANTHROPIC_API_KEY is not configured on this server.' });
   }
 
@@ -255,6 +260,11 @@ export default async function handler(req, res) {
       console.error(
         `[explain] explanation fetch: unparseable response, category count: ${categoryCount}, flag count: ${(flags || []).length}`
       );
+      Sentry.captureMessage('[explain] explanation fetch: unparseable response', {
+        level: 'error',
+        tags: { route: 'explain', reason: 'unparseable_response', userLevel },
+        contexts: { explanation: { categoryCount, flagCount: (flags || []).length } },
+      });
       return res.status(502).json({
         error:  'Failed to generate explanation.',
         detail: 'Claude returned an unparseable or truncated response.',
@@ -267,6 +277,9 @@ export default async function handler(req, res) {
     });
 
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: 'explain', userLevel },
+    });
     if (err.status === 401) {
       console.error('[explain] explanation fetch: API error:', err);
       return res.status(500).json({ error: 'Anthropic API key is invalid or expired.' });

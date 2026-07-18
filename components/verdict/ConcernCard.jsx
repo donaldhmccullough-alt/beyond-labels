@@ -1,5 +1,6 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import * as Sentry from '@sentry/nextjs';
 
 /**
  * Falls back to the rules engine's own per-flag `summary` text when the AI
@@ -52,6 +53,22 @@ export default function ConcernCard({ category, flags, explanation }) {
   const [open, setOpen] = useState(false);
   const info = CATEGORY_INFO[category] || { icon: '⚠️', label: category };
   const displayExplanation = explanation || getFallbackSummary(flags);
+
+  // Visibility only — never changes what renders. Fires once per
+  // scan/category (not per open/close toggle, since `explanation` and
+  // `category` don't change on that interaction) whenever the AI
+  // explanation for this category was missing and the rules-engine
+  // fallback summary was used instead. No ingredient text or free-form
+  // content — category name only, which is a fixed enum, not PII.
+  useEffect(() => {
+    if (!explanation) {
+      Sentry.captureMessage('[ConcernCard] AI explanation missing, using rules-engine fallback summary', {
+        level: 'warning',
+        tags: { route: 'concern_card', category, hasFallback: !!getFallbackSummary(flags) },
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [explanation, category]);
   const severity = flags.some(f => f.severity === 'reject') ? 'red' : 'yellow';
   const severityColors = { red: '#C0392B', yellow: '#D4AC0D' };
   const bgColors = { red: 'rgba(192,57,43,0.06)', yellow: 'rgba(212,172,13,0.06)' };

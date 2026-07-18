@@ -45,6 +45,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { ANTHROPIC_MODEL } from '../../lib/aiConfig';
 import { getSupabaseServer } from '../../lib/supabaseServer';
+import * as Sentry from '@sentry/nextjs';
 
 const VALID_CATEGORIES = [
   'chips', 'snacks', 'cereal', 'condiments', 'beverages', 'dairy', 'bread', 'frozen', 'cooking_oils', 'meat',
@@ -143,7 +144,10 @@ async function getAISuggestions(category, userLevel) {
       tier,
       ai_generated:   true,
     }));
-  } catch {
+  } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: 'swaps', op: 'ai_suggestions', category, userLevel },
+    });
     return [];
   }
 }
@@ -203,6 +207,9 @@ export default async function handler(req, res) {
       return res.status(200).json({ swaps, source: 'curated' });
     }
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: 'swaps', category: category || null, userLevel },
+    });
     return res.status(500).json({ error: err.message });
   }
 }

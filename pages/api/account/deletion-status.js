@@ -13,6 +13,7 @@
 
 import { requireUser } from '../../../lib/requireUser';
 import { getSupabaseServer } from '../../../lib/supabaseServer';
+import * as Sentry from '@sentry/nextjs';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -37,6 +38,13 @@ export default async function handler(req, res) {
       .maybeSingle();
 
     if (error) {
+      // Note: never tag user.id here — an auth-scoped identifier tied to a
+      // real person, not a public identifier like a barcode.
+      Sentry.captureMessage('[account/deletion-status] query failed', {
+        level: 'error',
+        tags: { route: 'account/deletion-status' },
+        contexts: { supabase: { message: error.message } },
+      });
       return res.status(500).json({ error: error.message });
     }
 
@@ -45,6 +53,9 @@ export default async function handler(req, res) {
       scheduledFor: data?.scheduled_for ?? null,
     });
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: 'account/deletion-status' },
+    });
     return res.status(500).json({ error: err.message });
   }
 }

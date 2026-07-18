@@ -61,6 +61,7 @@
  */
 
 import { getSupabaseServer } from '../../../lib/supabaseServer';
+import * as Sentry from '@sentry/nextjs';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -92,11 +93,19 @@ export default async function handler(req, res) {
 
     if (queryError) {
       console.error('[cron] process-account-deletions: failed to query due rows:', queryError.message);
+      Sentry.captureMessage('[cron] process-account-deletions: failed to query due rows', {
+        level: 'error',
+        tags: { route: 'cron/process-account-deletions', stage: 'query' },
+        contexts: { supabase: { message: queryError.message } },
+      });
       return res.status(500).json({ error: 'Failed to query account_deletions.' });
     }
     dueRows = data || [];
   } catch (err) {
     console.error('[cron] process-account-deletions: unexpected error querying due rows:', err);
+    Sentry.captureException(err, {
+      tags: { route: 'cron/process-account-deletions', stage: 'query' },
+    });
     return res.status(500).json({ error: 'Unexpected error querying account_deletions.' });
   }
 
@@ -114,6 +123,13 @@ export default async function handler(req, res) {
 
       if (claimError) {
         console.error(`[cron] process-account-deletions: failed to claim user ${userId}:`, claimError.message);
+        // userId is a Supabase auth user id — a real personal identifier,
+        // deliberately never tagged/sent to Sentry, unlike a barcode.
+        Sentry.captureMessage('[cron] process-account-deletions: failed to claim user', {
+          level: 'error',
+          tags: { route: 'cron/process-account-deletions', stage: 'claim' },
+          contexts: { supabase: { message: claimError.message } },
+        });
         failed.push({ userId, stage: 'claim', error: claimError.message });
         continue;
       }
@@ -146,6 +162,9 @@ export default async function handler(req, res) {
         console.error(
           `[cron] process-account-deletions: user ${userId} failed after being claimed (${stepErr.message}) — re-scheduling for retry on the next run`
         );
+        Sentry.captureException(stepErr, {
+          tags: { route: 'cron/process-account-deletions', stage: 'partial-failure' },
+        });
         const { error: reinsertError } = await sb
           .from('account_deletions')
           .upsert(
@@ -157,11 +176,25 @@ export default async function handler(req, res) {
             `[cron] process-account-deletions: CRITICAL — failed to re-schedule user ${userId} after a partial failure; this user's auth record still exists but is no longer tracked in account_deletions and will not be retried automatically:`,
             reinsertError.message
           );
+          // Fatal level — this is the "a real person's account is now stuck
+          // in an undefined, untracked state" case documented in the file
+          // header. Worth paging on, not just logging.
+          Sentry.captureMessage(
+            '[cron] process-account-deletions: CRITICAL — failed to re-schedule user after partial failure (untracked orphaned auth record)',
+            {
+              level: 'fatal',
+              tags: { route: 'cron/process-account-deletions', stage: 'reinsert-after-partial-failure' },
+              contexts: { supabase: { message: reinsertError.message } },
+            }
+          );
         }
         failed.push({ userId, stage: 'partial-failure', error: stepErr.message });
       }
     } catch (err) {
       console.error(`[cron] process-account-deletions: unexpected error processing user ${userId}:`, err);
+      Sentry.captureException(err, {
+        tags: { route: 'cron/process-account-deletions', stage: 'unexpected' },
+      });
       failed.push({ userId, stage: 'unexpected', error: err.message });
     }
   }

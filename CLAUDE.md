@@ -14,6 +14,7 @@ Beyond Labels is a mobile-first food ingredient scanner app. Users scan a produc
 - **Node**: 24.x (pinned in `.nvmrc` and `package.json` engines). Upgraded from 20.x in July 2026 — Vercel deprecated Node 20.x for builds, with a hard deadline that deployments created on or after 2026-10-01 fail on 20.x. Pure tooling/infra change: confirmed the full test suite (1378 tests) passes unmodified under Node 24, and no dependency in the tree (direct or transitive) declares an upper-bound Node engines constraint that would exclude 24.x.
 - **Deployment**: Vercel, region `iad1`
 - **Testing**: Jest
+- **Error monitoring**: `@sentry/nextjs` (v10) — see "Error Monitoring" section below for what's wired in, the environment-tagging scheme, and the PII-scrubbing decision. `NEXT_PUBLIC_SENTRY_DSN` must be set in Vercel (not just locally) for production capture to work — see that section's "Action items".
 
 ---
 
@@ -651,6 +652,16 @@ CRON_SECRET=                       # server-side only — a random string (≥16
                                     # it must be set manually). Unset means every request to that route
                                     # is rejected (401), including Vercel's own scheduled trigger — there
                                     # is no bypass. See "Account Deletion" below.
+NEXT_PUBLIC_SENTRY_DSN=            # client + server — get from sentry.io project → Settings → Client
+                                    # Keys (DSN). NEXT_PUBLIC_ because sentry.client.config.js reads it
+                                    # in the browser too — a DSN is a write-only ingest address, safe to
+                                    # expose. Works locally today (set in .env.local); MUST also be set
+                                    # in Vercel (Production and Preview) for production/preview error
+                                    # capture — unset means Sentry.init() silently no-ops, not a crash.
+                                    # See "Error Monitoring" below.
+SENTRY_ORG=                        # optional — source map upload only, not required for error capture
+SENTRY_PROJECT=                    # optional — source map upload only, not required for error capture
+SENTRY_AUTH_TOKEN=                 # optional — source map upload only, not required for error capture
 ```
 
 ---
@@ -4616,6 +4627,219 @@ three were confirmed:
 
 **No `PROMPT_VERSION` bump** — this is a client-side scanner UX fix with no `analyzeIngredients()`
 `flags`/`verdict`/`clearedBy` impact, and no `scan_cache` schema or contract change.
+
+---
+
+### Session — Sentry error monitoring integration (July 2026)
+
+Adds `@sentry/nextjs` for error capture across the app. This codebase has a deliberate, extensively
+documented pattern of catching errors and degrading gracefully — the offline-scan fallback in
+`ScannerScreen`, the AI-explanation fallback in `ConcernCard`, the try/catch around every Supabase
+write (per the June 2026 silent-write-failure incident documented under "What NOT to Do"). None of
+that UX changed. The point of this session was to make those already-caught errors visible to the
+team instead of only ever existing as a `console.error` line nobody is watching — see "Error
+Monitoring" below for the full section this session added.
+
+**Install + config**: `@sentry/nextjs` (v10) installed; three init files
+(`sentry.client.config.js`, `sentry.server.config.js`, `sentry.edge.config.js`) plus a root
+`instrumentation.js` (the classic pre-`instrumentation-client.ts` Next.js 14 setup — this project's
+Next.js is pinned to 14.2, one major behind where Sentry's newer `instrumentation-client.ts`
+convention is the default recommendation; `sentry.client.config.js` still works today, just with a
+one-time deprecation warning at build time flagging that Turbopack won't support it — irrelevant
+here since this project's `dev`/`build` scripts don't pass `--turbo`). `next.config.js` wrapped with
+`withSentryConfig`; `experimental.instrumentationHook: true` added since it isn't stable-by-default
+until Next.js 15. `lib/sentryEnvironment.js` is a small shared helper (`resolveSentryEnvironment()`)
+all three config files import, so client/server/edge can't drift on how `environment` is computed —
+see "Error Monitoring" below for the exact logic.
+
+**Wiring**: every `pages/api/*.js` route's existing try/catch around a Supabase or Anthropic call now
+also calls `Sentry.captureException(err, { tags: {...} })` (or `Sentry.captureMessage(...)` at the two
+non-throwing "missing API key" / "unparseable Claude response" branches in `scan.js`/`explain.js`,
+which were already-documented error-swallowing points with no thrown `Error` object to capture) —
+9 sites in `pages/api/scan.js` alone, plus `explain.js`, `swaps.js`, all three `account/*.js` routes,
+both `admin/swap-candidates*.js` routes, `cron/process-account-deletions.js` (5 sites, including a
+`level: 'fatal'` capture for the already-documented "CRITICAL — untracked orphaned auth record" case),
+and `reports/verdict.js`. Also wired: the offline/fetch-failure catch in `ScannerScreen.jsx`
+(`processBarcode()`'s catch — tagged `errorType: 'offline'` at `level: 'warning'` vs `'unknown'` at
+default `'error'`, since being offline is an expected condition for a scan-in-store app, not a bug);
+the AI-explanation-missing fallback in `ConcernCard.jsx` (wrapped in a `useEffect` keyed on
+`[explanation, category]` so it fires once per scan/category, not on every open/close toggle — a
+`captureMessage` at `level: 'warning'` since there's no thrown error, just a missing value); and five
+`lib/` files with a real silent catch: `requireAdmin.js`/`requireUser.js` (Supabase Auth
+`getUser(token)` throwing), `scanHistory.js` (tap-to-verdict Supabase read — skips the intentional
+`'no-supabase'` sentinel, since that's an expected condition not a bug), `supabase.js`/
+`supabaseServer.js` (client-construction failure — `supabaseServer.js`'s in particular is the
+highest-blast-radius catch in the whole codebase, since a null return there silently no-ops every
+downstream `scan_cache`/`unverified_ingredients` write, exactly the June 2026 incident).
+
+**Deliberately left uninstrumented** (documented here so it's a decision, not an oversight): the two
+trivial `JSON.parse(localStorage...)` guards in `lib/auth.js`'s `migrateLocalToSupabase()`
+(malformed `bl_profile`/`bl_scan_history` — not actionable, would just report "someone had corrupted
+localStorage") and the equivalent guard in `lib/verdictReports.js`'s `readReportedScans()` (explicitly
+documented in its own file header as "a light UX guard, not real abuse prevention"). `ScannerScreen`'s
+separate camera-permission catch (`startCamera()`) was also left alone — the task scoped this session
+to "the offline/fetch-failure catch," a different, already-console-logged catch in the same file.
+
+**PII scrubbing**: `sendDefaultPii: false` set explicitly in all three init files (never relying on
+the SDK default) — no IP addresses, headers, or request bodies auto-captured. Every call site above
+was reviewed individually for what it tags: barcodes are tagged freely (public OFF product
+identifiers, not personal data — same reasoning this file already documents for including barcodes in
+scan.js's own logging), but a Supabase **auth user id** is deliberately never tagged anywhere (the
+`cron/process-account-deletions.js` and `account/*.js` routes handle real personal accounts — `userId`
+is used in `console.error` messages exactly as before, but never passed into a `tags`/`contexts`
+object sent to Sentry). `pages/api/reports/verdict.js`'s free-text `comment` field is never included
+either — only `barcode` and the fixed-enum `reason`.
+
+**Cache hit-rate visibility**: a single `console.log('[scan] cache lookup', { cache_hit, barcode,
+userLevel })` added right after the `scan_cache` lookup query in `pages/api/scan.js`, INFO level only
+— deliberately not a Sentry event, since this fires on every single scan and would be pure volume, not
+error-monitoring signal. See "Error Monitoring" below for the SQL query to compute real hit rate from
+this going forward (this session added the log line only — no dashboard, no new script, per
+instruction).
+
+**Verification**: `next build` compiles cleanly (two expected, unavoidable warnings — see "Error
+Monitoring" → "Known warnings" below for both, and why neither was suppressed as part of this
+session). Full test suite: unchanged pass count aside from the same one long-tracked pre-existing
+failure (the `rulesEngine.test.js` cross-list contradiction test — 8 out-of-scope dead-entry findings
+from the collision-word audit series, unrelated to this session). A real error path was triggered
+locally — `NEXT_PUBLIC_SUPABASE_URL` temporarily set to an invalid value in `.env.local`, which throws
+synchronously inside `lib/supabaseServer.js`'s `createClient()` call — and confirmed two ways: (1) the
+real dev-server request log showed Sentry's SDK attempting to resolve source context for the exact
+instrumented catch site (`lib/supabaseServer.js`, the exact lines this session's edit touched) and
+recorded the request session as `"errored"`; (2) an isolated `@sentry/node` script using the same real
+DSN captured and flushed a test exception with zero transport errors reported in debug mode, and the
+same env-var-based `environment` logic used in the real config files resolves to `'development'` with
+no `VERCEL_ENV` set (confirmed directly, since `next dev`/this isolated script both run with
+`NODE_ENV=development` and no `VERCEL_ENV`). Dashboard confirmation (an actual visual check that the
+event landed in the Sentry project's Issues list) was not done from this session — no Sentry
+dashboard login is available in this environment. **Action item for you**: open the Sentry project
+this DSN belongs to and confirm an issue titled `"Beyond Labels — Sentry wiring verification..."`
+landed, tagged `environment: development` — then resolve/delete it, it's just this session's test
+event, not a real bug. Both `.env.local` and `sentry.server.config.js` were fully reverted after the
+verification (`git status`/`git diff` confirmed clean before moving on).
+
+**⚠️ Action item — `NEXT_PUBLIC_SENTRY_DSN` needs to be set in Vercel, not just locally.** Same shape
+as the migration-application action items already tracked elsewhere in this file (e.g. the
+`is_meat_category`/`is_meat_ingredient` columns) — this only works in production once the env var
+actually exists in the Vercel project (Project → Settings → Environment Variables), for Production
+*and* Preview. Until then, production errors are caught exactly as before (the try/catch fallback
+behavior never depended on Sentry) but nothing is sent anywhere — `Sentry.init({ dsn: undefined })`
+is a documented no-op, not a crash, so this fails silently in exactly the same "looks fine, isn't
+actually capturing anything" way the `olive_caveat`/`verdict_shadow_diffs` migration-application gaps
+did. Optional, not required for error capture to work: `SENTRY_ORG`/`SENTRY_PROJECT`/
+`SENTRY_AUTH_TOKEN` (source map upload only — the build already succeeds without them, see
+`next.config.js`'s own comment).
+
+**No `PROMPT_VERSION` bump** — this touches no `analyzeIngredients()` `flags`/`verdict`/`clearedBy`
+output and no `scan_cache` schema; it's observability tooling only.
+
+---
+
+## Error Monitoring
+
+**What Sentry is wired into** — see the "Session — Sentry error monitoring integration" changelog
+entry above for the full file-by-file list. In short: every existing try/catch in `pages/api/*.js`
+around a Supabase or Anthropic call, the two documented `ScannerScreen`/`ConcernCard` fallback paths,
+and five `lib/` files with a real (non-trivial) silent catch. **No new try/catch blocks were added
+anywhere** — this is instrumentation of existing error-handling, not new error handling. Fallback
+UX/behavior is byte-for-byte unchanged everywhere.
+
+### Environment tagging scheme
+
+`lib/sentryEnvironment.js`'s `resolveSentryEnvironment()` is the single source of truth, imported by
+all three config files (`sentry.client.config.js`/`sentry.server.config.js`/`sentry.edge.config.js`)
+so they can't drift:
+```js
+export function resolveSentryEnvironment() {
+  const vercelEnv = process.env.VERCEL_ENV || process.env.NEXT_PUBLIC_VERCEL_ENV;
+  if (vercelEnv) return vercelEnv;
+  return process.env.NODE_ENV === 'production' ? 'production' : 'development';
+}
+```
+- **`development`** — local `next dev`/`next build && next start` with no Vercel env present. This is
+  also what any local Claude Code live-verification session runs under.
+- **`preview`** — a Vercel preview deployment (`VERCEL_ENV=preview`, set automatically by Vercel).
+- **`production`** — the real deployed app (`VERCEL_ENV=production`).
+
+`VERCEL_ENV` is server-only by default; `next.config.js`'s `env` block mirrors it into
+`NEXT_PUBLIC_VERCEL_ENV` specifically so `sentry.client.config.js` (which runs in the browser) can
+tell a preview deploy apart from real production traffic too, not just the server-side configs.
+
+### PII scrubbing
+
+`sendDefaultPii: false` is set explicitly in all three init files — never relied on as an SDK default.
+No IP addresses, request headers, or request bodies are auto-captured. On top of that SDK-level
+setting, every individual `Sentry.captureException`/`captureMessage` call site in this codebase was
+written to only tag non-sensitive identifiers:
+- **Safe to tag freely**: route/operation name, barcode (a public OFF product identifier, not personal
+  data — same reasoning already applied to barcode logging elsewhere in this file), `userLevel`,
+  category names, decision enums (`reason`, `decision`).
+- **Never tagged**: raw ingredient lists or ingredient text, user email addresses, free-text fields
+  (e.g. `verdict_reports.comment`), and — treated with the same caution as email even though not
+  explicitly named in the original task — a Supabase auth **user id** (a real personal identifier;
+  `pages/api/cron/process-account-deletions.js` and the `account/*.js` routes handle real account
+  deletion/restoration and deliberately never send `userId` to Sentry, only to `console.error`).
+
+### Cache hit-rate SQL
+
+`pages/api/scan.js` logs `console.log('[scan] cache lookup', { cache_hit, barcode, userLevel })` at
+INFO level on every scan_cache lookup (not a Sentry event — this fires on every scan, so it's app log
+volume, not error-monitoring signal). That log line answers "what happened on this one request"; for
+the aggregate hit-rate view — the actual Anthropic-cost driver — query `scan_cache` directly in the
+Supabase SQL editor. There's no `cache_hit` column on the table itself (a cache *miss* is the request
+that goes on to insert/upsert a fresh row — the table only ever holds the current state per
+`(barcode, user_level)`, not a log of every lookup), so hit rate has to be inferred from write
+recency instead:
+
+```sql
+-- Approximate scan_cache hit rate over a date range, using last_accessed_at
+-- vs created_at as the hit/miss signal: a lookup that only bumped
+-- last_accessed_at (no new row written) was a hit; a lookup that resulted
+-- in a brand-new row (created_at falls inside the window) was a miss.
+-- Replace the two dates below with the range you want to inspect.
+select
+  count(*) filter (
+    where created_at >= '2026-07-01' and created_at < '2026-07-18'
+  ) as misses_written_in_range,
+  count(*) filter (
+    where last_accessed_at >= '2026-07-01' and last_accessed_at < '2026-07-18'
+      and created_at < '2026-07-01'
+  ) as hits_on_older_rows_in_range
+from scan_cache;
+```
+
+This is an approximation, not an exact count of every lookup (there's no per-request log table for
+this) — it undercounts hits that happened on a row also freshly written inside the same window (a
+miss immediately followed by a same-session re-scan would only show up in the miss bucket). For a
+precise count going forward, grep/query wherever this app's server logs are shipped (Vercel's own log
+drain, if one is configured) for `"[scan] cache lookup"` lines and tally `cache_hit: true` vs `false`
+directly — the console.log line is the ground truth per-request signal; this SQL query is a
+reasonable proxy when only the database is available.
+
+### Known warnings (expected, not bugs)
+
+`next build` prints two Sentry warnings every time — both expected, neither suppressed:
+1. **"you don't have a global error handler set up... add a 'global-error.js' file"** — deliberately
+   not added. The task this integration shipped under explicitly said not to add new error boundaries
+   beyond what Sentry's Next.js integration installs automatically; a `global-error.js` file is a new
+   App Router error boundary, not something auto-installed.
+2. **"It is recommended renaming your `sentry.client.config.js` file... to `instrumentation-client.ts`"**
+   — this project pins Next.js 14.2; `instrumentation-client.ts` is a newer convention Sentry
+   recommends for forward compatibility with Turbopack, which this project's `dev`/`build` scripts
+   don't use. `sentry.client.config.js` works correctly today (confirmed via `next build` and the
+   real-error verification above) and needing to migrate isn't urgent — worth revisiting only if this
+   project later adopts Turbopack or upgrades to a Next.js version where the newer convention becomes
+   the default.
+
+### Action items
+
+- **Set `NEXT_PUBLIC_SENTRY_DSN` in Vercel** (Production and Preview environments) — this only works
+  locally right now. See the changelog entry above for the exact "silent no-op, not a crash" failure
+  mode if this is skipped.
+- Optional: `SENTRY_ORG`/`SENTRY_PROJECT`/`SENTRY_AUTH_TOKEN` if you want source maps uploaded on
+  build for better stack traces in the dashboard — not required for error capture itself.
+- Resolve/delete the one-off verification event from this session's local testing (see the changelog
+  entry above for its exact title).
 
 ---
 

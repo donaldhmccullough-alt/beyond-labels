@@ -80,6 +80,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { PROMPT_VERSION } from '../../lib/cacheVersion';
 import { SYSTEM_PROMPT, buildUserMessage, parseExplanationResponse } from './explain';
 import { ANTHROPIC_MODEL } from '../../lib/aiConfig';
+import * as Sentry from '@sentry/nextjs';
 
 const OFF_BASE = 'https://world.openfoodfacts.org/api/v0/product';
 
@@ -170,6 +171,10 @@ async function fetchExplanation(verdict, flags, productName, ingredientsText, us
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     console.error('[scan] explanation fetch: missing API key');
+    Sentry.captureMessage('[scan] explanation fetch: missing API key', {
+      level: 'error',
+      tags: { route: 'scan', op: 'fetch_explanation', reason: 'missing_api_key' },
+    });
     return null;
   }
 
@@ -194,11 +199,19 @@ async function fetchExplanation(verdict, flags, productName, ingredientsText, us
       console.error(
         `[scan] explanation fetch: unparseable response, category count: ${categoryCount}, flag count: ${(flags || []).length}`
       );
+      Sentry.captureMessage('[scan] explanation fetch: unparseable response', {
+        level: 'error',
+        tags: { route: 'scan', op: 'fetch_explanation', reason: 'unparseable_response', userLevel },
+        contexts: { explanation: { categoryCount, flagCount: (flags || []).length } },
+      });
     }
 
     return parsed;
   } catch (err) {
     console.error('[scan] explanation fetch: API error:', err);
+    Sentry.captureException(err, {
+      tags: { route: 'scan', op: 'fetch_explanation', userLevel },
+    });
     return null;
   }
 }
@@ -818,12 +831,26 @@ export default async function handler(req, res) {
         .eq('prompt_version', PROMPT_VERSION)
         .maybeSingle();
 
+      // Cache hit-rate visibility — scan_cache misses are the direct driver
+      // of Anthropic API cost (a miss triggers a fresh Claude call below).
+      // INFO-level console.log only, not a Sentry event — this fires on
+      // every scan, so it isn't error-monitoring volume. See CLAUDE.md →
+      // "Error Monitoring" for the SQL query that computes hit rate over
+      // any date range straight from scan_cache.
+      console.log('[scan] cache lookup', { cache_hit: !!cached, barcode: cleanBarcode, userLevel });
+
       if (cached) {
         // Touch last_accessed_at fire-and-forget — don't delay response.
         sb.from('scan_cache')
           .update({ last_accessed_at: new Date().toISOString() })
           .eq('id', cached.id)
-          .then(() => {}).catch(() => {});
+          .then(() => {})
+          .catch((err) => {
+            Sentry.captureException(err, {
+              tags: { route: 'scan', op: 'touch_last_accessed_at', barcode: cleanBarcode },
+              level: 'warning',
+            });
+          });
 
         return res.status(200).json({
           verdict:               cached.verdict,
@@ -844,8 +871,11 @@ export default async function handler(req, res) {
           oliveCaveat:           cached.olive_caveat ?? false,
         });
       }
-    } catch {
+    } catch (err) {
       // Cache read failure is non-fatal — fall through to normal scan flow.
+      Sentry.captureException(err, {
+        tags: { route: 'scan', op: 'cache_read', barcode: cleanBarcode, userLevel },
+      });
     }
   }
 
@@ -869,6 +899,9 @@ export default async function handler(req, res) {
 
     offData = await response.json();
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: 'scan', op: 'open_food_facts_fetch', barcode: cleanBarcode },
+    });
     return res.status(502).json({
       error: 'Failed to reach Open Food Facts. Check network connectivity.',
       detail: err.message,
@@ -1057,11 +1090,18 @@ export default async function handler(req, res) {
               });
             } catch (err) {
               console.error('verdict_shadow_diffs write failed:', err);
+              Sentry.captureException(err, {
+                tags: { route: 'scan', op: 'verdict_shadow_diffs_write', barcode: cleanBarcode, userLevel },
+              });
             }
           }
         }
       } catch (err) {
         console.error('[scan] shadow mode computeCorrectedVerdict failed:', err);
+        Sentry.captureException(err, {
+          tags: { route: 'scan', op: 'shadow_mode_compute_corrected_verdict', barcode: cleanBarcode, userLevel },
+          level: 'warning',
+        });
       }
     }
   } else if (VERDICT_ENGINE_MODE === 'live') {
@@ -1087,6 +1127,9 @@ export default async function handler(req, res) {
       });
     } catch (err) {
       console.error('[scan] live mode computeCorrectedVerdict failed, falling back to legacy:', err);
+      Sentry.captureException(err, {
+        tags: { route: 'scan', op: 'live_mode_compute_corrected_verdict', barcode: cleanBarcode, userLevel },
+      });
       verdictResult = computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags, productName, userLevel, isMeat });
     }
   } else {
@@ -1103,6 +1146,9 @@ export default async function handler(req, res) {
       await captureUnverifiedIngredients(unverifiedIngredients, productName, cleanBarcode);
     } catch (err) {
       console.error('unverified_ingredients write failed:', err);
+      Sentry.captureException(err, {
+        tags: { route: 'scan', op: 'unverified_ingredients_write', barcode: cleanBarcode, userLevel },
+      });
     }
   }
 
@@ -1144,6 +1190,9 @@ export default async function handler(req, res) {
         );
     } catch (err) {
       console.error('scan_cache write failed:', err);
+      Sentry.captureException(err, {
+        tags: { route: 'scan', op: 'scan_cache_write', barcode: cleanBarcode, userLevel },
+      });
     }
   }
 

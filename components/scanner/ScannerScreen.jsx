@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabase';
 import { getUserLevel } from '@/lib/userLevel';
 import { PROMPT_VERSION } from '@/lib/cacheVersion';
 import { formatTime, createHistoryTapHandler } from '@/lib/scanHistory';
+import * as Sentry from '@sentry/nextjs';
 
 const OFFLINE_MESSAGE = '📶 No internet connection — check your connection and try again.';
 const GENERIC_ERROR_MESSAGE = 'Something went wrong. Please try again.';
@@ -130,7 +131,16 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
       onScanResult(data);
     } catch (err) {
       console.error('Scan error:', err);
-      setScanError(isNetworkError(err) ? OFFLINE_MESSAGE : GENERIC_ERROR_MESSAGE);
+      const offline = isNetworkError(err);
+      // Offline is an expected, common condition for a scan-in-store app,
+      // not a bug — tagged and kept at 'warning' so it doesn't read the
+      // same as a genuine unhandled failure. barcode is a public product
+      // identifier, safe to tag (same convention as the API routes).
+      Sentry.captureException(err, {
+        tags: { route: 'scanner', errorType: offline ? 'offline' : 'unknown', barcode },
+        level: offline ? 'warning' : 'error',
+      });
+      setScanError(offline ? OFFLINE_MESSAGE : GENERIC_ERROR_MESSAGE);
     } finally { setScanning(false); }
   }
 

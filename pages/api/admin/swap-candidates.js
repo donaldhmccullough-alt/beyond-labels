@@ -60,6 +60,7 @@
 
 import { requireAdmin } from '../../../lib/requireAdmin';
 import { getSupabaseServer } from '../../../lib/supabaseServer';
+import * as Sentry from '@sentry/nextjs';
 
 const MIN_DISTINCT_SCANNERS = 3;
 
@@ -163,6 +164,9 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ candidates });
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: 'admin/swap-candidates' },
+    });
     return res.status(500).json({ error: err.message });
   }
 }

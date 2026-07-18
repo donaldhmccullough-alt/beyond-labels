@@ -24,6 +24,7 @@
 
 import { requireUser } from '../../../lib/requireUser';
 import { getSupabaseServer } from '../../../lib/supabaseServer';
+import * as Sentry from '@sentry/nextjs';
 
 const VALID_REASONS = new Set([
   'wrong_verdict',
@@ -73,11 +74,21 @@ export default async function handler(req, res) {
     });
 
     if (error) {
+      // barcode/reason only — never the free-text `comment` field or the
+      // user's own account id in the Sentry payload.
+      Sentry.captureMessage('[reports/verdict] insert failed', {
+        level: 'error',
+        tags: { route: 'reports/verdict', barcode, reason },
+        contexts: { supabase: { message: error.message } },
+      });
       return res.status(500).json({ success: false, error: error.message });
     }
 
     return res.status(200).json({ success: true });
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: 'reports/verdict', barcode, reason },
+    });
     return res.status(500).json({ success: false, error: err.message });
   }
 }

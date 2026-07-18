@@ -16,6 +16,7 @@
 
 import { requireUser } from '../../../lib/requireUser';
 import { getSupabaseServer } from '../../../lib/supabaseServer';
+import * as Sentry from '@sentry/nextjs';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -39,11 +40,19 @@ export default async function handler(req, res) {
       .eq('user_id', user.id);
 
     if (error) {
+      Sentry.captureMessage('[account/restore] delete failed', {
+        level: 'error',
+        tags: { route: 'account/restore' },
+        contexts: { supabase: { message: error.message } },
+      });
       return res.status(500).json({ error: error.message });
     }
 
     return res.status(200).json({ success: true });
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: 'account/restore' },
+    });
     return res.status(500).json({ error: err.message });
   }
 }

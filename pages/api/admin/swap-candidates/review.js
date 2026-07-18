@@ -54,6 +54,7 @@
 
 import { requireAdmin } from '../../../../lib/requireAdmin';
 import { getSupabaseServer } from '../../../../lib/supabaseServer';
+import * as Sentry from '@sentry/nextjs';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -153,6 +154,11 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ success: true, decision: 'approved', swapProductId: insertedSwap.id });
   } catch (err) {
+    // barcode is a public product identifier (not personal data) — safe to
+    // tag directly, same convention as pages/api/scan.js.
+    Sentry.captureException(err, {
+      tags: { route: 'admin/swap-candidates/review', decision, barcode },
+    });
     return res.status(500).json({ error: err.message });
   }
 }

@@ -29,6 +29,7 @@
 
 import { requireUser } from '../../../lib/requireUser';
 import { getSupabaseServer } from '../../../lib/supabaseServer';
+import * as Sentry from '@sentry/nextjs';
 
 const GRACE_PERIOD_DAYS = 14;
 
@@ -63,6 +64,11 @@ export default async function handler(req, res) {
       );
 
     if (error) {
+      Sentry.captureMessage('[account/request-deletion] upsert failed', {
+        level: 'error',
+        tags: { route: 'account/request-deletion' },
+        contexts: { supabase: { message: error.message } },
+      });
       return res.status(500).json({ error: error.message });
     }
 
@@ -78,11 +84,19 @@ export default async function handler(req, res) {
       .maybeSingle();
 
     if (readError || !row) {
+      Sentry.captureMessage('[account/request-deletion] read-back failed', {
+        level: 'error',
+        tags: { route: 'account/request-deletion' },
+        contexts: { supabase: { message: readError?.message || 'no row returned' } },
+      });
       return res.status(500).json({ error: readError?.message || 'Failed to read back scheduled deletion.' });
     }
 
     return res.status(200).json({ success: true, scheduledFor: row.scheduled_for });
   } catch (err) {
+    Sentry.captureException(err, {
+      tags: { route: 'account/request-deletion' },
+    });
     return res.status(500).json({ error: err.message });
   }
 }
