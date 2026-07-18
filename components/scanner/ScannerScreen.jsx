@@ -28,6 +28,148 @@ export function isNetworkError(err) {
   return err instanceof TypeError;
 }
 
+/**
+ * Factory that returns the actual async processBarcode(barcode) function,
+ * bound to the calling component's refs, state setters, and per-render
+ * values (user/userLevel/onScanResult) — same "extract for testability"
+ * reasoning as lib/scanHistory.js's createHistoryTapHandler: this project
+ * has no React rendering test infrastructure, so pulling the real decision
+ * logic out into a plain function taking mockable refs/setters is what
+ * makes it unit-testable at all. See CLAUDE.md for the investigation this
+ * closes (an in-flight /api/scan request kept running, and its response
+ * kept acting on stale state, after the user backed out or re-submitted).
+ *
+ * Race-condition handling, two mechanisms working together:
+ *  - scanInFlightRef (synchronous ref, not state) guards only the narrow,
+ *    truly synchronous setup section at the top of processBarcode — closed
+ *    before any await, and released again immediately once the new
+ *    AbortController is stored. This is a same-tick re-entrancy guard, not
+ *    a "block for the whole request" guard: a second scan that starts once
+ *    setup has finished (e.g. a rapid manual re-submission while the first
+ *    request is still awaiting /api/scan) is deliberately allowed through.
+ *  - currentScanAbortRef holds the AbortController for whichever request is
+ *    currently outstanding. It's aborted and replaced on every call (so a
+ *    stale request's response can never act on state or call onScanResult
+ *    once superseded) and aborted again from the component's unmount
+ *    cleanup effect (covers "user switched tabs mid-scan"). This is what
+ *    makes "the newer scan always wins" true for the realistic rapid
+ *    re-scan case, not the ref guard above.
+ * Both exist deliberately ("belt and suspenders") for different windows —
+ * the ref guard closes the instant before a controller even exists to
+ * abort; the abort logic covers everything after that.
+ */
+export function createProcessBarcodeHandler({
+  scanInFlightRef,
+  currentScanAbortRef,
+  setScanError,
+  setScanning,
+  setScanUsage,
+  setHistory,
+  user,
+  userLevel,
+  onScanResult,
+}) {
+  return async function processBarcode(barcode) {
+    // Synchronous re-entrancy guard — belt-and-suspenders alongside the
+    // abort-based cancellation below. It only protects the narrow, truly
+    // synchronous setup section immediately below (checked, then released,
+    // before any await): a ref is readable/settable synchronously, so it
+    // closes a same-tick re-entrant-call window the abort mechanism can't
+    // help with yet (there's nothing to abort until a controller has
+    // actually been created and stored). A legitimate second scan starting
+    // once that setup has finished — e.g. a rapid manual re-submission
+    // while the first request is still awaiting /api/scan — is
+    // deliberately NOT blocked here; it's handled by the abort-and-replace
+    // logic immediately below instead, so the newer scan always wins.
+    if (scanInFlightRef.current) return;
+    scanInFlightRef.current = true;
+
+    // Cancel whatever request is still outstanding so its (eventually
+    // arriving) response can never win — covers rapid re-scans and
+    // manual-entry resubmission ("let the new one win").
+    if (currentScanAbortRef.current) {
+      currentScanAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    currentScanAbortRef.current = controller;
+    scanInFlightRef.current = false;
+
+    setScanError(null);
+    setScanning(true);
+
+    // Proactive check — point-in-time only, no online/offline listeners.
+    // Skips the fetch attempt entirely when the browser already knows it's
+    // offline, rather than waiting on a doomed network request to fail.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setScanError(OFFLINE_MESSAGE);
+      setScanning(false);
+      if (currentScanAbortRef.current === controller) currentScanAbortRef.current = null;
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode, userLevel }),
+        signal: controller.signal,
+      });
+      const data = await res.json();
+
+      // This request may have been superseded/aborted between the fetch
+      // resolving and here — bail out before touching any state or calling
+      // onScanResult for a scan the user already moved past.
+      if (controller.signal.aborted) return;
+
+      incrementTotalScan();
+
+      if (user?.id) {
+        await logScanToSupabase(user.id, { ...data, barcode });
+        const count = await getSupabaseScanCountThisMonth(user.id);
+        setScanUsage({ scanCount: count, resetDate: new Date().toISOString().slice(0, 7) });
+        const sbHistory = await getSupabaseScanHistory(user.id, 20);
+        setHistory(sbHistory.map(r => ({
+          productName: r.product_name, verdict: r.verdict,
+          timestamp: r.scanned_at, barcode: r.barcode,
+        })));
+      } else {
+        incrementScan();
+        setScanUsage(getScanUsage());
+        addScanToHistory({ productName: data.productName || '', verdict: data.verdict, timestamp: new Date().toISOString(), barcode });
+        setHistory(getScanHistory());
+      }
+      onScanResult(data);
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        // Intentional cancellation (superseded by a newer scan, or the
+        // component unmounted) — not a failure. No toast, no state update,
+        // no history/analytics writes.
+        return;
+      }
+      console.error('Scan error:', err);
+      const offline = isNetworkError(err);
+      // Offline is an expected, common condition for a scan-in-store app,
+      // not a bug — tagged and kept at 'warning' so it doesn't read the
+      // same as a genuine unhandled failure. barcode is a public product
+      // identifier, safe to tag (same convention as the API routes).
+      Sentry.captureException(err, {
+        tags: { route: 'scanner', errorType: offline ? 'offline' : 'unknown', barcode },
+        level: offline ? 'warning' : 'error',
+      });
+      setScanError(offline ? OFFLINE_MESSAGE : GENERIC_ERROR_MESSAGE);
+    } finally {
+      // Only clear in-flight bookkeeping if this is still the current
+      // request — an older, superseded request's finally must not stomp on
+      // a newer request's in-progress state (which would flip the
+      // spinner/button back to "idle" while real work is still happening).
+      if (currentScanAbortRef.current === controller) {
+        currentScanAbortRef.current = null;
+        setScanning(false);
+      }
+    }
+  };
+}
+
 export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
   const [scanning, setScanning] = useState(false);
   const [scanUsage, setScanUsage] = useState({ scanCount: 0, resetDate: '' });
@@ -40,6 +182,15 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
   const readerRef = useRef(null);
   const streamRef = useRef(null);
   const tapInFlightRef = useRef(false);
+  // Synchronous re-entrancy guard for the live-scan/manual-entry path — same
+  // reasoning as tapInFlightRef above: a ref survives the synchronous window
+  // between two rapid triggers, which a useState boolean (batched, async to
+  // settle) cannot reliably close on its own.
+  const scanInFlightRef = useRef(false);
+  // Holds the AbortController for whichever /api/scan request is currently
+  // outstanding, so a new scan can cancel a stale one and processBarcode()
+  // can tell an aborted/superseded response apart from a real one.
+  const currentScanAbortRef = useRef(null);
   const [loadingBarcode, setLoadingBarcode] = useState(null);
   const [scanError, setScanError] = useState(null);
   const [missBarcode, setMissBarcode] = useState(null);
@@ -68,6 +219,29 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
     loadUsage();
   }, [user]);
 
+  // Cancel whatever /api/scan request is still outstanding when this screen
+  // unmounts (e.g. the user switches bottom-nav tabs mid-scan) — otherwise
+  // the request keeps resolving server-side and its response would still
+  // try to act on state or call onScanResult on the (now-unmounted)
+  // component's behalf. See createProcessBarcodeHandler above.
+  useEffect(() => {
+    return () => {
+      currentScanAbortRef.current?.abort();
+    };
+  }, []);
+
+  const processBarcode = createProcessBarcodeHandler({
+    scanInFlightRef,
+    currentScanAbortRef,
+    setScanError,
+    setScanning,
+    setScanUsage,
+    setHistory,
+    user,
+    userLevel,
+    onScanResult,
+  });
+
   async function startCamera() {
     // MVP_MODE: paywall check disabled — unlimited scans
     if (!MVP_MODE && scanUsage.scanCount >= FREE_SCAN_LIMIT) { setShowPaywall(true); return; }
@@ -89,59 +263,6 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
     if (readerRef.current) { try { readerRef.current.reset(); } catch(e){} readerRef.current = null; }
     if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
     setScanning(false);
-  }
-
-  async function processBarcode(barcode) {
-    setScanError(null);
-    setScanning(true);
-
-    // Proactive check — point-in-time only, no online/offline listeners.
-    // Skips the fetch attempt entirely when the browser already knows it's
-    // offline, rather than waiting on a doomed network request to fail.
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      setScanError(OFFLINE_MESSAGE);
-      setScanning(false);
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ barcode, userLevel }),
-      });
-      const data = await res.json();
-      incrementTotalScan();
-
-      if (user?.id) {
-        await logScanToSupabase(user.id, { ...data, barcode });
-        const count = await getSupabaseScanCountThisMonth(user.id);
-        setScanUsage({ scanCount: count, resetDate: new Date().toISOString().slice(0, 7) });
-        const sbHistory = await getSupabaseScanHistory(user.id, 20);
-        setHistory(sbHistory.map(r => ({
-          productName: r.product_name, verdict: r.verdict,
-          timestamp: r.scanned_at, barcode: r.barcode,
-        })));
-      } else {
-        incrementScan();
-        setScanUsage(getScanUsage());
-        addScanToHistory({ productName: data.productName || '', verdict: data.verdict, timestamp: new Date().toISOString(), barcode });
-        setHistory(getScanHistory());
-      }
-      onScanResult(data);
-    } catch (err) {
-      console.error('Scan error:', err);
-      const offline = isNetworkError(err);
-      // Offline is an expected, common condition for a scan-in-store app,
-      // not a bug — tagged and kept at 'warning' so it doesn't read the
-      // same as a genuine unhandled failure. barcode is a public product
-      // identifier, safe to tag (same convention as the API routes).
-      Sentry.captureException(err, {
-        tags: { route: 'scanner', errorType: offline ? 'offline' : 'unknown', barcode },
-        level: offline ? 'warning' : 'error',
-      });
-      setScanError(offline ? OFFLINE_MESSAGE : GENERIC_ERROR_MESSAGE);
-    } finally { setScanning(false); }
   }
 
   async function handleManualSubmit(e) {
@@ -177,7 +298,7 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
         <form onSubmit={handleManualSubmit} style={{ padding: '12px 16px', background: 'var(--cream-dark)', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
           <div style={{ display: 'flex', gap: 8 }}>
             <input type="text" value={manualBarcode} onChange={e => setManualBarcode(e.target.value)} placeholder="Enter barcode number..." style={{ flex: 1, padding: '10px 14px', borderRadius: 10, border: '1.5px solid var(--cream-dark)', background: 'white', fontSize: 14, color: 'var(--text-dark)', outline: 'none' }} autoFocus />
-            <button type="submit" style={{ background: 'var(--amber)', color: 'white', border: 'none', borderRadius: 10, padding: '10px 16px', cursor: 'pointer', fontSize: 14, fontWeight: 700 }}>Scan</button>
+            <button type="submit" disabled={scanning} style={{ background: 'var(--amber)', color: 'white', border: 'none', borderRadius: 10, padding: '10px 16px', cursor: scanning ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 700, opacity: scanning ? 0.6 : 1 }}>Scan</button>
           </div>
         </form>
       )}

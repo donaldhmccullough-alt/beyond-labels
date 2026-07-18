@@ -4735,6 +4735,95 @@ output and no `scan_cache` schema; it's observability tooling only.
 
 ---
 
+### Session — in-flight scan race condition fix (July 2026)
+
+Prompted directly by a read-only investigation session (no code changed) that was itself a
+preparatory step before adding velocity-based rate limiting to `/api/scan` — while auditing request
+identification on that endpoint, a separate, more immediately concerning gap surfaced on the client
+side: `processBarcode()` in `components/scanner/ScannerScreen.jsx` had no guard against a second scan
+starting while a previous one was still awaiting `fetch('/api/scan')`. Fixing this was prioritized
+ahead of the rate-limiting work itself, since it's a real, already-shippable correctness bug
+independent of any future rate limit, and because an in-flight request that outlives the user's
+attention is exactly the kind of traffic a naive velocity limiter would also need to reason about
+correctly (a request that's already been superseded client-side but hasn't hit the server yet).
+
+**The bug, as found**: navigating away from the scanner (switching bottom-nav tabs, which unmounts
+`ScannerScreen` under `app/page.jsx`'s plain conditional rendering) or resubmitting the manual-entry
+form while a scan was still in flight did not cancel the first request — it kept running server-side
+to completion (a real Anthropic API call, a real `scan_cache` write) and its resolution still executed
+the component's full `then`-path, including calling `onScanResult` — a prop owned by the **parent**
+`app/page.jsx`, not the unmounted `ScannerScreen` — which could silently navigate the user to the
+Verdict screen for a product they'd already scrolled past or moved on from, with no user action
+involved. Full findings (which this fix works directly from, not re-derived) are in the investigation
+transcript from the same session.
+
+**Fix — four mechanisms in `components/scanner/ScannerScreen.jsx`, all inside a newly extracted,
+exported `createProcessBarcodeHandler()` factory** (same "extract for testability" reasoning already
+established for `lib/scanHistory.js`'s `createHistoryTapHandler` — this project has no React rendering
+test infrastructure, so the real decision logic has to live in a plain function taking mockable
+refs/setters to be unit-testable at all):
+
+1. **`AbortController` per request**, tracked in a new `currentScanAbortRef`. Its `signal` is passed to
+   `fetch('/api/scan', ...)`.
+2. **The previous request is aborted whenever a new one starts** — `processBarcode()` calls
+   `currentScanAbortRef.current?.abort()` before creating its own controller, so a stale request's
+   eventual response can never win over a newer one ("let the new one win"). Covers both rapid re-scans
+   and manual-entry resubmission.
+3. **Aborted on unmount** — a new `useEffect` cleanup calls `currentScanAbortRef.current?.abort()` when
+   `ScannerScreen` unmounts, which is the actual "user switched tabs mid-scan" case from the
+   investigation.
+4. **Stale/aborted responses are guarded against explicitly** — the `catch` block checks
+   `err?.name === 'AbortError'` and returns immediately (no `setScanError`, no Sentry report, no
+   `onScanResult`, no history/analytics writes) rather than falling into the generic error-handling
+   path; a second `controller.signal.aborted` check runs after `await res.json()` resolves, for the
+   narrower race where a response arrives successfully but was superseded between resolving and being
+   processed.
+
+A fifth mechanism, a synchronous re-entrancy guard (`scanInFlightRef`, mirroring `tapInFlightRef` in
+`lib/scanHistory.js`), was added alongside the above but scoped narrowly: it guards only the truly
+synchronous setup section at the top of `processBarcode()` (checked, then released, immediately after
+the new `AbortController` is stored) — not the whole request duration. **This distinction is
+deliberate, not an oversight**: an earlier draft of this fix had the guard block re-entry for the
+entire in-flight duration, which passed the "don't start two at once" framing literally but broke the
+actual desired behavior for a real rapid-rescan — the second, newer scan would never start at all
+(blocked by the guard), meaning the *first* (stale) result would be the one shown, the opposite of
+"let the new one win." The guard was narrowed to just the same-tick window before a controller exists
+to abort — realistically near-inert given JS's single-threaded execution model (two separate click
+events can't literally overlap in the same tick), but kept as defense-in-depth exactly as the task
+that specified it called for ("belt and suspenders"). The manual-entry submit button's visible
+`disabled={scanning}` state (added in the same fix) is driven by the existing `scanning` state variable
+instead, which does correctly stay `true` for the full request duration.
+
+**Tests**: `__tests__/components/ScannerScreen.test.js` gained 9 new tests against
+`createProcessBarcodeHandler()` directly (mock refs/setters, a hand-built `fetch` stand-in that
+mirrors real `AbortController`/`AbortSignal` semantics) — a baseline single-scan sanity check; rapid
+double-scan asserting only the second scan's data reaches `onScanResult` (and that `setScanUsage`/
+`setHistory` are each called exactly once, not once per attempt); the simulated-unmount case
+(calling `currentScanAbortRef.current?.abort()` directly, exactly what the real cleanup effect does)
+asserting zero calls to `onScanResult`/`setScanUsage`/`setHistory`; the same case asserting no
+`setScanError`/`Sentry.captureException` calls (confirming an intentional cancellation is never shown
+as a generic error toast); two regression guards confirming a genuine non-abort error (`TypeError` for
+offline, plain `Error` otherwise) still correctly reports and shows the right message, so the
+`AbortError` carve-out doesn't swallow real failures; a `setScanning(true)`/`(false)` timing check
+standing in for the disabled-button assertion (no rendering harness available to check the literal DOM
+attribute); and a direct test of the same-tick `scanInFlightRef` guard. Full suite: all new tests pass
+alongside the existing, unrelated pre-existing failure (the `rulesEngine.test.js` cross-list
+contradiction test from the collision-word audit series, unchanged).
+
+**Live-verified in the running dev server, not just unit-tested** — a mocked, delayed `fetch` was
+injected directly into the real rendered app (not the extracted handler in isolation) to confirm two
+scenarios end-to-end: (1) submitting two different barcodes in rapid succession correctly aborted the
+first request and left the Verdict screen showing the **second** barcode's product, matching the "let
+the new one win" test; (2) starting a scan, then switching to the Profile tab mid-request (unmounting
+`ScannerScreen`), correctly aborted the request — and, critically, once the mocked delay elapsed, the
+app **stayed on Profile** rather than silently jumping to a Verdict screen for the abandoned scan. No
+console errors in either case.
+
+**No `PROMPT_VERSION` bump** — this is a client-side race-condition fix with no
+`analyzeIngredients()` `flags`/`verdict`/`clearedBy` impact and no `scan_cache` schema change.
+
+---
+
 ## Error Monitoring
 
 **What Sentry is wired into** — see the "Session — Sentry error monitoring integration" changelog
