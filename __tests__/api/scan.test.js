@@ -2065,10 +2065,10 @@ describe('L. Universal L2 decision tree', () => {
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('M. PROMPT_VERSION', () => {
-  test('PROMPT_VERSION is 43 (v43: allergen-advisory facility-disclosure fix, FORTIFIED_VITAMINS "calcium phosphate" boundary guard, MEAT_CATEGORIES en:eggs removal)', () => {
+  test('PROMPT_VERSION is 44 (v44: Joel-voice certification-framing rewrites — conventional_eggs, conventional_dairy, glyphosate_heavy)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(43);
+    expect(PROMPT_VERSION).toBe(44);
   });
 });
 
