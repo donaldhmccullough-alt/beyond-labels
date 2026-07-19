@@ -140,6 +140,60 @@ describe("A2. buildUserMessage() — clearedBy: 'organic' + verdict: 'red'", () 
 });
 
 // ════════════════════════════════════════════════════════════════════════════
+// A3. buildUserMessage() — conventional_eggs note wording
+//
+// Reworded July 2026 (Joel-voice certification-framing audit) — certification
+// is now framed as "a reasonable starting point," not proof/guarantee, and
+// the old "the meaningful alternative" phrasing was dropped. Presence check
+// only, not a snapshot — buildUserMessage() output feeds a live Claude call,
+// so there's no way to assert Claude's actual generated wording, only the
+// instruction text this function hands it. See CLAUDE.md's "Joel-voice
+// certification-framing audit" entry for the full before/after.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('A3. buildUserMessage() — conventional_eggs note wording', () => {
+  test('conventional_eggs note frames certification as a starting point, not proof', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'conventional_eggs', severity: 'reject', matchedIngredient: 'eggs', summary: 'x' }],
+      'Test Product',
+      'eggs, salt, water',
+      2,
+      null,
+      null
+    );
+    expect(message).toContain('reasonable starting point');
+    expect(message).toContain('not proof of it');
+  });
+
+  test('conventional_eggs note no longer contains the old "meaningful alternative" phrasing', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'conventional_eggs', severity: 'reject', matchedIngredient: 'eggs', summary: 'x' }],
+      'Test Product',
+      'eggs, salt, water',
+      2,
+      null,
+      null
+    );
+    expect(message).not.toContain('the meaningful alternative');
+  });
+
+  test('conventional_eggs note is not injected for unrelated categories', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'seed_oils', severity: 'reject', matchedIngredient: 'canola oil', summary: 'x' }],
+      'Test Product',
+      'canola oil, salt',
+      2,
+      null,
+      null
+    );
+    expect(message).not.toContain('reasonable starting point');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 // B. Handler — input validation
 // ════════════════════════════════════════════════════════════════════════════
 

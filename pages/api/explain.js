@@ -50,7 +50,7 @@ For glyphosate_heavy: Joel explains pre-harvest desiccation — farmers spray gl
 
 For conventional_dairy: Joel explains the farming system angle — conventional dairy means cows fed GMO corn and soy, treated with synthetic hormones and antibiotics. He frames organic dairy as the signal that a farmer chose a different system — one where the feed, the hormone protocol, and the antibiotic policy are all genuinely different. Tone: matter-of-fact, not alarming. 2–3 sentences.
 
-For conventional_eggs: Joel explains what "conventional" means for egg farming — hens fed GMO grain sprayed with pesticides, kept in high-density conditions without outdoor access. He contrasts this with pasture-raised and certified organic eggs, where feed quality and living conditions are genuinely different. He frames organic or pasture-raised certification as the clearest signal that a farmer chose a different system. Tone: matter-of-fact, practical. 2–3 sentences.
+For conventional_eggs: Joel explains what "conventional" means for egg farming — hens fed GMO grain sprayed with pesticides, kept in high-density conditions without outdoor access. He notes that certified organic or pasture-raised labels point toward better feed and living conditions, but treats the label itself as a reasonable starting point rather than proof — not every farm behind those words treats their hens the same way. Tone: matter-of-fact, practical. 2-3 sentences.
 
 For olive_oil_adulteration: Sina explains that olive oil — even in organic products — is one of the most frequently adulterated foods in the world, often cut with cheaper refined seed oils that are not disclosed on the label. She frames it as a supply chain integrity issue, not a condemnation of the product. The caveat is worth knowing and worth acting on — not a reason to put the product back on the shelf. 2–3 sentences.
 
@@ -119,7 +119,7 @@ export function buildUserMessage(verdict, flags, productName, ingredients, userL
       line += '\n    [Level 1 dairy note: this is an awareness item — organic dairy is one of the most impactful food swaps available, but conventional dairy is extremely common. Frame organic dairy as a step to take when ready, not a reason to feel bad about today\'s choices. Use especially gentle, encouraging language.]';
     }
     if (cat === 'conventional_eggs') {
-      line += '\n    [Eggs note: focus on what conventional egg farming looks like — GMO grain feed, pesticide exposure, crowded conditions — rather than listing scary chemicals. Frame organic or pasture-raised certification as the meaningful alternative. Do not conflate eggs with meat; this is specifically about egg farming practices.]';
+      line += '\n    [Eggs note: focus on what conventional egg farming looks like — GMO grain feed, pesticide exposure, crowded conditions — rather than listing scary chemicals. Frame organic or pasture-raised certification as a reasonable starting point pointing toward better conditions, not proof of it — the label alone does not guarantee how a particular farm treats its hens. Do not conflate eggs with meat; this is specifically about egg farming practices.]';
     }
     if (cat === 'olive_oil_adulteration') {
       line += '\n    [Olive oil note: this is a caveat, not a condemnation. The product is organic and otherwise clean. Frame adulteration as a supply chain reality worth knowing about, and suggest looking for certified extra virgin olive oil on the label as a quality signal.]';

@@ -5847,22 +5847,25 @@ Items deferred from the June 2026 unverified ingredients audit — pending team 
 - **NEXT UP — `wheat`/`"wheatless"` semantic-negation false positive** (found during the July 2026 systematic bare-trigger audit, PROMPT_VERSION 37 session, deliberately excluded from that batch): a product labeled `"wheatless"` currently flags as *containing* wheat — the exact opposite of what the label claims. This is a structurally different bug than every collision fixed in that session (`corn`/`malt`/`farro`/`bha`/`beans`/`olean`/`rye`/`flax`/`miso`/`hing`) — those are all *unrelated-word* substring collisions fixed via `isAdjacentToLetterUnlessAllowlisted()`; `wheatless` is a *semantic negation* suffix, the same class of problem `isInFreeOrNonContext()` already solves for `"-free"`/`"non-"` (e.g. `"egg-free"`, `"canola-free"`). The fix is almost certainly extending that existing guard to also recognize `"-less"`, not adding a new letter-adjacency check. Needs its own session: confirm the fix doesn't accidentally suppress a real "wheat" declaration that happens to end in "less" for an unrelated reason (none currently known, but verify), add regression tests, and bump `PROMPT_VERSION` per the usual pattern since it changes real `flags`/`verdict` output.
 - **bare `'yeast'` corrupts the FORTIFIED_VITAMINS trigger `'selenium yeast'`** (found during the July 2026 `maskIgnoredIngredients()` word-boundary audit — see "Session — maskIgnoredIngredients() word-boundary fix" below): unlike the `culture`/`salt` collisions fixed in that session, `'yeast'` occurs as a genuine standalone word within `'selenium yeast'` (bounded by a space, not embedded inside a larger word) — so the letter-adjacency boundary check doesn't and shouldn't protect it; masking `'yeast'` there is "correctly" behaving per that check's own rule, just wrong for this one specific compound trigger. `'selenium yeast'` is FORTIFIED_VITAMINS's *only* selenium-related trigger (confirmed via grep — no bare `'selenium'` fallback), so this is a real, live information-loss bug: an organic product listing "selenium yeast" as a fortification ingredient silently fails to get the `fortified_vitamins` caution flag. Confirmed via direct testing (`containsFortifiedVitamins()` returns `true` on unmasked text, `false` after masking). Needs its own decision — options include excluding `'selenium yeast'` specifically from ever being masked, or having `containsFortifiedVitamins()` check against unmasked text for just this trigger — before implementing, since either approach has its own trade-offs worth reviewing first.
 
-### Joel-voice certification-framing audit (July 2026 — read-only, NOT YET ACTED ON)
+### Joel-voice certification-framing audit (July 2026 — IN PROGRESS: conventional_eggs RESOLVED, conventional_dairy and glyphosate_heavy still NEEDS REVIEW)
 
 Follow-up to implementing the new egg-copy tier in `VerdictScreen.getUnverifiedCopy()` (see that
 changelog entry above) — its stance ("your best bet is a local farm or producer you can actually ask
 questions of... a certified organic or pasture-raised carton is a reasonable starting point, but treat
 it as a data point, not a guarantee") prompted a full, read-only audit of every OTHER Joel-voice
 explanation/copy string in the codebase, to check whether that stance is actually consistent with what
-Joel already says elsewhere. It is not.
+Joel already says elsewhere. It was not.
 
 **Core finding: 8 of the 13 Joel-voice certification-framing instances found use "the clearest
 signal" / "the signal to look for" / "the meaningful alternative" language** — near-guarantee framing,
 with no local/trusted-source alternative offered and no caveat that the certification is an imperfect
-data point. This directly contradicts the stance just established in the new egg-unverified copy
-(local/known-source first, certification as secondary and imperfect). **None of these 8 items have
-been changed.** This needs a deliberate, collaborative wording decision per category — the same
-back-and-forth process used to finalize the egg copy — not a unilateral batch-fix.
+data point. This directly contradicts the stance established in the new egg-unverified copy
+(local/known-source first, certification as secondary and imperfect). Fixing this needs a deliberate,
+collaborative wording decision per category — the same back-and-forth process used to finalize the egg
+copy — not a unilateral batch-fix. **`conventional_eggs` (items 9 and 10 below) has now been through
+that process and is RESOLVED — see the STAGED implementation note after the table.** The remaining 6
+items (`conventional_dairy`: 3, 7, 8, 12; `glyphosate_heavy`: 5, 6, 13) are still unchanged, pending
+their own wording passes.
 
 **Full table of all 13 entries reviewed:**
 
@@ -5876,11 +5879,38 @@ back-and-forth process used to finalize the egg copy — not a unilateral batch-
 | 6 | "...Mention that glyphosate-free certification is **the signal to look for**." | `pages/api/explain.js` `buildUserMessage()` inline `[Glyphosate note]`, line 113 | **NEEDS REVIEW** — reinforces #5 |
 | 7 | "...He frames organic dairy as **the signal** that a farmer chose a different system — one where the feed, the hormone protocol, and the antibiotic policy are all genuinely different." | `pages/api/explain.js` `SYSTEM_PROMPT`, line 51 | **NEEDS REVIEW** |
 | 8 | "...Frame organic dairy as **the meaningful alternative**." | `pages/api/explain.js` `buildUserMessage()` inline `[Dairy note]`, line 116 | **NEEDS REVIEW** — reinforces #7 |
-| 9 | "...He frames organic or pasture-raised certification as **the clearest signal** that a farmer chose a different system." | `pages/api/explain.js` `SYSTEM_PROMPT`, line 53 (`conventional_eggs`) | **NEEDS REVIEW — highest priority.** Same category as the new egg copy, opposite stance |
-| 10 | "...Frame organic or pasture-raised certification as **the meaningful alternative**." | `pages/api/explain.js` `buildUserMessage()` inline `[Eggs note]`, line 122 | **NEEDS REVIEW** — reinforces #9 |
+| 9 | ~~"...He frames organic or pasture-raised certification as **the clearest signal** that a farmer chose a different system."~~ → **"He notes that certified organic or pasture-raised labels point toward better feed and living conditions, but treats the label itself as a reasonable starting point rather than proof — not every farm behind those words treats their hens the same way."** | `pages/api/explain.js` `SYSTEM_PROMPT`, line 53 (`conventional_eggs`) | **RESOLVED — STAGED** (see implementation note below the table) |
+| 10 | ~~"...Frame organic or pasture-raised certification as **the meaningful alternative**."~~ → **"Frame organic or pasture-raised certification as a reasonable starting point pointing toward better conditions, not proof of it — the label alone does not guarantee how a particular farm treats its hens."** | `pages/api/explain.js` `buildUserMessage()` inline `[Eggs note]`, line 122 | **RESOLVED — STAGED**, reworded to match #9 |
 | 11 | Real shipped output, barcode `887422000210` ("heritage free range Blue & Brown Eggs"): "...Certified organic or pasture-raised eggs are **the clearest signals** that the feed quality and living conditions are genuinely different. You have the power to choose eggs from a system you trust." | `scan_cache.explanation.details.conventional_eggs` (AI-generated, live) | **NEEDS REVIEW — confirmed live, currently user-facing.** This is the exact phrase flagged in chat; not hypothetical. Its closing line is nearly identical to the new copy's, but the middle still leads with near-guarantee cert framing |
 | 12 | Real shipped output pattern, confirmed across **67 real `scan_cache` rows**: "Organic certification is **the clearest signal** that a farmer chose a different system" / "Look for organic or grass-fed certification as **the clearest sign**..." | `scan_cache.explanation.details.conventional_dairy` (AI-generated, live, at scale) | **NEEDS REVIEW — live at scale** |
 | 13 | Real shipped output pattern, confirmed across **111 real `scan_cache` rows** (the largest volume of any Joel-owned category): "Glyphosate-free certification is **the signal to look for**..." | `scan_cache.explanation.details.glyphosate_heavy` (AI-generated, live, at scale) | **NEEDS REVIEW — live at scale, highest real-world volume** |
+
+**Implementation note (conventional_eggs, STAGED — not yet live).** Items 9 and 10 above were reworded
+in `pages/api/explain.js` per the wording collaboratively finalized in chat. Item 11 (the real
+`scan_cache` example quoted verbatim as the "before" text) was not retroactively edited — that row
+documents historical shipped output, not live code, and stays as a record of what the old wording
+produced; new scans will pick up the new instruction once this change actually goes live (see the
+PROMPT_VERSION note immediately below). Two new presence-check tests were added to
+`__tests__/api/explain.test.js` (describe block "A3. buildUserMessage() — conventional_eggs note
+wording") confirming the new `[Eggs note]` text is present and the old "the meaningful alternative"
+phrasing is gone — a snapshot of Claude's actual generated wording isn't possible (this only changes
+the *instruction* handed to a live Claude call, not anything deterministic), so this is a presence
+check on the instruction text itself, the same limitation `A2`'s existing branch-selection tests
+already work within. Full suite re-run: 1938 total (1937 passing, same 1 known pre-existing failure —
+the cross-list contradiction test from the collision-word audit series, unrelated, unchanged).
+
+**⚠️ PROMPT_VERSION NOT YET BUMPED — holding for confirmation.** Per the precedent check below, every
+prior `SYSTEM_PROMPT` wording change in this project's history has bumped `PROMPT_VERSION` in the same
+commit with zero exceptions — this change needs one too. Deliberately not bumped yet: `conventional_dairy`
+and `glyphosate_heavy` wording is still being drafted, and the plan is one combined bump covering all
+three categories once all three are finalized, mirroring the reasoning behind the last consolidated
+bump (PROMPT_VERSION 43 — see "Scan Cache Pattern" above, which bundled three unrelated fixes shipped
+in the same working session into one bump rather than three separate ones). Until the bump lands, this
+wording is effectively a no-op on real production traffic — the existing `scan_cache` cache-read
+`.eq('prompt_version', PROMPT_VERSION)` filter means no cached row can pick up new wording without a
+version change, and a fresh scan just calls Claude with the new instruction text under the *same*
+`PROMPT_VERSION`, indistinguishable in the cache from a pre-change row. This is a committed-but-dormant
+change, same category as several other STAGED-and-held changes documented elsewhere in this file.
 
 **Not flagged (N/A, not silently omitted)**: `conventional_crops`, the AI-generated `conventional_meat`
 path, and `bioengineering` are all Joel-owned per the voice-assignment list (`SYSTEM_PROMPT` line 43)
@@ -5894,10 +5924,13 @@ commit, with zero exceptions found — `db6b419` (v1→2, the very first prompt 
 lib/cacheVersion.js` showing the version bump in the identical diff. This is a **different and more
 consistent precedent than the rules-engine-only accuracy-fix debate** documented elsewhere in this
 file (e.g. the gluten-suppression fix, which correctly did *not* bump) — `SYSTEM_PROMPT` wording has
-never shipped without a bump in this codebase's history. If any of the 8 NEEDS REVIEW items above are
-eventually reworded, that precedent should apply: expect a `PROMPT_VERSION` bump and a
-`scan_cache.explanation` purge for affected categories, the same as every previous prompt-wording
-session. Not acted on here — reported only.
+never shipped without a bump in this codebase's history. `conventional_eggs` (items 9/10) has now been
+reworded per this decision, per the "Implementation note (conventional_eggs, STAGED)" above — the
+`PROMPT_VERSION` bump this precedent calls for is being deliberately held, not skipped, until
+`conventional_dairy` and `glyphosate_heavy` are also finalized, so all three ship as one combined bump
+with one combined `scan_cache.explanation` purge rather than three separate ones. The remaining 6
+NEEDS REVIEW items (dairy: 3, 7, 8, 12; glyphosate_heavy: 5, 6, 13) are unchanged and still pending
+their own wording passes.
 
 ---
 
