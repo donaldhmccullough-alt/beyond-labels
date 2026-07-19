@@ -6041,6 +6041,112 @@ surface — is now fully closed, with the code live-eligible pending deploy.
 
 ---
 
+### Session — trans_fats explanation fix: bare "hydrogenated" hedge + PHO-ban factual correction (July 2026, STAGED — PROMPT_VERSION not bumped)
+
+Follow-up to a read-only investigation (prompted by the earlier "downsides of Option B" severity-model
+discussion): confirmed `TRANS_FATS`'s bare `'hydrogenated'` trigger fires on **11 of 12** real
+`scan_cache` matches, versus 1 for `'fully hydrogenated'` and 0 for any other pattern. A live web check
+confirmed the FDA's partially-hydrogenated-oil (PHO) ban is **fully complete as of December 2023** —
+including the last remaining petitioned-use denial — with no exceptions remaining. Since a compliant,
+accurately-labeled domestic product can no longer legally use partially hydrogenated oil at all, bare
+`"hydrogenated"` with no qualifier today most often describes fully hydrogenated oil (not a meaningful
+trans fat source), though imported products, mislabeling, and stale OFF contributor data remain real,
+narrower residual risk channels — not eliminated, just narrowed. Removing or downgrading the *severity*
+of this trigger was explicitly rejected as a first move: `pages/api/scan.js`'s `hasInstantRedFlag` check
+(`flags.some(f => INSTANT_RED_CATEGORIES.has(f.category))`) filters on **category only, not severity** —
+a severity-based fix would silently no-op at Level 2 without also touching that check (and its
+`lib/verdictEngine.js` mirror), a materially bigger and riskier change than this session's scope. This
+fix is **explanation-text only** — no `flags`/`verdict`/`clearedBy` change, no severity change, nothing
+touched in the decision tree.
+
+**This is the first non-Joel voice-accuracy fix this session** — `trans_fats` is Sina's category (see
+the voice-assignment list, `SYSTEM_PROMPT` line 42), not Joel's. The audit process (real-data
+investigation → confirmed count → drafted wording → staged implementation, holding the `PROMPT_VERSION`
+bump for explicit confirmation) mirrors the Joel-voice certification-framing audit immediately above,
+applied to a different voice and a different kind of inaccuracy (a factual/regulatory-status error, not
+a certification-framing tone issue).
+
+**Fix 1 — `pages/api/explain.js`'s `buildUserMessage()`, new `cat === 'trans_fats'` branch** (same
+structural pattern as the 5 existing per-category blocks — `gluten_grains`, `glyphosate_heavy`,
+`conventional_dairy` ×2, `conventional_eggs`, `olive_oil_adulteration`). Branches on whether `catFlags`
+contains any qualified trigger (`'partially hydrogenated'`, `'margarine'`, `'shortening'` — i.e. any
+`matchedIngredient !== 'hydrogenated'`):
+- **Qualified trigger present** → `"[Trans fat note: the matched ingredient here is specifically
+  labeled "partially hydrogenated," "margarine," or "shortening" — explain plainly that this is a real
+  trans fat source.]"`
+- **Bare `'hydrogenated'` only** → `"[Trans fat note: the matched ingredient here is bare "hydrogenated"
+  with no qualifier. As of the FDA's completed 2018-2023 phase-out, partially hydrogenated oils can no
+  longer be legally added to US food, so "hydrogenated" alone most often means fully hydrogenated oil —
+  not a meaningful trans fat source — though it's flagged to be safe since imported products or labeling
+  errors are still possible. Do not describe the ban as having active loopholes, exceptions, or
+  grandfathered products still in the marketplace — it is fully complete with no exceptions
+  remaining.]"`
+
+**A mixed product (both a qualified trigger and bare `'hydrogenated'` present, e.g. real barcode
+075706151011 — `'shortening'` + `'partially hydrogenated'` + bare `'hydrogenated'` all three
+co-occurring) gets ONLY the qualified-case instruction, never the hedge** — the branch checks for *any*
+qualified trigger's presence, not whether bare `'hydrogenated'` is the *only* one. This wording was
+given verbatim by direct instruction; no drafting judgment was needed for this half of the fix.
+
+**Fix 2 — `lib/rulesEngine.js`'s `TRANS_FATS` fallback summary (line ~2640-2652) — ⚠️ DRAFT, NOT YET
+APPROVED.** Same pattern as `glyphosate_heavy`'s newly-discovered 4th surface (see the audit above):
+a per-trigger dynamic template, distinct from the Claude-facing prompt instruction, rendered directly by
+`ConcernCard.getFallbackSummary()` whenever the AI explanation is missing. Drafted (not confirmed) as:
+
+> ~~"Contains "hydrogenated" — a trans fat or hydrogenated oil directly linked to cardiovascular disease
+> and systemic inflammation."~~ (unchanged for `'partially hydrogenated'`/`'margarine'`/`'shortening'` —
+> those remain unambiguous, real trans fat sources; only the bare-`'hydrogenated'` case changes)
+
+→ for bare `'hydrogenated'` only:
+
+> "Contains "hydrogenated" oil — since the FDA's ban on partially hydrogenated oils is now complete
+> with no exceptions, this most often means fully hydrogenated oil (not a meaningful trans fat source),
+> though it's flagged to be safe given the possibility of imported or mislabeled products."
+
+This specific sentence has **not** been signed off — implemented and tested so the mechanism can be
+verified end-to-end, but flagged here (and in the code itself, via an inline comment at the trigger
+loop) as awaiting explicit wording approval before it's treated as final, the same way the egg/dairy/
+glyphosate wording drafts were reviewed individually before being locked in.
+
+**Tests added**: `__tests__/api/explain.test.js`, new describe block "A6. buildUserMessage() —
+trans_fats note wording" (7 tests) — bare-`'hydrogenated'`-only gets the hedge; the hedge explicitly
+forbids "active loopholes" language; `'partially hydrogenated'`/`'margarine'`/`'shortening'` each get the
+unhedged instruction; the exact 075706151011 mixed-trigger shape gets only the qualified instruction, not
+the hedge; and a regression guard confirming the note isn't injected for unrelated categories.
+`lib/rulesEngine.test.js`, new describe block "80. TRANS_FATS flag summary — bare "hydrogenated" hedge
+(DRAFT)" (4 tests) — the new hedged summary for bare `'hydrogenated'`; regression guards confirming
+`'partially hydrogenated'`, `'margarine'`, and `'shortening'` all keep the original unhedged summary
+byte-for-byte; and a regression guard confirming `severity`/`verdict` are completely unaffected (still
+`reject`/`red`, both trigger shapes) — this fix touches explanation text only, never verdict computation.
+Full suite: 1963 total (1962 passing, same 1 known pre-existing failure — the cross-list contradiction
+test from the collision-word audit series, unrelated, unchanged).
+
+**⚠️ 075706151011's existing cached `explanation.details.trans_fats` is now known-stale, not purged.**
+Pulled directly from `scan_cache` during the investigation, the real, currently-live text reads: *"Even
+though the FDA banned them in 2018, products manufactured before the deadline can still be sold, and
+**loopholes remain for certain uses**."* This is a factual inaccuracy per the live FDA source check above
+— no loopholes or grandfathered exceptions remain as of the Dec 2023 final rule — and it was **not**
+instructed anywhere in the pre-fix prompt; it's emergent content from Claude's own general knowledge
+about the ban, not something `buildUserMessage()` told it to say. Per the standing no-purge policy (see
+"Scan Cache Pattern" above, now covering `PROMPT_VERSION` 42→43→44 without a purge), **this row was not
+touched** — it will keep serving the inaccurate "loopholes remain" text until it's either individually
+rescanned (a fresh cache miss) or a future `scan_cache` purge runs. Flagged here explicitly so it isn't
+mistaken for a live, already-correct explanation if referenced again later.
+
+**PROMPT_VERSION: not bumped, and deliberately NOT folded into the 43→44 group above.** Current value
+is **44** — that bump already landed and closed out the Joel-voice audit (`conventional_eggs`,
+`conventional_dairy`, `glyphosate_heavy`) in a prior, already-committed session; there is nothing else
+currently staged or uncommitted that this could combine with (`git status` at the time of this fix showed
+only the four files this session touched — `pages/api/explain.js`, `lib/rulesEngine.js`, and their two
+test files). This fix should get **its own separate future bump (44→45)**, once Fix 2's draft wording is
+confirmed — bundling it retroactively into the already-shipped 43→44 bump isn't possible (that commit is
+already made), and there's no other pending prompt change to combine it with going forward. Per this
+project's own established precedent (checked and cited above), any `SYSTEM_PROMPT`/`buildUserMessage()`
+wording change bumps `PROMPT_VERSION` — Fix 1 alone would already qualify; Fix 2, once approved, ships in
+the same bump rather than a separate one, since both are part of the same trans_fats accuracy fix.
+
+---
+
 ## PWA / Icons
 
 Basic PWA installability is enabled (`public/manifest.json`, `<link rel="manifest">` in `app/layout.jsx`, `apple-touch-icon`). No service worker — offline support is not implemented.

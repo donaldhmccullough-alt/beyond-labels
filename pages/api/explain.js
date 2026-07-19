@@ -124,6 +124,12 @@ export function buildUserMessage(verdict, flags, productName, ingredients, userL
     if (cat === 'olive_oil_adulteration') {
       line += '\n    [Olive oil note: this is a caveat, not a condemnation. The product is organic and otherwise clean. Frame adulteration as a supply chain reality worth knowing about, and suggest looking for certified extra virgin olive oil on the label as a quality signal.]';
     }
+    if (cat === 'trans_fats') {
+      const hasQualifiedTransFat = catFlags.some(f => f.matchedIngredient !== 'hydrogenated');
+      line += hasQualifiedTransFat
+        ? '\n    [Trans fat note: the matched ingredient here is specifically labeled "partially hydrogenated," "margarine," or "shortening" — explain plainly that this is a real trans fat source.]'
+        : '\n    [Trans fat note: the matched ingredient here is bare "hydrogenated" with no qualifier. As of the FDA\'s completed 2018-2023 phase-out, partially hydrogenated oils can no longer be legally added to US food, so "hydrogenated" alone most often means fully hydrogenated oil — not a meaningful trans fat source — though it\'s flagged to be safe since imported products or labeling errors are still possible. Do not describe the ban as having active loopholes, exceptions, or grandfathered products still in the marketplace — it is fully complete with no exceptions remaining.]';
+    }
     return line;
   }).join('\n');
 

@@ -333,6 +333,132 @@ describe('A5. buildUserMessage() — glyphosate_heavy note wording', () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
+// A6. buildUserMessage() — trans_fats note wording
+//
+// Added July 2026 — trans_fats is Sina's category, not Joel's, so this is the
+// first non-Joel voice-accuracy fix this session (see CLAUDE.md). Confirmed
+// during investigation that TRANS_FATS's bare "hydrogenated" trigger matches
+// 11 of 12 real scan_cache rows (vs. 1 for "fully hydrogenated" and 0 for any
+// other pattern) — since the FDA's partially-hydrogenated-oil ban completed
+// in 2023 with no remaining exceptions, bare "hydrogenated" with no qualifier
+// most often means fully hydrogenated oil today, not a meaningful trans fat
+// source. This note branches on catFlags content: any qualified trigger
+// ("partially hydrogenated"/"margarine"/"shortening") gets the unhedged,
+// definite-trans-fat instruction; catFlags containing ONLY bare
+// "hydrogenated" gets the hedged instruction instead. A real live cached
+// explanation (barcode 075706151011) already asserts the ban has "loopholes"
+// and "grandfathered" exceptions remaining — factually wrong per a live FDA
+// source check — hence the explicit "Do not describe the ban as having
+// active loopholes..." instruction below.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('A6. buildUserMessage() — trans_fats note wording', () => {
+  test('bare "hydrogenated"-only match gets the hedged instruction', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'trans_fats', severity: 'reject', matchedIngredient: 'hydrogenated', summary: 'x' }],
+      'Test Product',
+      'peanuts, hydrogenated rapeseed oil, salt',
+      2,
+      null,
+      null
+    );
+    expect(message).toContain('bare "hydrogenated" with no qualifier');
+    expect(message).toContain('fully hydrogenated oil');
+    expect(message).toContain('not a meaningful trans fat source');
+  });
+
+  test('bare "hydrogenated"-only match explicitly forbids describing the ban as having active loopholes', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'trans_fats', severity: 'reject', matchedIngredient: 'hydrogenated', summary: 'x' }],
+      'Test Product',
+      'peanuts, hydrogenated rapeseed oil, salt',
+      2,
+      null,
+      null
+    );
+    expect(message).toContain('Do not describe the ban as having active loopholes');
+    expect(message).toContain('fully complete with no exceptions remaining');
+  });
+
+  test('"partially hydrogenated" match gets the unhedged, definite-trans-fat instruction — not the hedge', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'trans_fats', severity: 'reject', matchedIngredient: 'partially hydrogenated', summary: 'x' }],
+      'Test Product',
+      'vegetable shortening (partially hydrogenated soybean oil)',
+      2,
+      null,
+      null
+    );
+    expect(message).toContain('real trans fat source');
+    expect(message).not.toContain('bare "hydrogenated" with no qualifier');
+    expect(message).not.toContain('fully hydrogenated oil');
+  });
+
+  test('"margarine" match gets the unhedged instruction', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'trans_fats', severity: 'reject', matchedIngredient: 'margarine', summary: 'x' }],
+      'Test Product',
+      'flour, margarine, sugar',
+      2,
+      null,
+      null
+    );
+    expect(message).toContain('real trans fat source');
+    expect(message).not.toContain('bare "hydrogenated" with no qualifier');
+  });
+
+  test('"shortening" match gets the unhedged instruction', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'trans_fats', severity: 'reject', matchedIngredient: 'shortening', summary: 'x' }],
+      'Test Product',
+      'flour, shortening, sugar',
+      2,
+      null,
+      null
+    );
+    expect(message).toContain('real trans fat source');
+    expect(message).not.toContain('bare "hydrogenated" with no qualifier');
+  });
+
+  test('mixed case (shortening + partially hydrogenated + bare hydrogenated all present, like real barcode 075706151011) gets ONLY the qualified-case instruction, not the hedged one', () => {
+    const message = buildUserMessage(
+      'red',
+      [
+        { category: 'trans_fats', severity: 'reject', matchedIngredient: 'shortening', summary: 'x' },
+        { category: 'trans_fats', severity: 'reject', matchedIngredient: 'partially hydrogenated', summary: 'x' },
+        { category: 'trans_fats', severity: 'reject', matchedIngredient: 'hydrogenated', summary: 'x' },
+      ],
+      'HOLY PEPPERONI PEPPERONI PIZZA',
+      'vegetable shortening {partially hydrogenated soybean oil & cottonseed oil}, hydrogenated cotton seed oil',
+      2,
+      null,
+      null
+    );
+    expect(message).toContain('real trans fat source');
+    expect(message).not.toContain('bare "hydrogenated" with no qualifier');
+    expect(message).not.toContain('fully hydrogenated oil');
+  });
+
+  test('trans_fats note is not injected for unrelated categories', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'seed_oils', severity: 'reject', matchedIngredient: 'canola oil', summary: 'x' }],
+      'Test Product',
+      'canola oil, salt',
+      2,
+      null,
+      null
+    );
+    expect(message).not.toContain('Trans fat note');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 // B. Handler — input validation
 // ════════════════════════════════════════════════════════════════════════════
 
