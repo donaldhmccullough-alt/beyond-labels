@@ -878,6 +878,7 @@ Level 2 users get a 14-node decision tree applied AFTER the rules engine runs. S
 - ZBAR and similar products with organic asterisks in ingredient lists but no usda-organic label in Open Food Facts will not receive organic cert detection. Fix requires updating the OFF database for those barcodes, not a code change.
 - Sodium citrate remains in SYNTHETIC_ADDITIVES — flagged as a potential false positive but deferred pending further review.
 - `olive_oil_adulteration` ConcernCard entry added (icon 🫒, label "Olive Oil Quality") — previously the category key was missing from CATEGORY_INFO and the card fell back to the raw category string as label.
+- **Barcode 887422000210 ("heritage free range Blue & Brown Eggs with Rich Amber Yolks") has OCR'd nutrition-facts-panel text sitting in Open Food Facts' `ingredients_text` field instead of a real ingredient declaration** ("Nutrition Facts 12 servings per container... Serving size 1 egg (50g)... Total Sugars 0g..."). This produces a spurious `conventional_crops` flag on "sugar" (matched from "Total Sugars 0g") and a `conventional_eggs` match sourced from "Serving size 1 egg" rather than a real ingredient statement — the product genuinely is a real egg carton, so the practical verdict impact is minor, but the specific matched text isn't a real ingredient declaration. This is a **source-data quality problem in OFF's own stored field**, not a rules-engine pattern the app can reliably detect or correct — a regex can't distinguish "real ingredient text" from "OCR'd nutrition panel that happens to share vocabulary with real ingredients" without a much more invasive content-shape heuristic. Barcode 829262006557 ("Bobo's Oat Bites Strawberry") shows the same underlying OFF data-quality issue (nutrition-panel numbers interleaved mid-sentence with what should be a facility disclosure). Barcode 850009682130 ("Nicks Birthday cake") is a third confirmed instance — its `ingredients_text` opens with a garbled nutrition-facts panel before the real ingredient list, and its facility disclosure ("PROCESSED IN A FACILITY THAT PROCESSES TREE NUTS AND EGGS") has no terminating period anywhere in the rest of the string, so the `stripAllergenAdvisory()` facility-disclosure patterns (see the staged-batch changelog entry above) safely fail to match it rather than risk a runaway match — left unstripped, same as an unterminated "Manufactured by:" is. Flagged for awareness only — no action planned.
 
 ### L1 Verdict Overrides (scan.js)
 
@@ -4821,6 +4822,46 @@ console errors in either case.
 
 **No `PROMPT_VERSION` bump** — this is a client-side race-condition fix with no
 `analyzeIngredients()` `flags`/`verdict`/`clearedBy` impact and no `scan_cache` schema change.
+
+---
+
+### Session — staged batch: facility-disclosure false-positive fix + milk-substitutes category tag (pending PROMPT_VERSION bump)
+> **STAGED — do not bump PROMPT_VERSION until batch is reviewed and approved.** `scan_cache` has NOT
+> been touched — no writes, no purge. `PROMPT_VERSION` remains **42**.
+
+Follow-up to a read-only investigation session (report-only, no code changed) that traced a
+`conventional_eggs` false positive on Protein Oatmeal (barcode 810104462914) to a wording gap in
+`stripAllergenAdvisory()`, then searched real `scan_cache` ingredient text for close variants before
+deciding how broad the fix needed to be.
+
+| Change | Description |
+|--------|-------------|
+| 1 | `stripAllergenAdvisory()` ([lib/rulesEngine.js](lib/rulesEngine.js)) — new pattern: `` /\b(?:manufactured\|made\|processed)\s+in\s+a\s+facility\s+that\s+(?:also\s+)?process(?:es)?[^.]*\./gi `` , placed immediately after the existing `"this product is made in a...facility"` pattern. Covers `"Manufactured/Made/Processed in a facility that (also) processes X."` — a distinct shape from the existing `"this product is made in a"` pattern (no `"this product is"` prefix; the verb sits directly before `"in a facility"`). The `"also"` is optional (confirmed a real label omits it). Verified against 4 real scan_cache barcodes before finalizing: Protein Oatmeal (810104462914, "Manufactured in a facility that also processes egg, soy, sesame, and tree nuts." — the original false-flag case), Pure Protein Galactic Brownie (749826000497, "Made in a facility that also processes other tree nuts, egg, wheat and sesame."), Back To Nature (819898010080, all-caps, no `"also"`-independent confirmation needed but validates case-insensitivity: "MADE IN A FACILITY THAT ALSO PROCESSES SOY, EGGS, MILK, COCONUT."), and Nicks Birthday Cake (850009682130) — a heavily OCR-corrupted case with no terminating period anywhere in the rest of the string, confirmed programmatically to make the new pattern simply fail to match (not run away to some distant, unrelated period) — left unstripped, same conservative behavior already established for the pre-existing `"Manufactured by:"` pattern's own lack of an end-of-string fallback. That barcode's OFF `ingredients_text` field is itself corrupted (OCR'd nutrition-facts-panel text, not a real ingredient declaration) — see the new "Known Limitations" entry below; not something a stripping pattern can reliably fix. |
+| 2 | `CATEGORY_TAG_MAP.beverages` ([lib/scanHelpers.js](lib/scanHelpers.js) — the module `pages/api/scan.js` imports this constant from as of the Stage 5a helper-extraction session, not defined inline in `scan.js` itself) — added `en:milk-substitutes`. Already present in `SUBCATEGORY_TAG_MAP.beverages`'s `plant_milk` group since the Phase 1 subcategory session, but never added at the top level — a product carrying only this tag (not `en:plant-based-milk-alternatives`, which `SUBCATEGORY_TAG_MAP` also checks for) never reached `mapProductCategory()` at all, so it never got as far as subcategory mapping either. Confirmed real via a direct OFF lookup during the null-category audit: Almond Breeze Unsweetened Vanilla almondmilk (041570054161) carries `en:milk-substitutes` and `en:dairy-substitutes` but not `en:plant-based-milk-alternatives`. Egg, pizza, and syrup category tags — also surfaced by the same null-category audit — are deliberately **not** touched here; those remain separate, open decisions. |
+
+**PROMPT_VERSION impact — the two changes are NOT symmetric, per this project's established precedent
+(the bread scheme / plant_milk Phase 1 session, which shipped a pure category-mapping change with no
+`PROMPT_VERSION` bump):**
+- **Change 1 requires a bump when approved** — it removes a real, previously-live false-positive
+  `conventional_eggs` reject flag, changing real `flags`/`verdict` output for affected cached products.
+- **Change 2 does not** — category-mapping-only, no `analyzeIngredients()` `flags`/`verdict`/`clearedBy`
+  impact, same reasoning already applied to every subcategory/category-mapping session in this file.
+
+**Tests added:** 10 in `lib/rulesEngine.test.js` (new describe block 77) — exact reproductions for all
+4 barcodes above (each using the verbatim real `scan_cache` ingredients text, OCR noise and all, not a
+cleaned-up paraphrase), the no-`"also"` variant, and regression guards confirming all 4 pre-existing
+patterns (`"manufactured on a line"`, `"produced in a facility"`, `"manufactured by:"`, `"this product
+is made in a...facility"`) and a real standalone egg ingredient are unaffected. 3 in
+`lib/scanHelpers.test.js` — `mapProductCategory` with only `en:milk-substitutes` present, the real
+Almond Breeze tag combination, and a regression guard. **Full suite: 1904 total (1903 passing, 1 known
+pre-existing failure** — the long-tracked `rulesEngine.test.js` cross-list contradiction test from the
+collision-word audit series, same 9 dead-entry findings as always, confirmed unaffected by this batch,
+unrelated to either change here).
+
+**Known Limitations addition (see that section below):** barcode 887422000210 documented as a
+source-data quality issue (OFF's own `ingredients_text` field contains OCR'd nutrition-facts-panel
+text, not a real ingredient list) — flagged for awareness, no action planned. Barcode 850009682130
+(this session's fourth verification barcode) shows the identical underlying problem.
 
 ---
 
