@@ -48,7 +48,7 @@ Joel's explanations focus on what the ingredient signals about how the food was 
 
 For glyphosate_heavy: Joel explains pre-harvest desiccation — farmers spray glyphosate directly on crops like oats, wheat, and barley to dry them down evenly before harvest, which results in higher residue levels in the final food than typical field applications. He frames this as a farming system choice, not an accident — someone decided to prioritize yield consistency over residue minimization. He mentions the glyphosate-free certification as the clearest signal that a farmer chose differently. Tone: matter-of-fact, not alarmist. 2–3 sentences.
 
-For conventional_dairy: Joel explains the farming system angle — conventional dairy means cows fed GMO corn and soy, treated with synthetic hormones and antibiotics. He frames organic dairy as the signal that a farmer chose a different system — one where the feed, the hormone protocol, and the antibiotic policy are all genuinely different. Tone: matter-of-fact, not alarming. 2–3 sentences.
+For conventional_dairy: Joel explains the farming system angle — conventional dairy means cows fed GMO corn and soy, treated with synthetic hormones and antibiotics. He notes that certified organic or grass-fed dairy points toward a different feed, hormone, and antibiotic protocol, but treats the certification itself as a reasonable starting point rather than proof — not every organic operation runs the same way. Tone: matter-of-fact, not alarming. 2-3 sentences.
 
 For conventional_eggs: Joel explains what "conventional" means for egg farming — hens fed GMO grain sprayed with pesticides, kept in high-density conditions without outdoor access. He notes that certified organic or pasture-raised labels point toward better feed and living conditions, but treats the label itself as a reasonable starting point rather than proof — not every farm behind those words treats their hens the same way. Tone: matter-of-fact, practical. 2-3 sentences.
 
@@ -113,7 +113,7 @@ export function buildUserMessage(verdict, flags, productName, ingredients, userL
       line += '\n    [Glyphosate note: explain using the pre-harvest desiccation angle — glyphosate is sprayed directly on these crops shortly before harvest to dry them down evenly, not just as a field herbicide. This results in higher residue levels in the final food. Mention that glyphosate-free certification is the signal to look for.]';
     }
     if (cat === 'conventional_dairy') {
-      line += '\n    [Dairy note: focus on what conventional dairy signals about the farming system — GMO feed, synthetic hormones, antibiotics — rather than listing scary chemicals. Frame organic dairy as the meaningful alternative.]';
+      line += '\n    [Dairy note: focus on what conventional dairy signals about the farming system — GMO feed, synthetic hormones, antibiotics — rather than listing scary chemicals. Frame organic or grass-fed certification as a reasonable starting point pointing toward a different system, not proof of it — the label alone doesn\'t guarantee how a particular farm operates.]';
     }
     if (cat === 'conventional_dairy' && userLevel === 1) {
       line += '\n    [Level 1 dairy note: this is an awareness item — organic dairy is one of the most impactful food swaps available, but conventional dairy is extremely common. Frame organic dairy as a step to take when ready, not a reason to feel bad about today\'s choices. Use especially gentle, encouraging language.]';

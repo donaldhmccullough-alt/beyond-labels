@@ -194,6 +194,77 @@ describe('A3. buildUserMessage() — conventional_eggs note wording', () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
+// A4. buildUserMessage() — conventional_dairy note wording
+//
+// Reworded July 2026 (Joel-voice certification-framing audit), same stance
+// as conventional_eggs (A3 above) — certification is now framed as "a
+// reasonable starting point," not proof/guarantee, and the old "the
+// meaningful alternative" phrasing was dropped from the base [Dairy note].
+// The Level 1-specific dairy note (a separate, tone/emotional-management
+// note, not a certification-framing one) was deliberately left unchanged —
+// see CLAUDE.md's "Joel-voice certification-framing audit" entry for the
+// full before/after and the reasoning for leaving the L1 note alone.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('A4. buildUserMessage() — conventional_dairy note wording', () => {
+  test('conventional_dairy note frames certification as a starting point, not proof', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'conventional_dairy', severity: 'caution', matchedIngredient: '', summary: 'x' }],
+      'Test Product',
+      'milk, salt, water',
+      2,
+      null,
+      null
+    );
+    expect(message).toContain('reasonable starting point');
+    expect(message).toContain('not proof of it');
+  });
+
+  test('conventional_dairy note no longer contains the old "the signal that a farmer chose" / "meaningful alternative" phrasing', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'conventional_dairy', severity: 'caution', matchedIngredient: '', summary: 'x' }],
+      'Test Product',
+      'milk, salt, water',
+      2,
+      null,
+      null
+    );
+    expect(message).not.toContain('the signal that a farmer chose');
+    expect(message).not.toContain('the meaningful alternative');
+  });
+
+  test('conventional_dairy note is not injected for unrelated categories', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'seed_oils', severity: 'reject', matchedIngredient: 'canola oil', summary: 'x' }],
+      'Test Product',
+      'canola oil, salt',
+      2,
+      null,
+      null
+    );
+    expect(message).not.toContain('reasonable starting point');
+  });
+
+  test('Level 1 dairy note is byte-unchanged by the certification-framing rework', () => {
+    const message = buildUserMessage(
+      'yellow',
+      [{ category: 'conventional_dairy', severity: 'caution', matchedIngredient: '', summary: 'x' }],
+      'Test Product',
+      'milk, salt, water',
+      1,
+      null,
+      null
+    );
+    expect(message).toContain(
+      "[Level 1 dairy note: this is an awareness item — organic dairy is one of the most impactful food swaps available, but conventional dairy is extremely common. Frame organic dairy as a step to take when ready, not a reason to feel bad about today's choices. Use especially gentle, encouraging language.]"
+    );
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 // B. Handler — input validation
 // ════════════════════════════════════════════════════════════════════════════
 
