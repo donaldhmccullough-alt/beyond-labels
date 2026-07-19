@@ -767,11 +767,21 @@ describe('H. Meat verdict logic', () => {
     expect(res.body.isMeat).toBe(true);
   });
 
-  test('isMeat is true for en:eggs', async () => {
+  test('isMeat is false for en:eggs (fixed — en:eggs/en:egg-products/en:poultry-eggs removed from MEAT_CATEGORIES; a pure egg product is not "meat")', async () => {
+    // This assertion previously read `toBe(true)` — that encoded the bug
+    // itself (eggs bundled into MEAT_CATEGORIES before conventional_eggs
+    // existed as its own category; see lib/scanHelpers.js's MEAT_CATEGORIES
+    // comment and CLAUDE.md's "Node 8 vs Node 8b ordering for en:eggs"
+    // investigation). "whole eggs" alone does not trigger isMeatIngredient
+    // either (MEAT_INGREDIENT_TERMS deliberately excludes eggs — that's
+    // CONVENTIONAL_EGGS/EGG_DERIVED_INGREDIENTS's job), so isMeat is
+    // correctly false end-to-end now. Updated per this project's convention
+    // of correcting (not deleting) a stale assertion when a fix changes
+    // what "correct" behavior means.
     mockFetchOnce(meatOffResp({ categoriesTags: ['en:eggs'], ingredientsText: 'whole eggs' }));
     const res = makeRes();
     await handler(makeReq('POST', { barcode: '000000000004', userLevel: 2 }), res);
-    expect(res.body.isMeat).toBe(true);
+    expect(res.body.isMeat).toBe(false);
   });
 
   test('isMeat is true for en:sausages', async () => {
@@ -1157,6 +1167,170 @@ describe('H. Meat verdict logic', () => {
     const colorantFlags = res.body.flags.filter(f => f.category === 'natural_colorants');
     expect(colorantFlags).toHaveLength(1);
     expect(colorantFlags[0].severity).toBe('caution');
+  });
+
+  // ── MEAT_CATEGORIES fix: en:eggs/en:egg-products/en:poultry-eggs removed ──
+  // See lib/scanHelpers.js's MEAT_CATEGORIES comment and CLAUDE.md's "Node 8
+  // vs Node 8b ordering for en:eggs" investigation. Real-world reproductions
+  // pulled directly from scan_cache via a read-only audit.
+  describe('MEAT_CATEGORIES fix — en:eggs no longer counts as "meat"', () => {
+    test('exact reproduction — Eggland\'s Best 12 Grade AA Eggs Extra Large (715141729283): no conventional_meat injected for a pure egg carton', async () => {
+      mockFetchOnce({
+        status: 1,
+        product: {
+          product_name:     "Eggland's Best 12 Grade AA Eggs Extra Large",
+          ingredients_text: 'eggs',
+          labels_tags:      [],
+          categories_tags:  ['en:eggs-and-their-products', 'en:farming-products', 'en:eggs'],
+        },
+      });
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '715141729283', userLevel: 2 }), res);
+      expect(res.body.isMeat).toBe(false);
+      expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+      // The engine's own, accurate conventional_eggs flag still fires.
+      expect(res.body.flags.some(f => f.category === 'conventional_eggs')).toBe(true);
+    });
+
+    test('exact reproduction — Free Range Eggs (815652004180): no conventional_meat injected, full real tag set', async () => {
+      mockFetchOnce({
+        status: 1,
+        product: {
+          product_name:     'Free Range Eggs',
+          ingredients_text: 'Large grade A fresh brown eggs.',
+          labels_tags:      [],
+          categories_tags:  [
+            'en:eggs-and-their-products', 'en:farming-products', 'en:eggs',
+            'en:chicken-eggs', 'en:free-range-chicken-eggs', 'en:large-eggs',
+          ],
+        },
+      });
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '815652004180', userLevel: 2 }), res);
+      expect(res.body.isMeat).toBe(false);
+      expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+      expect(res.body.flags.some(f => f.category === 'conventional_eggs')).toBe(true);
+    });
+
+    test('exact reproduction — heritage free range Blue & Brown Eggs (887422000210): no conventional_meat injected despite the garbled OCR ingredients_text', async () => {
+      // Verbatim real scan_cache ingredients text — OCR'd nutrition-facts-panel
+      // text sitting in OFF's ingredients_text field instead of a real
+      // ingredient declaration (see CLAUDE.md Known Limitations). Unrelated
+      // to this fix, left as-is; the point here is purely that the
+      // MEAT_CATEGORIES en:eggs tag no longer injects conventional_meat.
+      mockFetchOnce({
+        status: 1,
+        product: {
+          product_name:     'heritage free range Blue & Brown Eggs with Rich Amber Yolks',
+          ingredients_text:
+            'Nutrition Facts 12 servings per container Serving size 1 egg (50g) Amount per serving ' +
+            'Calories 70 % Daily Value* 6% 8% % Daily Value* Total Fat 5g Saturated Fat 15g Trans Fat ' +
+            '0g Cholestero! 186mg Sodium 70mg Total Carbohydrate 0g Dietary Fiber 0g Total Sugars 0g ' +
+            'Includes 0g Added Sugars Protein 6g Vitamin D-1 mcg 6% Calçium 30 mg 2% Iron 09 mg 4% ' +
+            '62% 3% 0% Potassium 70 mg 0% *The % Daily Value tells you how much a nutrient in a ' +
+            'serving of food contributes to a daily diet 2,000 calories a day is used for general ' +
+            'nutrition advice 12% 56 HAPPY egg* SMALL FAMILY FARMS Thanks for Choosing Happy ' +
+            'DELICIOUS YOLKS',
+          labels_tags:      [],
+          categories_tags:  ['en:eggs-and-their-products', 'en:eggs'],
+        },
+      });
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '887422000210', userLevel: 2 }), res);
+      expect(res.body.isMeat).toBe(false);
+      expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+    });
+
+    test('exact reproduction — Egg White Wraps Original (810023540007): no conventional_meat injected', async () => {
+      mockFetchOnce({
+        status: 1,
+        product: {
+          product_name:     'Egg White Wraps Original',
+          ingredients_text: 'CAGE FREE EGG WHITES, LESS THAN 2% OF XANTHAN GUM, SEA SALT, NATURAL FLAVOR, NISIN (NATURAL PRESERVATIVE).',
+          labels_tags:      [],
+          categories_tags:  ['en:eggs-and-their-products', 'en:eggs'],
+        },
+      });
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '810023540007', userLevel: 2 }), res);
+      expect(res.body.isMeat).toBe(false);
+      expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
+      expect(res.body.flags.some(f => f.category === 'conventional_eggs')).toBe(true);
+    });
+
+    test('regression guard — Simple Scrambles Turkey Sausage (077900003097): a genuine meat+egg composite still correctly gets conventional_meat, via isMeatIngredient (real ingredient-text corroboration), independent of MEAT_CATEGORIES', async () => {
+      mockFetchOnce({
+        status: 1,
+        product: {
+          product_name:     'Simple Scrambles Turkey Sausage',
+          ingredients_text: 'pasteurized liquid egg whites, fully cooked turkey sausage crumbles, pasteurized process shredded cheddar cheese',
+          labels_tags:      [],
+          // No MEAT_CATEGORIES tag at all in the real OFF data for this
+          // product — confirmed during the original investigation
+          // (is_meat_category: false, is_meat_ingredient: true).
+          categories_tags:  [],
+        },
+      });
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '077900003097', userLevel: 2 }), res);
+      expect(res.body.isMeat).toBe(true);
+      expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(true);
+      expect(res.body.flags.some(f => f.category === 'conventional_eggs')).toBe(true);
+      expect(res.body.flags.some(f => f.category === 'conventional_dairy')).toBe(true);
+    });
+
+    test('regression guard — Pure Protein Galactic Brownie (749826000497): gelatin-triggered conventional_meat (Node 8c / containsMeatDerived) is unaffected by the MEAT_CATEGORIES change — a completely independent mechanism', async () => {
+      mockFetchOnce({
+        status: 1,
+        product: {
+          product_name:     'Pure Protein Galactic Brownie',
+          ingredients_text:
+            'Protein Blend Soy Patrolate Whey Protein Concentrate, Whey Proton Syrup Hydrolyzed ' +
+            'Gelatin Dycerine, Fractionated Palm Kernel And Palm Oil, Soy Protein Isolate Matter ' +
+            'Whey Protein Concentrate Natural and Artificial Plavors Includes Annatto And Turmeric ' +
+            'Color Canola Oil Sugar Cacta Processed With Akai Mix Protein Concentrate Ustened ' +
+            'Chocolate Tapioca Starch, Soy Lecithin, Comstarch Calcium Carbonate, Salt, Nonfat ' +
+            'Milk, Partially Defatted Peanut Flour, Sucralose, Dextrose, Confectioners Glaze ' +
+            'Disodium Phosphate, Carrageenan, Color Blend (Red 40 Lake, Yellow 5 Lake, Yellow 6 ' +
+            'Lake, Blue 1 Lake, Almond Butter, Camaube Wax, Tocopherols Added To Protect Flavor ' +
+            'Contains milk, soy, peanut and tree nut (almond) Ingredients. Made in a facility that ' +
+            'also processes other tree nuts, egg, wheat and sesame. Contains bioengineered food ' +
+            'ingredients. UM POCKE',
+          labels_tags:      [],
+          categories_tags:  [],
+        },
+      });
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '749826000497', userLevel: 2 }), res);
+      expect(res.body.isMeat).toBe(false);
+      const meatFlag = res.body.flags.find(f => f.category === 'conventional_meat');
+      expect(meatFlag).toBeDefined();
+      expect(meatFlag.summary).toMatch(/gelatin/i);
+      // The allergen-advisory facility-disclosure fix (a separate, already
+      // committed change) correctly keeps this a real-egg-free product —
+      // confirms these two independent fixes don't interact badly.
+      expect(res.body.flags.some(f => f.category === 'conventional_eggs')).toBe(false);
+    });
+
+    test('regression guard — Pepperidge Farm Cakes Chocolate (051000076236): gelatin-triggered conventional_meat is unaffected', async () => {
+      mockFetchOnce({
+        status: 1,
+        product: {
+          product_name:     'Pepperidge farm cakes chocolate',
+          ingredients_text: 'sugar, gelatin, cocoa, eggs, wheat flour, water, salt',
+          labels_tags:      [],
+          categories_tags:  [],
+        },
+      });
+      const res = makeRes();
+      await handler(makeReq('POST', { barcode: '051000076236', userLevel: 2 }), res);
+      const meatFlag = res.body.flags.find(f => f.category === 'conventional_meat');
+      expect(meatFlag).toBeDefined();
+      expect(meatFlag.summary).toMatch(/gelatin/i);
+      // A real "eggs" ingredient here → conventional_eggs still fires too,
+      // via the engine's own detection, unrelated to MEAT_CATEGORIES.
+      expect(res.body.flags.some(f => f.category === 'conventional_eggs')).toBe(true);
+    });
   });
 });
 
