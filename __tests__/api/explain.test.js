@@ -265,6 +265,74 @@ describe('A4. buildUserMessage() — conventional_dairy note wording', () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
+// A5. buildUserMessage() — glyphosate_heavy note wording
+//
+// Reworded July 2026 (Joel-voice certification-framing audit) — same stance
+// as conventional_eggs (A3) and conventional_dairy (A4): certification is
+// now framed as "a reasonable starting point," not proof/guarantee, and the
+// old "the signal to look for" phrasing was dropped. No Level 1-specific
+// note exists for this category (confirmed absent — unlike dairy's A4) — see
+// CLAUDE.md's "Joel-voice certification-framing audit" entry for the full
+// before/after and the newly-discovered lib/rulesEngine.js fallback-summary
+// surface (tested separately in lib/rulesEngine.test.js, describe block 79).
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('A5. buildUserMessage() — glyphosate_heavy note wording', () => {
+  test('glyphosate_heavy note frames certification as a starting point, not proof', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'glyphosate_heavy', severity: 'reject', matchedIngredient: 'oats', summary: 'x' }],
+      'Test Product',
+      'oats, salt, water',
+      2,
+      null,
+      null
+    );
+    expect(message).toContain('reasonable starting point');
+    expect(message).toContain('not proof of it');
+  });
+
+  test('glyphosate_heavy note no longer contains the old "the signal to look for" phrasing', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'glyphosate_heavy', severity: 'reject', matchedIngredient: 'oats', summary: 'x' }],
+      'Test Product',
+      'oats, salt, water',
+      2,
+      null,
+      null
+    );
+    expect(message).not.toContain('the signal to look for');
+  });
+
+  test('glyphosate_heavy note is not injected for unrelated categories', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'seed_oils', severity: 'reject', matchedIngredient: 'canola oil', summary: 'x' }],
+      'Test Product',
+      'canola oil, salt',
+      2,
+      null,
+      null
+    );
+    expect(message).not.toContain('reasonable starting point pointing toward a farm that skipped this practice');
+  });
+
+  test('no Level 1-specific glyphosate_heavy note exists (confirmed absent, unlike dairy)', () => {
+    const message = buildUserMessage(
+      'yellow',
+      [{ category: 'glyphosate_heavy', severity: 'caution', matchedIngredient: 'oats', summary: 'x' }],
+      'Test Product',
+      'oats, salt, water',
+      1,
+      null,
+      null
+    );
+    expect(message).not.toContain('Level 1 glyphosate');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 // B. Handler — input validation
 // ════════════════════════════════════════════════════════════════════════════
 

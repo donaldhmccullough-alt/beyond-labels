@@ -5847,7 +5847,7 @@ Items deferred from the June 2026 unverified ingredients audit — pending team 
 - **NEXT UP — `wheat`/`"wheatless"` semantic-negation false positive** (found during the July 2026 systematic bare-trigger audit, PROMPT_VERSION 37 session, deliberately excluded from that batch): a product labeled `"wheatless"` currently flags as *containing* wheat — the exact opposite of what the label claims. This is a structurally different bug than every collision fixed in that session (`corn`/`malt`/`farro`/`bha`/`beans`/`olean`/`rye`/`flax`/`miso`/`hing`) — those are all *unrelated-word* substring collisions fixed via `isAdjacentToLetterUnlessAllowlisted()`; `wheatless` is a *semantic negation* suffix, the same class of problem `isInFreeOrNonContext()` already solves for `"-free"`/`"non-"` (e.g. `"egg-free"`, `"canola-free"`). The fix is almost certainly extending that existing guard to also recognize `"-less"`, not adding a new letter-adjacency check. Needs its own session: confirm the fix doesn't accidentally suppress a real "wheat" declaration that happens to end in "less" for an unrelated reason (none currently known, but verify), add regression tests, and bump `PROMPT_VERSION` per the usual pattern since it changes real `flags`/`verdict` output.
 - **bare `'yeast'` corrupts the FORTIFIED_VITAMINS trigger `'selenium yeast'`** (found during the July 2026 `maskIgnoredIngredients()` word-boundary audit — see "Session — maskIgnoredIngredients() word-boundary fix" below): unlike the `culture`/`salt` collisions fixed in that session, `'yeast'` occurs as a genuine standalone word within `'selenium yeast'` (bounded by a space, not embedded inside a larger word) — so the letter-adjacency boundary check doesn't and shouldn't protect it; masking `'yeast'` there is "correctly" behaving per that check's own rule, just wrong for this one specific compound trigger. `'selenium yeast'` is FORTIFIED_VITAMINS's *only* selenium-related trigger (confirmed via grep — no bare `'selenium'` fallback), so this is a real, live information-loss bug: an organic product listing "selenium yeast" as a fortification ingredient silently fails to get the `fortified_vitamins` caution flag. Confirmed via direct testing (`containsFortifiedVitamins()` returns `true` on unmasked text, `false` after masking). Needs its own decision — options include excluding `'selenium yeast'` specifically from ever being masked, or having `containsFortifiedVitamins()` check against unmasked text for just this trigger — before implementing, since either approach has its own trade-offs worth reviewing first.
 
-### Joel-voice certification-framing audit (July 2026 — IN PROGRESS: conventional_eggs RESOLVED, conventional_dairy RESOLVED, glyphosate_heavy still NEEDS REVIEW)
+### Joel-voice certification-framing audit (July 2026 — FULLY RESOLVED across all three categories: conventional_eggs, conventional_dairy, glyphosate_heavy. PROMPT_VERSION bump still held pending go-ahead — see note near the end of this entry)
 
 Follow-up to implementing the new egg-copy tier in `VerdictScreen.getUnverifiedCopy()` (see that
 changelog entry above) — its stance ("your best bet is a local farm or producer you can actually ask
@@ -5862,14 +5862,15 @@ with no local/trusted-source alternative offered and no caveat that the certific
 data point. This directly contradicts the stance established in the new egg-unverified copy
 (local/known-source first, certification as secondary and imperfect). Fixing this needs a deliberate,
 collaborative wording decision per category — the same back-and-forth process used to finalize the egg
-copy — not a unilateral batch-fix. **`conventional_eggs` (items 9 and 10 below) has been through that
-process and is RESOLVED. `conventional_dairy` (items 3, 7, and 8) has now also been through it in full
-and is RESOLVED** — see the STAGED implementation notes after the table, including the follow-up pass
-that closed item 3's split-state gap (the injected flag's own static summary text in
-`pages/api/scan.js`/`lib/verdictEngine.js`, a structurally separate code path from items 7/8's
-Claude-facing instructions — see "Item 3 — RESOLVED" below the table for the full before/after and how
-the two files' parity is enforced). `glyphosate_heavy` (items 5, 6, 13) is still unchanged, pending its
-own wording pass — the last item before the combined `PROMPT_VERSION` bump.
+copy — not a unilateral batch-fix. **All three categories have now been through that process and are
+RESOLVED.** `conventional_eggs` (items 9 and 10) went first. `conventional_dairy` (items 3, 7, and 8)
+followed, including a follow-up pass that closed item 3's split-state gap (the injected flag's own
+static summary text in `pages/api/scan.js`/`lib/verdictEngine.js`, a structurally separate code path
+from items 7/8's Claude-facing instructions — see "Item 3 — RESOLVED" below the table for the full
+before/after and how the two files' parity is enforced). `glyphosate_heavy` (items 5, 6, 13) closed the
+set — see the STAGED implementation notes after the table for each category's exact before/after text.
+**`glyphosate_heavy`'s pass also surfaced a fourth surface not in the original 13-item table** — see
+"Item 14 (newly discovered) — RESOLVED" below the table.
 
 **Full table of all 13 entries reviewed:**
 
@@ -5879,15 +5880,15 @@ own wording pass — the last item before the combined `PROMPT_VERSION` bump.
 | 2 | "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed, pasture-raised, or meat from a farm you trust." | `pages/api/scan.js` L1 Override 2 (~line 292), mirrored in `lib/verdictEngine.js` (~line 172) | CONSISTENT — same balanced structure as #1 |
 | 3 | ~~"Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Organic dairy is a meaningful alternative when you're ready for that step."~~ → **"Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Certified organic or grass-fed dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction."** | `pages/api/scan.js` L1 Override 3 (~line 313), mirrored in `lib/verdictEngine.js` (~line 182) | **RESOLVED — STAGED.** This is a distinct code path from items 7/8 (an injected flag's own static `summary` string, shown directly — never routed through Claude) — see "Item 3 — RESOLVED" below the table for the parity discipline between the two files |
 | 4 | *(benchmark, not under review)* "...Your best bet is a local farm or producer you can actually ask questions of... a certified organic or pasture-raised carton is a reasonable starting point, but treat it as a data point, not a guarantee." | `components/verdict/VerdictScreen.jsx` (new egg-unverified copy) | This is the stance the other 12 are being measured against |
-| 5 | "...He mentions the glyphosate-free certification as **the clearest signal** that a farmer chose differently." | `pages/api/explain.js` `SYSTEM_PROMPT`, line 49 | **NEEDS REVIEW** |
-| 6 | "...Mention that glyphosate-free certification is **the signal to look for**." | `pages/api/explain.js` `buildUserMessage()` inline `[Glyphosate note]`, line 113 | **NEEDS REVIEW** — reinforces #5 |
+| 5 | ~~"...He mentions the glyphosate-free certification as **the clearest signal** that a farmer chose differently."~~ → **"He notes that glyphosate-free or certified organic labeling points toward a farm that skipped this practice, but treats the certification as a reasonable starting point rather than proof — the label alone doesn't guarantee residue-free food."** | `pages/api/explain.js` `SYSTEM_PROMPT`, line 49 | **RESOLVED — STAGED** (see implementation note below the table) |
+| 6 | ~~"...Mention that glyphosate-free certification is **the signal to look for**."~~ → **"Frame glyphosate-free or organic certification as a reasonable starting point pointing toward a farm that skipped this practice, not proof of it — the label alone doesn't guarantee residue-free food."** | `pages/api/explain.js` `buildUserMessage()` inline `[Glyphosate note]`, line 113 | **RESOLVED — STAGED**, reworded to match #5 |
 | 7 | ~~"...He frames organic dairy as **the signal** that a farmer chose a different system — one where the feed, the hormone protocol, and the antibiotic policy are all genuinely different."~~ → **"He notes that certified organic or grass-fed dairy points toward a different feed, hormone, and antibiotic protocol, but treats the certification itself as a reasonable starting point rather than proof — not every organic operation runs the same way."** | `pages/api/explain.js` `SYSTEM_PROMPT`, line 51 | **RESOLVED — STAGED** (see implementation note below the table) |
 | 8 | ~~"...Frame organic dairy as **the meaningful alternative**."~~ → **"Frame organic or grass-fed certification as a reasonable starting point pointing toward a different system, not proof of it — the label alone doesn't guarantee how a particular farm operates."** | `pages/api/explain.js` `buildUserMessage()` inline `[Dairy note]`, line 116 | **RESOLVED — STAGED**, reworded to match #7. The separate Level 1-specific dairy note (lines 118-120) was deliberately left untouched — its purpose (tone/emotional management, "a step to take when ready") is distinct from certification-framing and was already compatible with the new stance |
 | 9 | ~~"...He frames organic or pasture-raised certification as **the clearest signal** that a farmer chose a different system."~~ → **"He notes that certified organic or pasture-raised labels point toward better feed and living conditions, but treats the label itself as a reasonable starting point rather than proof — not every farm behind those words treats their hens the same way."** | `pages/api/explain.js` `SYSTEM_PROMPT`, line 53 (`conventional_eggs`) | **RESOLVED — STAGED** (see implementation note below the table) |
 | 10 | ~~"...Frame organic or pasture-raised certification as **the meaningful alternative**."~~ → **"Frame organic or pasture-raised certification as a reasonable starting point pointing toward better conditions, not proof of it — the label alone does not guarantee how a particular farm treats its hens."** | `pages/api/explain.js` `buildUserMessage()` inline `[Eggs note]`, line 122 | **RESOLVED — STAGED**, reworded to match #9 |
 | 11 | Real shipped output, barcode `887422000210` ("heritage free range Blue & Brown Eggs"): "...Certified organic or pasture-raised eggs are **the clearest signals** that the feed quality and living conditions are genuinely different. You have the power to choose eggs from a system you trust." | `scan_cache.explanation.details.conventional_eggs` (AI-generated, live) | **NEEDS REVIEW — confirmed live, currently user-facing.** This is the exact phrase flagged in chat; not hypothetical. Its closing line is nearly identical to the new copy's, but the middle still leads with near-guarantee cert framing |
 | 12 | Real shipped output pattern, confirmed across **67 real `scan_cache` rows**: "Organic certification is **the clearest signal** that a farmer chose a different system" / "Look for organic or grass-fed certification as **the clearest sign**..." | `scan_cache.explanation.details.conventional_dairy` (AI-generated, live, at scale) | **NEEDS REVIEW — live at scale** |
-| 13 | Real shipped output pattern, confirmed across **111 real `scan_cache` rows** (the largest volume of any Joel-owned category): "Glyphosate-free certification is **the signal to look for**..." | `scan_cache.explanation.details.glyphosate_heavy` (AI-generated, live, at scale) | **NEEDS REVIEW — live at scale, highest real-world volume** |
+| 13 | Real shipped output pattern, confirmed across **111 real `scan_cache` rows** (the largest volume of any Joel-owned category): "Glyphosate-free certification is **the signal to look for**..." | `scan_cache.explanation.details.glyphosate_heavy` (AI-generated, live, at scale) | **RESOLVED — STAGED** (underlying code path resolved via items 5/6; this specific row is a historical record and won't update until a fresh scan runs post-`PROMPT_VERSION` bump — same caveat as rows 11/12) |
 
 **Implementation note (conventional_eggs, STAGED — not yet live).** Items 9 and 10 above were reworded
 in `pages/api/explain.js` per the wording collaboratively finalized in chat. Item 11 (the real
@@ -5950,14 +5951,62 @@ drifting, the same discipline already applied to every other L1/`verdictEngine.j
 project. Full suite re-run: 1945 total (1944 passing, same 1 known pre-existing failure, unaffected).
 `conventional_dairy` (items 3, 7, 8) is now fully RESOLVED — no more split state.
 
+**Implementation note (glyphosate_heavy, STAGED — not yet live).** Items 5 and 6 above were reworded in
+`pages/api/explain.js` per the wording collaboratively finalized in chat, same stance as eggs and
+dairy. No Level 1-specific note exists for this category — confirmed absent via grep before drafting
+(unlike dairy's L1 note), and a dedicated test (`A5`, described below) asserts this stays true. Item 13
+(the real `scan_cache` example pattern, confirmed across 111 rows — the highest volume of any
+Joel-owned category) was **not** retroactively edited, same reasoning as items 11/12 — it documents
+historical shipped output, not live code, and only a fresh scan after the eventual `PROMPT_VERSION`
+bump will pick up the new wording. Four new presence-check tests were added to
+`__tests__/api/explain.test.js` (describe block "A5. buildUserMessage() — glyphosate_heavy note
+wording"): new wording present, old "the signal to look for" phrasing absent, no leakage into unrelated
+categories, and confirmation that no Level 1-specific note was accidentally introduced.
+
+**Item 14 (newly discovered, not in the original 13-item table) — RESOLVED.** While scoping this
+category's full surface (per explicit instruction, to avoid the split-state surprise item 3 caused for
+dairy), a *third* certification-framing surface was found: `lib/rulesEngine.js`'s own per-match
+`flag.summary` template for `GLYPHOSATE_HEAVY` (line ~2841) — a dynamically-generated fallback string,
+distinct from both the `SYSTEM_PROMPT`/`buildUserMessage()` Claude-facing instructions (items 5/6) and
+the scan.js/verdictEngine.js injected-flag pattern dairy has (item 3). This one lives in the rules
+engine itself and is genuinely user-facing: `ConcernCard.getFallbackSummary()` (see that changelog
+entry above) renders it directly whenever the AI explanation is missing. Checked every other
+category's engine-native summary in the same file (`trans_fats`, `additives`, `seed_oils`,
+`conventional_crops`, `conventional_eggs`, `bioengineering`, `natural_flavors`, `gluten_grains`) —
+`glyphosate_heavy` is the *only* one that frames certification as a directive at all ("Look for a
+glyphosate-free or USDA Organic certification to reduce residue exposure."), so this is not evidence of
+a broader pattern needing review across the engine, just this one category. Reworded to a lighter-touch
+version, at your explicit direction, matching the shorter register this fallback string already has
+relative to the fuller Claude-facing instructions:
+
+> ~~"Contains "{trigger}" — a crop where glyphosate is routinely applied as a pre-harvest desiccant.
+> Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."~~
+
+→
+
+> "Contains "{trigger}" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A
+> glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
+
+Three new tests were added to `lib/rulesEngine.test.js` (new describe block "79. GLYPHOSATE_HEAVY flag
+summary — certification-framing rework"), exercised through the real `analyzeIngredients()` rather than
+testing the template in isolation: new wording present for a real trigger ("oats") with the old phrasing
+confirmed gone; the same confirmed dynamic/per-trigger with a second real trigger ("wheat"); and a
+regression guard confirming `severity`/`verdict` are completely unaffected by the wording-only change
+(still `reject`/`red` with no clearance, exactly as before). Full suite re-run: 1952 total (1951
+passing, same 1 known pre-existing failure, unaffected). `glyphosate_heavy` is now fully RESOLVED across
+all three of its surfaces (5, 6, and this newly-discovered fourth one) — and with it, **the entire
+Joel-voice certification-framing audit is closed**: `conventional_eggs`, `conventional_dairy`, and
+`glyphosate_heavy` have all been reworded to the same "reasonable starting point, not proof" stance
+established in the original egg-unverified copy benchmark (item 4).
+
 **⚠️ PROMPT_VERSION NOT YET BUMPED — holding for confirmation.** Per the precedent check below, every
 prior `SYSTEM_PROMPT` wording change in this project's history has bumped `PROMPT_VERSION` in the same
-commit with zero exceptions — this change needs one too. Deliberately not bumped yet: `glyphosate_heavy`
-wording is still being drafted, and the plan is one combined bump covering `conventional_eggs`,
-`conventional_dairy`, and `glyphosate_heavy` together once all three are finalized, mirroring the
-reasoning behind the last consolidated bump (PROMPT_VERSION 43 — see "Scan Cache Pattern" above, which
-bundled three unrelated fixes shipped in the same working session into one bump rather than three
-separate ones). Until the bump lands, this wording is effectively a no-op on real production traffic —
+commit with zero exceptions — this change needs one too. **All three categories are now fully drafted,
+implemented, and tested — the only remaining step is the combined bump itself, still deliberately held
+pending explicit go-ahead**, mirroring the reasoning behind the last consolidated bump (PROMPT_VERSION
+43 — see "Scan Cache Pattern" above, which bundled three unrelated fixes shipped in the same working
+session into one bump rather than three separate ones). Until the bump lands, this wording is
+effectively a no-op on real production traffic —
 the existing `scan_cache` cache-read `.eq('prompt_version', PROMPT_VERSION)` filter means no cached row
 can pick up new wording without a version change, and a fresh scan just calls Claude (or, for items 3/7/8,
 just injects the new static string) with the new text under the *same* `PROMPT_VERSION`,
@@ -5976,14 +6025,17 @@ commit, with zero exceptions found — `db6b419` (v1→2, the very first prompt 
 lib/cacheVersion.js` showing the version bump in the identical diff. This is a **different and more
 consistent precedent than the rules-engine-only accuracy-fix debate** documented elsewhere in this
 file (e.g. the gluten-suppression fix, which correctly did *not* bump) — `SYSTEM_PROMPT` wording has
-never shipped without a bump in this codebase's history. `conventional_eggs` (items 9/10) and
-`conventional_dairy` (items 3, 7, 8 — now fully resolved across both `pages/api/explain.js` and the
-`pages/api/scan.js`/`lib/verdictEngine.js` injected-flag pair) have now been reworded per this
-decision, per the implementation notes above — the `PROMPT_VERSION` bump this precedent calls for is
-being deliberately held, not skipped, until `glyphosate_heavy` is also finalized, so all three
-categories ship as one combined bump with one combined `scan_cache.explanation` purge rather than
-several separate ones. The only remaining NEEDS REVIEW item is `glyphosate_heavy` (5, 6, 13), plus the
-two historical-record rows (11, 12) that update automatically once the eventual bump ships.
+never shipped without a bump in this codebase's history. `conventional_eggs` (items 9/10),
+`conventional_dairy` (items 3, 7, 8 — fully resolved across both `pages/api/explain.js` and the
+`pages/api/scan.js`/`lib/verdictEngine.js` injected-flag pair), and `glyphosate_heavy` (items 5, 6, plus
+the newly-discovered item 14 in `lib/rulesEngine.js`) have all now been reworded per this decision, per
+the implementation notes above. **The `PROMPT_VERSION` bump this precedent calls for is being
+deliberately held, not skipped, pending explicit go-ahead** — all three categories are ready to ship as
+one combined bump with one combined `scan_cache.explanation` purge rather than three separate ones, the
+same reasoning as the last consolidated bump (PROMPT_VERSION 43). The only items left in a
+not-yet-updated state are the three historical-record rows (11, 12, 13) — real, previously-shipped
+`scan_cache` output that documents what the *old* wording produced, and will only update on each
+barcode's next fresh scan once the bump actually lands. Nothing else in this audit remains open.
 
 ---
 
