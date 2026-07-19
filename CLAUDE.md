@@ -4933,6 +4933,59 @@ will rebuild cleanly (gluten-free `flags`) on its next real scan.
 
 ---
 
+### Session — staged batch: new "eggs" swap category (no PROMPT_VERSION bump needed)
+> **STAGED — holding for your confirmation on anything beyond what was explicitly requested.**
+> `PROMPT_VERSION` remains **42** — pure category-mapping addition, no `flags`/`verdict`/`clearedBy`
+> impact, same precedent as the Phase 1 subcategory (bread/plant_milk) session.
+
+Follow-up to the "Node 8 vs Node 8b ordering for `en:eggs`" investigation and the null-category audit:
+eggs never had their own swap category — shell-egg-carton products fell through to `productCategory:
+null` even though `MEAT_CATEGORIES` (a separate constant, used only for `isMeat`) already includes
+`en:eggs`. Adds a real `eggs` swap category following the exact two-file convention CLAUDE.md documents
+for adding a new category.
+
+| Change | Description |
+|--------|-------------|
+| 1 | `VALID_CATEGORIES` ([pages/api/swaps.js](pages/api/swaps.js)) — added `'eggs'`. |
+| 2 | `CATEGORY_TAG_MAP` ([lib/scanHelpers.js](lib/scanHelpers.js) — confirmed, again, to be this constant's real current location, not `pages/api/scan.js`, per the Stage 5a helper-extraction) — new `eggs` entry: `en:eggs`, `en:eggs-and-their-products`, `en:chicken-eggs`, `en:free-range-chicken-eggs`, `en:fresh-eggs`, `en:large-eggs`, plus two non-canonical, space-separated (not hyphenated) raw tag values found during the null-category audit — `en:free range large eggs` and `en:large eggs` — stored as lowercase literals since `mapProductCategory()` matches against already-lowercased `categoriesTags`. `en:farming-products` (also a real tag on every egg product checked) was deliberately excluded — too generic, would false-match unrelated farm products. |
+
+**Confirmed clean addition (per instruction, before adding anything):** grepped the entire
+`CATEGORY_TAG_MAP` for all 8 tags above — none existed anywhere else in that constant (they only
+existed, separately, in `MEAT_CATEGORIES`, an unrelated Set used solely for `isMeat` computation).
+
+**Real tag combinations re-verified directly against OFF** (not reconstructed from the audit's
+truncated 5-example lists) immediately before writing tests:
+- Eggland's Best 12 Grade AA Eggs Extra Large (715141729283): `en:eggs-and-their-products`,
+  `en:farming-products`, `en:eggs`.
+- Free Range Eggs (815652004180): `en:eggs-and-their-products`, `en:farming-products`, `en:eggs`,
+  `en:chicken-eggs`, `en:free-range-chicken-eggs`, `en:large-eggs` — the fullest real combination
+  found, confirming all four of the newly-added specific egg tags resolve correctly together.
+
+**Tests added**: `lib/scanHelpers.test.js`, new describe block "CATEGORY_TAG_MAP — new 'eggs' swap
+category" (5 tests) — bare `en:eggs` alone, both real product tag combinations above, a regression
+guard for products with no egg tag, and a regression guard confirming `en:meats` still correctly maps
+to `meat` (the two lists — `CATEGORY_TAG_MAP.meat` and the new `CATEGORY_TAG_MAP.eggs` — remain fully
+independent, same as `MEAT_CATEGORIES` already is from both). **Full suite: 1910 total (1909 passing,
+1 known pre-existing failure** — the same long-tracked cross-list contradiction test from the
+collision-word audit series, confirmed unaffected by this batch).
+
+**Known gap, flagged not fixed**: `swap_products` has **zero rows** for `category = 'eggs'` (confirmed
+directly — the table has 131 rows across the existing 10 categories, none for eggs). Selecting `eggs`
+as a category won't error — it correctly falls through to the existing `getAISuggestions()` fallback
+path (`source: 'ai'`, a real-time Claude API call) exactly like any other zero-curated-result category
+already does — but there is no pre-vetted curated content for eggs yet. Needs real `swap_products` rows
+added (same manual/SQL-editor process documented under "Adding new swap products") before this category
+is genuinely useful rather than AI-fallback-only. Not populated as part of this batch, per instruction.
+
+**Not touched, flagged for awareness**: other places in the codebase reference "the 10 valid swap
+categories" as a literal count/list — e.g. `scripts/appendScanCacheToOffResults.js`'s own
+`KNOWN_CATEGORIES` Set and this project's own `scripts/l2-v42-review.js`'s
+`VALID_SWAP_CATEGORIES`. Neither was updated here (out of scope for this batch, and neither affects
+production behavior — they're reporting-script constants, not `pages/api/swaps.js`'s real validation
+list) — worth a pass later if `eggs` sees real usage.
+
+---
+
 ## Error Monitoring
 
 **What Sentry is wired into** — see the "Session — Sentry error monitoring integration" changelog

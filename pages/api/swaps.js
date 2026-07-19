@@ -49,6 +49,7 @@ import * as Sentry from '@sentry/nextjs';
 
 const VALID_CATEGORIES = [
   'chips', 'snacks', 'cereal', 'condiments', 'beverages', 'dairy', 'bread', 'frozen', 'cooking_oils', 'meat',
+  'eggs',
 ];
 
 // Phase 2 of the swaps overhaul (July 2026): raised from 3 to 20 so
