@@ -5847,6 +5847,58 @@ Items deferred from the June 2026 unverified ingredients audit — pending team 
 - **NEXT UP — `wheat`/`"wheatless"` semantic-negation false positive** (found during the July 2026 systematic bare-trigger audit, PROMPT_VERSION 37 session, deliberately excluded from that batch): a product labeled `"wheatless"` currently flags as *containing* wheat — the exact opposite of what the label claims. This is a structurally different bug than every collision fixed in that session (`corn`/`malt`/`farro`/`bha`/`beans`/`olean`/`rye`/`flax`/`miso`/`hing`) — those are all *unrelated-word* substring collisions fixed via `isAdjacentToLetterUnlessAllowlisted()`; `wheatless` is a *semantic negation* suffix, the same class of problem `isInFreeOrNonContext()` already solves for `"-free"`/`"non-"` (e.g. `"egg-free"`, `"canola-free"`). The fix is almost certainly extending that existing guard to also recognize `"-less"`, not adding a new letter-adjacency check. Needs its own session: confirm the fix doesn't accidentally suppress a real "wheat" declaration that happens to end in "less" for an unrelated reason (none currently known, but verify), add regression tests, and bump `PROMPT_VERSION` per the usual pattern since it changes real `flags`/`verdict` output.
 - **bare `'yeast'` corrupts the FORTIFIED_VITAMINS trigger `'selenium yeast'`** (found during the July 2026 `maskIgnoredIngredients()` word-boundary audit — see "Session — maskIgnoredIngredients() word-boundary fix" below): unlike the `culture`/`salt` collisions fixed in that session, `'yeast'` occurs as a genuine standalone word within `'selenium yeast'` (bounded by a space, not embedded inside a larger word) — so the letter-adjacency boundary check doesn't and shouldn't protect it; masking `'yeast'` there is "correctly" behaving per that check's own rule, just wrong for this one specific compound trigger. `'selenium yeast'` is FORTIFIED_VITAMINS's *only* selenium-related trigger (confirmed via grep — no bare `'selenium'` fallback), so this is a real, live information-loss bug: an organic product listing "selenium yeast" as a fortification ingredient silently fails to get the `fortified_vitamins` caution flag. Confirmed via direct testing (`containsFortifiedVitamins()` returns `true` on unmasked text, `false` after masking). Needs its own decision — options include excluding `'selenium yeast'` specifically from ever being masked, or having `containsFortifiedVitamins()` check against unmasked text for just this trigger — before implementing, since either approach has its own trade-offs worth reviewing first.
 
+### Joel-voice certification-framing audit (July 2026 — read-only, NOT YET ACTED ON)
+
+Follow-up to implementing the new egg-copy tier in `VerdictScreen.getUnverifiedCopy()` (see that
+changelog entry above) — its stance ("your best bet is a local farm or producer you can actually ask
+questions of... a certified organic or pasture-raised carton is a reasonable starting point, but treat
+it as a data point, not a guarantee") prompted a full, read-only audit of every OTHER Joel-voice
+explanation/copy string in the codebase, to check whether that stance is actually consistent with what
+Joel already says elsewhere. It is not.
+
+**Core finding: 8 of the 13 Joel-voice certification-framing instances found use "the clearest
+signal" / "the signal to look for" / "the meaningful alternative" language** — near-guarantee framing,
+with no local/trusted-source alternative offered and no caveat that the certification is an imperfect
+data point. This directly contradicts the stance just established in the new egg-unverified copy
+(local/known-source first, certification as secondary and imperfect). **None of these 8 items have
+been changed.** This needs a deliberate, collaborative wording decision per category — the same
+back-and-forth process used to finalize the egg copy — not a unilateral batch-fix.
+
+**Full table of all 13 entries reviewed:**
+
+| # | Text (exact quote) | Location | Verdict |
+|---|---|---|---|
+| 1 | "Farmed or unlabeled seafood — Joel explains the difference between wild-caught and farmed: sourcing matters as much as ingredients. Look for a wild-caught certification, or seafood from a source you trust." | `pages/api/scan.js` L1 Override 2 (~line 291), mirrored in `lib/verdictEngine.js` (~line 171) | CONSISTENT — cert and "a source you trust" offered as parallel, equal options; no guarantee language |
+| 2 | "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed, pasture-raised, or meat from a farm you trust." | `pages/api/scan.js` L1 Override 2 (~line 292), mirrored in `lib/verdictEngine.js` (~line 172) | CONSISTENT — same balanced structure as #1 |
+| 3 | "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Organic dairy is a meaningful alternative when you're ready for that step." | `pages/api/scan.js` L1 Override 3 (~line 313), mirrored in `lib/verdictEngine.js` (~line 182) | **NEEDS REVIEW** — "a meaningful alternative" presented as *the* solution; no local-source option at all, unlike #1/#2 |
+| 4 | *(benchmark, not under review)* "...Your best bet is a local farm or producer you can actually ask questions of... a certified organic or pasture-raised carton is a reasonable starting point, but treat it as a data point, not a guarantee." | `components/verdict/VerdictScreen.jsx` (new egg-unverified copy) | This is the stance the other 12 are being measured against |
+| 5 | "...He mentions the glyphosate-free certification as **the clearest signal** that a farmer chose differently." | `pages/api/explain.js` `SYSTEM_PROMPT`, line 49 | **NEEDS REVIEW** |
+| 6 | "...Mention that glyphosate-free certification is **the signal to look for**." | `pages/api/explain.js` `buildUserMessage()` inline `[Glyphosate note]`, line 113 | **NEEDS REVIEW** — reinforces #5 |
+| 7 | "...He frames organic dairy as **the signal** that a farmer chose a different system — one where the feed, the hormone protocol, and the antibiotic policy are all genuinely different." | `pages/api/explain.js` `SYSTEM_PROMPT`, line 51 | **NEEDS REVIEW** |
+| 8 | "...Frame organic dairy as **the meaningful alternative**." | `pages/api/explain.js` `buildUserMessage()` inline `[Dairy note]`, line 116 | **NEEDS REVIEW** — reinforces #7 |
+| 9 | "...He frames organic or pasture-raised certification as **the clearest signal** that a farmer chose a different system." | `pages/api/explain.js` `SYSTEM_PROMPT`, line 53 (`conventional_eggs`) | **NEEDS REVIEW — highest priority.** Same category as the new egg copy, opposite stance |
+| 10 | "...Frame organic or pasture-raised certification as **the meaningful alternative**." | `pages/api/explain.js` `buildUserMessage()` inline `[Eggs note]`, line 122 | **NEEDS REVIEW** — reinforces #9 |
+| 11 | Real shipped output, barcode `887422000210` ("heritage free range Blue & Brown Eggs"): "...Certified organic or pasture-raised eggs are **the clearest signals** that the feed quality and living conditions are genuinely different. You have the power to choose eggs from a system you trust." | `scan_cache.explanation.details.conventional_eggs` (AI-generated, live) | **NEEDS REVIEW — confirmed live, currently user-facing.** This is the exact phrase flagged in chat; not hypothetical. Its closing line is nearly identical to the new copy's, but the middle still leads with near-guarantee cert framing |
+| 12 | Real shipped output pattern, confirmed across **67 real `scan_cache` rows**: "Organic certification is **the clearest signal** that a farmer chose a different system" / "Look for organic or grass-fed certification as **the clearest sign**..." | `scan_cache.explanation.details.conventional_dairy` (AI-generated, live, at scale) | **NEEDS REVIEW — live at scale** |
+| 13 | Real shipped output pattern, confirmed across **111 real `scan_cache` rows** (the largest volume of any Joel-owned category): "Glyphosate-free certification is **the signal to look for**..." | `scan_cache.explanation.details.glyphosate_heavy` (AI-generated, live, at scale) | **NEEDS REVIEW — live at scale, highest real-world volume** |
+
+**Not flagged (N/A, not silently omitted)**: `conventional_crops`, the AI-generated `conventional_meat`
+path, and `bioengineering` are all Joel-owned per the voice-assignment list (`SYSTEM_PROMPT` line 43)
+but have no dedicated per-category paragraph — they rely only on the general Joel-voice guidance
+(lines 39/47), which contains no certification-framing language to review either way.
+
+**PROMPT_VERSION precedent check, done directly via git history, not assumed**: every prior
+`SYSTEM_PROMPT` wording change in this project's history bumped `PROMPT_VERSION` in the *same*
+commit, with zero exceptions found — `db6b419` (v1→2, the very first prompt rewrite), `8f05c05`
+(v5→6), `c5e1d8d` (v9→10), `2ccd6cd` (v10→11), and others, all confirmed via `git show <commit> --
+lib/cacheVersion.js` showing the version bump in the identical diff. This is a **different and more
+consistent precedent than the rules-engine-only accuracy-fix debate** documented elsewhere in this
+file (e.g. the gluten-suppression fix, which correctly did *not* bump) — `SYSTEM_PROMPT` wording has
+never shipped without a bump in this codebase's history. If any of the 8 NEEDS REVIEW items above are
+eventually reworded, that precedent should apply: expect a `PROMPT_VERSION` bump and a
+`scan_cache.explanation` purge for affected categories, the same as every previous prompt-wording
+session. Not acted on here — reported only.
+
 ---
 
 ## PWA / Icons
