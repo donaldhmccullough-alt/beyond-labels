@@ -878,7 +878,8 @@ Level 2 users get a 14-node decision tree applied AFTER the rules engine runs. S
 - ZBAR and similar products with organic asterisks in ingredient lists but no usda-organic label in Open Food Facts will not receive organic cert detection. Fix requires updating the OFF database for those barcodes, not a code change.
 - Sodium citrate remains in SYNTHETIC_ADDITIVES — flagged as a potential false positive but deferred pending further review.
 - `olive_oil_adulteration` ConcernCard entry added (icon 🫒, label "Olive Oil Quality") — previously the category key was missing from CATEGORY_INFO and the card fell back to the raw category string as label.
-- **Barcode 887422000210 ("heritage free range Blue & Brown Eggs with Rich Amber Yolks") has OCR'd nutrition-facts-panel text sitting in Open Food Facts' `ingredients_text` field instead of a real ingredient declaration** ("Nutrition Facts 12 servings per container... Serving size 1 egg (50g)... Total Sugars 0g..."). This produces a spurious `conventional_crops` flag on "sugar" (matched from "Total Sugars 0g") and a `conventional_eggs` match sourced from "Serving size 1 egg" rather than a real ingredient statement — the product genuinely is a real egg carton, so the practical verdict impact is minor, but the specific matched text isn't a real ingredient declaration. This is a **source-data quality problem in OFF's own stored field**, not a rules-engine pattern the app can reliably detect or correct — a regex can't distinguish "real ingredient text" from "OCR'd nutrition panel that happens to share vocabulary with real ingredients" without a much more invasive content-shape heuristic. Barcode 829262006557 ("Bobo's Oat Bites Strawberry") shows the same underlying OFF data-quality issue (nutrition-panel numbers interleaved mid-sentence with what should be a facility disclosure). Barcode 850009682130 ("Nicks Birthday cake") is a third confirmed instance — its `ingredients_text` opens with a garbled nutrition-facts panel before the real ingredient list, and its facility disclosure ("PROCESSED IN A FACILITY THAT PROCESSES TREE NUTS AND EGGS") has no terminating period anywhere in the rest of the string, so the `stripAllergenAdvisory()` facility-disclosure patterns (see the staged-batch changelog entry above) safely fail to match it rather than risk a runaway match — left unstripped, same as an unterminated "Manufactured by:" is. Flagged for awareness only — no action planned.
+- **Barcode 887422000210 ("heritage free range Blue & Brown Eggs with Rich Amber Yolks") has OCR'd nutrition-facts-panel text sitting in Open Food Facts' `ingredients_text` field instead of a real ingredient declaration** ("Nutrition Facts 12 servings per container... Serving size 1 egg (50g)... Total Sugars 0g..."). This produces a spurious `conventional_crops` flag on "sugar" (matched from "Total Sugars 0g") and a `conventional_eggs` match sourced from "Serving size 1 egg" rather than a real ingredient statement — the product genuinely is a real egg carton, so the practical verdict impact is minor, but the specific matched text isn't a real ingredient declaration. This is a **source-data quality problem in OFF's own stored field**, not a rules-engine pattern the app can reliably detect or correct — a regex can't distinguish "real ingredient text" from "OCR'd nutrition panel that happens to share vocabulary with real ingredients" without a much more invasive content-shape heuristic. Barcode 829262006557 ("Bobo's Oat Bites Strawberry") shows the same underlying OFF data-quality issue (nutrition-panel numbers interleaved mid-sentence with what should be a facility disclosure). Barcode 850009682130 ("Nicks Birthday cake") is a third confirmed instance — its `ingredients_text` opens with a garbled nutrition-facts panel before the real ingredient list, and its facility disclosure ("PROCESSED IN A FACILITY THAT PROCESSES TREE NUTS AND EGGS") has no terminating period anywhere in the rest of the string, so the `stripAllergenAdvisory()` facility-disclosure patterns (see the staged-batch changelog entry above) safely fail to match it rather than risk a runaway match — left unstripped, same as an unterminated "Manufactured by:" is. Barcode 854934007914 ("CHEESE pizza") is a fourth confirmed instance — its `ingredients_text` is garbled throughout ("baking powder bodium acid pyrophosphate, sodiom bicaroe dem sth salt)...", "mozzarella cheese (pasteurized part skim milk de enzymes)..."), consistent with the same class of OCR corruption as the other three. Flagged for awareness only — no action planned.
+- **`"baking powder"` is a bare, unqualified entry in `GLUTEN_GRAINS`** (`lib/rulesEngine.js`), added without individual justification as part of a 65-entry batch in commit `565b17b` (May 2026, "Sina clinical list expansion") — it's lumped into a "Processed and ambiguous grain-based ingredients" bucket alongside `modified food starch`, `hydrolyzed vegetable protein`, `soy sauce`, `miso`, with no dedicated test or comment explaining why baking powder specifically belongs there. Standard commercial baking powder is sodium bicarbonate + an acid + a starch filler that's overwhelmingly **cornstarch** in US products, not wheat — mainstream celiac guidance and the FDA's gluten-free labeling standard both treat corn as gluten-free, which is exactly why gluten-free baking mixes routinely use ordinary baking powder as a safe leavening agent. That said, this isn't a clear-cut "delete it" case either: there is real published research — Ortiz-Sánchez et al. 2013 (DOI 10.3390/nu5104174) and Cabrera-Chávez et al. (PubMed 22298027) — showing corn's zein prolamins share structural similarity with immunodominant gluten peptides and cross-react with a subset of celiac patients' antibodies. That's a genuinely contested, evolving area of the science, not a settled one. **Currently moot in practice**: `gluten_grains` is suppressed pre-paywall at both levels unconditionally (see the L2 suppression-gap fix above), so this trigger cannot affect any real user-visible verdict or flag today regardless of how it's ultimately resolved. Needs a deliberate product decision — keep as-is, narrow it to a wheat-starch-qualified variant, or remove it — before gluten is ever unpaywalled into visible verdict logic. No code change made.
 
 ### L1 Verdict Overrides (scan.js)
 
@@ -4862,6 +4863,73 @@ unrelated to either change here).
 source-data quality issue (OFF's own `ingredients_text` field contains OCR'd nutrition-facts-panel
 text, not a real ingredient list) — flagged for awareness, no action planned. Barcode 850009682130
 (this session's fourth verification barcode) shows the identical underlying problem.
+
+---
+
+### Session — gluten_grains suppression gap at L2 for 'inconclusive' verdicts (CONFIRMED — no PROMPT_VERSION bump)
+> **CONFIRMED, no bump.** Reviewed and approved: `PROMPT_VERSION` stays at **42** — no bump needed,
+> per the precedent below. The one stale `scan_cache` row this bug affected has been deleted directly
+> (not a version-gated purge, since no version change occurred) — see "Targeted cleanup" below.
+
+Follow-up to a read-only investigation session (report-only, no code changed) into why barcode
+854934007914 ("CHEESE pizza") was the only row anywhere in `scan_cache` with a surviving
+`gluten_grains` flag (`matchedIngredient: "baking powder"`) — that investigation traced it to a real
+suppression gap, independent of any question about whether `"baking powder"` belongs in
+`GLUTEN_GRAINS` itself (a separate, unresolved question — see "Pending Policy Decisions").
+
+**Root cause, re-confirmed directly in this session before changing anything**: the L2 tree's
+gluten-strip step in `pages/api/scan.js` lived *inside* the tree's own verdict gate —
+`if (userLevel === 2 && verdict !== 'unverified' && verdict !== 'inconclusive') { ...strip
+gluten_grains... }`. A product whose verdict was already `'inconclusive'` (set by the check that runs
+immediately before the L2 tree) skipped that whole block, strip included, so its raw `gluten_grains`
+flags survived untouched into the persisted `scan_cache` row. L1's own gluten strip (Override 1) has
+no such gate — it runs unconditionally.
+
+**Fix**: extracted the gluten-strip step out of the L2 tree's gated block into its own step, gated only
+on `userLevel === 2` (no verdict condition), placed right after the L1 overrides block and before the
+inconclusive-verdict check — so by the time that check runs, `flags` is already gluten-free for both
+levels, matching L1's own unconditional behavior. The L2 tree's gated block itself is otherwise
+untouched (its own gluten-strip lines were removed as now-redundant, with a comment left explaining
+why); the tree's remaining nodes still correctly don't run for `'unverified'`/`'inconclusive'` verdicts.
+`GLUTEN_GRAINS` itself was not modified.
+
+**scan_cache search for other affected rows**: queried all 333 rows in the table (small enough to fetch
+in full) for `verdict IN ('inconclusive', 'unverified') AND flags contains a gluten_grains entry`.
+**Barcode 854934007914 is the only historical instance** — the table has exactly one `'inconclusive'`
+row total (this one); the 43 `'unverified'` rows all correctly have empty `flags` arrays (no ingredient
+text to have matched anything in the first place), so none of them were ever exposed to this gap. No
+other barcode will need a fresh rescan after this fix ships.
+
+**PROMPT_VERSION bump question — confirmed no bump.** Checked the precedent directly: neither
+original gluten-stripping commit — `0555b96` (L1 Override 1) nor `7dcf575` (the L2 tree's own strip,
+"fixes organic verdict inflation and ConcernCard display bugs") — touched `lib/cacheVersion.js`.
+`PROMPT_VERSION` was `5` at both commits and stayed `5` immediately after; the next bump (`5` → `7`)
+came later, for unrelated prompt-wording changes. So when the gluten-suppression feature was first
+built, in either of its two forms, it was **not** treated as a bump-worthy change, despite doing
+exactly this same category of work (removing/hiding a `gluten_grains` flag from what the API exposes).
+This fix is arguably an even weaker case for a bump than that original feature: it doesn't touch
+`verdict` at all (confirmed via the regression test — the CHEESE pizza fixture's verdict stays
+`'inconclusive'` before and after, only the leaked flag disappears), and gluten_grains was never part
+of the app's real screening contract to begin with — this closes a leak in something already documented
+as "invisible at both levels by design," not a correction to what a product's true verdict should be.
+**Confirmed by you: no bump. `PROMPT_VERSION` stays at 42.**
+
+**Test added**: `__tests__/api/scan.test.js` Suite K, test **K6** — exact reproduction using the
+verbatim real `scan_cache` ingredients text for barcode 854934007914 (OFF OCR corruption included, not
+cleaned up), asserting the fixture still reaches `verdict: 'inconclusive'` (so the test is actually
+exercising the gap, not a different code path) and that `flags` is now empty (the leaked
+`gluten_grains` flag is gone). Full suite: **1905 total (1904 passing, 1 known pre-existing failure**
+— the same long-tracked cross-list contradiction test from the collision-word audit series, confirmed
+unaffected by this batch).
+
+**Targeted cleanup — the single stale row, deleted directly.** Since no `PROMPT_VERSION` bump occurred,
+the usual `DELETE FROM scan_cache WHERE prompt_version < N` purge doesn't apply here (there's no new
+version for old rows to fall behind). Instead, the one specific row this bug affected was deleted
+directly: `DELETE FROM scan_cache WHERE barcode = '854934007914' AND user_level = 2` — confirmed via
+the Supabase REST API (service-role key): 333 rows in the table before, exactly 1 row matched and was
+returned by the delete (`id: decdddf9-8394-4a54-a479-ba853d2a1beb`), 332 rows after. Re-queried the
+full table afterward and confirmed zero rows anywhere still carry a `gluten_grains` flag. The barcode
+will rebuild cleanly (gluten-free `flags`) on its next real scan.
 
 ---
 

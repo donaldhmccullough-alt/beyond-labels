@@ -317,6 +317,28 @@ function computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags,
     }
   }
 
+  // ── Strip gluten_grains for L2 users — unconditional, regardless of verdict ──
+  // Gluten is a future paywall feature — invisible at both levels, always.
+  // Moved out of the L2 tree's own verdict-gated block below (previously
+  // `if (userLevel === 2 && verdict !== 'unverified' && verdict !== 'inconclusive')`)
+  // because that gate meant a product landing on 'inconclusive' skipped this
+  // strip entirely, leaking raw gluten_grains flags into the persisted
+  // scan_cache row — confirmed via a real production row (barcode
+  // 854934007914, "CHEESE pizza", the only gluten_grains-flagged row found
+  // anywhere in scan_cache; see CLAUDE.md for the investigation). Runs before
+  // the inconclusive-verdict check below so that check operates on an
+  // already-gluten-free `flags` array — mirrors L1's Override 1 above, which
+  // has never had a verdict gate of its own.
+  if (userLevel === 2) {
+    const nonGlutenL2 = flags.filter(f => f.category !== 'gluten_grains');
+    if (nonGlutenL2.length !== flags.length) {
+      flags = nonGlutenL2;
+      if (flags.some(f => f.severity === 'reject'))       verdict = 'red';
+      else if (flags.some(f => f.severity === 'caution')) verdict = 'yellow';
+      else                                                 verdict = 'green';
+    }
+  }
+
   // ── Inconclusive verdict — recognized product, all-unknown ingredients ───────
   // Runs BEFORE the L2 waterfall so a product the engine could not screen at all
   // is never evaluated by the cert gate (there are no screened ingredients to
@@ -356,17 +378,10 @@ function computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags,
   // Category name note: the engine emits 'additives' for all of
   // SYNTHETIC_ADDITIVES (artificial dyes, MSG, sweeteners, preservatives, etc.).
   if (userLevel === 2 && verdict !== 'unverified' && verdict !== 'inconclusive') {
-    // ── Strip gluten_grains before the tree runs ──────────────────────────────
-    // Gluten is a future paywall feature — invisible at both levels. Without this
-    // strip the engine's caution verdict (from gluten) would enter the tree
-    // inflated, and gluten ConcernCards would render in the UI.
-    const nonGlutenL2 = flags.filter(f => f.category !== 'gluten_grains');
-    if (nonGlutenL2.length !== flags.length) {
-      flags = nonGlutenL2;
-      if (flags.some(f => f.severity === 'reject'))       verdict = 'red';
-      else if (flags.some(f => f.severity === 'caution')) verdict = 'yellow';
-      else                                                 verdict = 'green';
-    }
+    // gluten_grains is already stripped from `flags` by this point — see the
+    // unconditional L2 strip above, which now runs regardless of verdict
+    // (moved out of this gated block so an 'inconclusive' verdict can no
+    // longer skip it).
 
     // ── Build masked ingredient text for helper checks ─────────────────────
     // Masks ALWAYS_IGNORE_INGREDIENTS (salt, water, mined minerals, yeast,

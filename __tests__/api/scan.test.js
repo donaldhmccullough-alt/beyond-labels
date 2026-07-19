@@ -1492,6 +1492,33 @@ describe('K. Level 2 flags cleanup', () => {
     expect(res.body.verdict).toBe('red');
     expect(res.body.flags.some(f => f.category === 'conventional_crops')).toBe(true);
   });
+
+  // ── Fix 3: gluten strip is now unconditional at L2, including 'inconclusive' ──
+  // Previously the strip only ran inside `if (userLevel === 2 && verdict !== 'unverified'
+  // && verdict !== 'inconclusive')` — so a product whose verdict was already set to
+  // 'inconclusive' (by the check that runs just before the L2 tree) skipped the strip
+  // entirely, leaking a raw gluten_grains flag into the persisted scan_cache row.
+  // Confirmed via a real production row: barcode 854934007914 ("CHEESE pizza"),
+  // prompt_version 42 — the only row anywhere in scan_cache with a surviving
+  // gluten_grains flag, matchedIngredient "baking powder". Verbatim real ingredients
+  // text (OFF OCR corruption and all — see CLAUDE.md's Known Limitations note on
+  // this barcode) reproduced below.
+
+  test('K6: exact reproduction — CHEESE pizza (854934007914): inconclusive verdict no longer leaks a gluten_grains flag', async () => {
+    const ingredientsText =
+      "baking powder bodium acid pyrophosphate, sodiom bicaroe dem sth salt), sauce (water, tomato paste, " +
+      "spice blent (grantates bar spics nion, sait, brom mozzarella cheese (pasteurized part skim milk de " +
+      "enzymes), provolone cheese (pasteurized milk, dheese dafres sat m m skim cow's milk, cheese cuftures, " +
+      "sat, ezymes, parsley dee e mil mone";
+    mockFetchOnce(l2CleanupOffResp({ ingredientsText }));
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '854934007914', userLevel: 2 }), res);
+    // Confirms this fixture still reaches the same verdict the real cached
+    // row had — otherwise this test wouldn't actually be exercising the gap.
+    expect(res.body.verdict).toBe('inconclusive');
+    expect(res.body.flags.some(f => f.category === 'gluten_grains')).toBe(false);
+    expect(res.body.flags).toHaveLength(0);
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════════════
