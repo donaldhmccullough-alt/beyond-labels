@@ -746,7 +746,11 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 42** (L2 tree flag-injection unification — `conventional_meat`/`conventional_dairy`/organic sub-tree flags are now injected unconditionally instead of only when the tree happens to reach their node, plus `clearedBy: 'organic'` now persists alongside a red verdict from an unrelated instant-red flag — see the "Session — L2 tree flag-injection unification" changelog entry below). `scan_cache` has **not yet been invalidated** for this bump — run `DELETE FROM scan_cache WHERE prompt_version < 42` in Supabase before/after deploying. Per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until verified live. As of a follow-up session, `PROMPT_VERSION 42` also includes the `maskIgnoredIngredients()` word-boundary fix (see "Session — maskIgnoredIngredients() word-boundary fix" below) — folded in without a bump since zero `scan_cache` rows existed at `prompt_version = 42` at the time it shipped, confirmed by direct query before the fix was written.
+**Current PROMPT_VERSION is 43** (bumped from 42 — covers three real `flags`/`verdict`-changing fixes shipped in the same session: the allergen-advisory `stripAllergenAdvisory()` facility-disclosure fix, the `FORTIFIED_VITAMINS` `"calcium phosphate"` substring-collision fix, and the `MEAT_CATEGORIES` `en:eggs`/`en:egg-products`/`en:poultry-eggs` removal — see their respective changelog entries below for each). The `en:milk-substitutes` `CATEGORY_TAG_MAP` addition and the gluten_grains L2-suppression-gap fix shipped in the same overall working session but are **not** part of this bump — both were separately confirmed as pure category-mapping / suppression-only changes with no `flags`/`verdict`/`clearedBy` impact, per this project's established precedent (see their own changelog entries).
+
+**⚠️ `scan_cache` was deliberately NOT purged for this bump — a departure from every prior bump in this file, not an oversight.** The usual step 2 (`DELETE FROM scan_cache WHERE prompt_version < 43`) was explicitly skipped on instruction: all 332 existing rows (every one currently at `prompt_version: 42`) are being kept exactly as-is for ongoing manual review, not discarded. This means existing cached rows will continue to serve their pre-fix `verdict`/`flags` output — including the specific false positives these three fixes were built to correct (e.g. barcode 810001560522's `fortified_vitamins` flag, the four pure-egg-carton `conventional_meat` duplicates) — until each barcode is individually rescanned fresh. Only **new** scans going forward pick up `prompt_version: 43` and the corrected logic; a cache **hit** on an existing row is unaffected by any of this until that specific `(barcode, user_level)` pair naturally falls out of cache or is manually rescanned. If/when the existing rows are ready to be purged, run the standard `DELETE FROM scan_cache WHERE prompt_version < 43` at that point — not done as part of this session.
+
+Earlier history: `PROMPT_VERSION 42` was the L2 tree flag-injection unification — `conventional_meat`/`conventional_dairy`/organic sub-tree flags are now injected unconditionally instead of only when the tree happens to reach their node, plus `clearedBy: 'organic'` now persists alongside a red verdict from an unrelated instant-red flag — see the "Session — L2 tree flag-injection unification" changelog entry below. `scan_cache` was never invalidated for that bump either — the `< 42` purge was still outstanding when the `< 43` decision above was made, so both purges are now bundled into whatever future purge eventually runs. Per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until verified live. `PROMPT_VERSION 42` also included the `maskIgnoredIngredients()` word-boundary fix (see "Session — maskIgnoredIngredients() word-boundary fix" below) — folded in without its own bump since zero `scan_cache` rows existed at `prompt_version = 42` at the time it shipped, confirmed by direct query before that fix was written.
 
 **⚠️ Deploy-without-purge in progress (July 2026) — deliberate, temporary, not an oversight.** The commits carrying the PROMPT_VERSION 40→41 and 41→42 bumps (`61d258e` through `a5998a2`) had themselves been sitting local-only for an unknown stretch — `origin/mvp-beta` was still on the PROMPT_VERSION **40** code the entire time, meaning the actually-deployed app has been stamping every fresh scan with `prompt_version: 40`, not 41 or 42, until this push. Those 9 commits were pushed to `origin/mvp-beta` via a fast-forward (`git push origin a5998a2:mvp-beta`) specifically **without** running either purge — no `DELETE FROM scan_cache WHERE prompt_version < 41` and no `< 42`. This was an explicit choice, not a skipped step: the purge is being **intentionally deferred** so that today's `scan_cache` rows (all currently at `prompt_version: 40`, since that's what the live app had been running) can be reviewed first, before they're irreversibly deleted.
 
@@ -4826,9 +4830,11 @@ console errors in either case.
 
 ---
 
-### Session — staged batch: facility-disclosure false-positive fix + milk-substitutes category tag (pending PROMPT_VERSION bump)
-> **STAGED — do not bump PROMPT_VERSION until batch is reviewed and approved.** `scan_cache` has NOT
-> been touched — no writes, no purge. `PROMPT_VERSION` remains **42**.
+### Session — facility-disclosure false-positive fix + milk-substitutes category tag (CONFIRMED — SHIPPED at PROMPT_VERSION 43)
+> **CONFIRMED, shipped.** Change 1 (the allergen-advisory fix) is part of the `PROMPT_VERSION` 42→43
+> bump — see "Scan Cache Pattern" above for the full bump note, including why `scan_cache` was
+> deliberately **not** purged this time. Change 2 (`en:milk-substitutes`) shipped in the same working
+> session but correctly needed no bump of its own, per the reasoning below.
 
 Follow-up to a read-only investigation session (report-only, no code changed) that traced a
 `conventional_eggs` false positive on Protein Oatmeal (barcode 810104462914) to a wording gap in
@@ -4843,9 +4849,11 @@ deciding how broad the fix needed to be.
 **PROMPT_VERSION impact — the two changes are NOT symmetric, per this project's established precedent
 (the bread scheme / plant_milk Phase 1 session, which shipped a pure category-mapping change with no
 `PROMPT_VERSION` bump):**
-- **Change 1 requires a bump when approved** — it removes a real, previously-live false-positive
+- **Change 1 got a bump** — it removes a real, previously-live false-positive
   `conventional_eggs` reject flag, changing real `flags`/`verdict` output for affected cached products.
-- **Change 2 does not** — category-mapping-only, no `analyzeIngredients()` `flags`/`verdict`/`clearedBy`
+  Confirmed and shipped as part of the `PROMPT_VERSION` 42→43 bump, bundled with the
+  `FORTIFIED_VITAMINS` and `MEAT_CATEGORIES` fixes below.
+- **Change 2 did not** — category-mapping-only, no `analyzeIngredients()` `flags`/`verdict`/`clearedBy`
   impact, same reasoning already applied to every subcategory/category-mapping session in this file.
 
 **Tests added:** 10 in `lib/rulesEngine.test.js` (new describe block 77) — exact reproductions for all
@@ -4863,6 +4871,115 @@ unrelated to either change here).
 source-data quality issue (OFF's own `ingredients_text` field contains OCR'd nutrition-facts-panel
 text, not a real ingredient list) — flagged for awareness, no action planned. Barcode 850009682130
 (this session's fourth verification barcode) shows the identical underlying problem.
+
+---
+
+### Session — FORTIFIED_VITAMINS "calcium phosphate" substring collision fix (CONFIRMED — SHIPPED at PROMPT_VERSION 43)
+> **CONFIRMED, shipped.** Part of the `PROMPT_VERSION` 42→43 bump — see "Scan Cache Pattern" above.
+> `scan_cache` was deliberately not purged for this bump; all 332 existing rows remain at
+> `prompt_version: 42` for ongoing manual review.
+
+Follow-up to a read-only investigation session (report-only, no code changed) into why barcode
+810001560522 ("Complete Pancake & Waffle Mix," `cleared_by: 'organic'`, `product_category: 'cereal'`)
+carried an injected `fortified_vitamins` caution flag (`matchedIngredient: ''`) with no genuine
+vitamin/mineral fortification language anywhere in its real ingredient text.
+
+**Root cause**: `FORTIFIED_VITAMINS` (`lib/rulesEngine.js`) includes the bare entry `'calcium
+phosphate'`, and `containsFortifiedVitamins()` did plain `.includes()` substring matching with no
+word-boundary guard. `"Monocalcium Phosphate"` — a common food-grade leavening acid / dough
+conditioner, not an intentional fortification additive — contains `"calcium phosphate"` as a literal
+substring, so it fired every time. Confirmed programmatically: removing only "Monocalcium Phosphate"
+from the real ingredient string flips `containsFortifiedVitamins()` from `true` to `false`.
+
+**Fix**: added a new `FORTIFIED_VITAMINS_BOUNDARY_GUARDED` Set (`lib/rulesEngine.js`) containing only
+`'calcium phosphate'` — every other trigger keeps the existing unguarded `.includes()` behavior.
+Guarded triggers are checked via `isAdjacentToLetterUnlessAllowlisted()`, the exact same mechanism
+already established for the `'ada'`/macadamia, `'corn'`/popcorn, and `'oats'`/goats collisions
+elsewhere in this file — no new boundary-checking approach invented.
+
+**Full `scan_cache` audit (332 rows) — confirmed this is not an isolated case.** 4 of 12
+`fortified_vitamins`-flagged rows were the same false positive (matchedIngredient collision, no real
+vitamin/mineral signal): 810001560522, 058449410225 (Frosted Wildberry Acai Toaster Pastries),
+058449410003 (Frosted Berry Strawberry Toaster Pastries), and 013562302154 (Cheddar Bunnies
+Original). The other 8 all carry genuine vitamin/mineral language (`vitamin e`, `vitamin a
+palmitate`, `vitamin d2`/`d3`, `mixed tocopherols`, `vitamin b12`, etc.) — including Organic Ricemilk
+(084253222303), which is *also* incidentally hit by the same collision (via "Tricalcium Phosphate")
+but stays correctly flagged regardless, since it has real vitamin A/D2/B12 fortification independent
+of that collision. Separately spot-checked `'calcium carbonate'` and `'calcium citrate'` against the
+same full dataset for the identical gap — **zero collisions found for either**, left unguarded, no fix
+needed. The broader collision (mono-/di-/tri-calcium phosphate as a plain substring) actually appears
+in 31 real products in `scan_cache`; only 4 had visibly produced the bug, since Phase A's injection
+also requires `hasOrganic` to be true.
+
+**Tests added (`lib/rulesEngine.test.js`, new describe block 78, 8 tests):** exact reproductions for
+all 4 false positives (using their verbatim real `scan_cache` ingredient text), a regression guard
+confirming Organic Ricemilk still correctly fires (proves the fix doesn't overcorrect), a bare
+standalone `"calcium phosphate"` regression guard, a `"dicalcium phosphate"` guard (same collision
+shape, also confirmed real in the audit), and a guard confirming unrelated triggers (`vitamin e`,
+`iron`, `ferrous sulfate`) are unaffected. Full suite at the time: 1918 total (1917 passing, 1 known
+pre-existing failure, unaffected).
+
+**Verdict impact for the 4 historical false positives**: none of the 4 flip `verdict` — all already
+carry an unrelated instant-red reject flag (`natural_flavors`, `seed_oils`, or `additives`), so
+`verdict` stays red regardless of this fix. The bug is still real and worth fixing on its own terms
+(the `flags` array is user-facing content, shown in the UI's concern cards, independent of the
+top-level verdict color) — and it is capable of flipping a genuinely clean organic product from
+yellow to green in the organic sub-tree, if this false positive were ever a product's *only* concern.
+
+---
+
+### Session — MEAT_CATEGORIES en:eggs removal (CONFIRMED — SHIPPED at PROMPT_VERSION 43)
+> **CONFIRMED, shipped.** Part of the `PROMPT_VERSION` 42→43 bump — see "Scan Cache Pattern" above.
+> `scan_cache` was deliberately not purged for this bump; all 332 existing rows remain at
+> `prompt_version: 42` for ongoing manual review.
+
+Follow-up to the "Node 8 vs Node 8b ordering for `en:eggs`" investigation (see "Pending Policy
+Decisions" — now resolved and removed from that list): `'en:eggs'`, `'en:egg-products'`, and
+`'en:poultry-eggs'` were bundled into `MEAT_CATEGORIES` (`lib/scanHelpers.js`) on May 21 2026 (commit
+`e394a6a`), before `conventional_eggs` existed as its own category — at the time, piggybacking on the
+meat-organic-cert-gate check was the only way to require the same certification scrutiny for eggs.
+11 days later, `conventional_eggs` became a real, dedicated ingredient-text-based detection mechanism
+(commit `9058727`), but the three tags were never removed from `MEAT_CATEGORIES` — turning them into a
+pure vestige that caused a real, confirmed duplicate-flag bug: a pure egg carton (Eggland's Best,
+Free Range Eggs, heritage eggs, Egg White Wraps) tagged `en:eggs` in OFF made `isMeat` true via
+`isMeatCategory`, causing Phase A's `conventional_meat` injection to fire alongside the engine's own
+accurate `conventional_eggs` flag.
+
+**Fix**: removed the three tags from `MEAT_CATEGORIES`. Confirmed nothing else legitimately depends on
+eggs counting as "meat": the swaps system's `CATEGORY_TAG_MAP` has no egg tags at all (a completely
+separate constant — see the new `'eggs'` swap category entry elsewhere in this file); seafood/game-meat
+detection use their own separate Sets, unrelated to `MEAT_CATEGORIES`. `isMeatIngredient` (real
+ingredient-text corroboration via `MEAT_INGREDIENT_TERMS`, which already excludes eggs by design —
+that's `CONVENTIONAL_EGGS`/`EGG_DERIVED_INGREDIENTS`'s job) is completely untouched, so a genuine
+meat+egg composite product (e.g. Simple Scrambles Turkey Sausage — real turkey sausage *and* real egg
+whites) still correctly gets `conventional_meat`, verified directly.
+
+**Also confirmed unaffected — a separate mechanism entirely**: the two gelatin-containing barcodes
+found during the original investigation (Pure Protein Galactic Brownie, 749826000497; Pepperidge Farm
+Cakes Chocolate, 051000076236) get `conventional_meat` via Node 8c/`containsMeatDerived()` (gelatin
+detection), which has no dependency on `MEAT_CATEGORIES` at all.
+
+**Tests (9 new/updated)**: 7 in `__tests__/api/scan.test.js` (new nested describe block inside Suite
+H) — exact reproductions for all 4 real-bug barcodes confirming `conventional_meat` no longer injects
+(while `conventional_eggs` still correctly fires), the turkey-sausage-and-egg composite regression
+guard confirming `conventional_meat` still fires there, and both gelatin barcodes confirmed
+unaffected. 2 in `lib/verdictEngine.test.js` — parity coverage confirming the corrected engine
+(`computeCorrectedVerdict()`, which imports the same `isMeatProduct()` from `lib/scanHelpers.js`) is
+fixed with zero code change of its own. One pre-existing test's assertion was corrected, not
+deleted: `"isMeat is true for en:eggs"` had literally encoded the bug — renamed and updated to assert
+`false`, with an inline comment explaining why the old assertion was wrong. Full suite at the time:
+1927 total (1926 passing, 1 known pre-existing failure, unaffected).
+
+**Known, reported (not silently patched) side effect**: `VerdictScreen.getUnverifiedCopy()` has no
+dedicated egg-specific messaging tier — only a meat-specific branch and a generic fallback. A
+no-ingredients egg product previously got the (egg-inappropriate) meat-specific copy
+("grass-fed, pasture-raised..."); after this fix it falls through to the generic non-meat message,
+which is accurate but not egg-tailored. Confirmed via a full-codebase search that no `isEgg`-style
+signal exists anywhere today. Left as a real, flagged content gap for a future session — not fixed
+here, since it wasn't part of the requested scope and doesn't warrant a silent scope expansion.
+
+Does not touch the swaps `'eggs'` category or `CATEGORY_TAG_MAP` — see that section's own changelog
+entry, a separate, independent addition.
 
 ---
 
@@ -5663,9 +5780,9 @@ Items deferred from the June 2026 unverified ingredients audit — pending team 
 - **Gelatin explanation copy for non-meat products** (marshmallows, gummies) — `conventional_meat` flag + Joel voice may confuse users when no meat is involved; may need a tailored category or copy adjustment
 - **Organic seed oils policy** — currently flagged red at L2 regardless of organic status; worth revisiting whether organic high-oleic sunflower or organic canola should be caution rather than reject
 - **Vitamin D3 mandatory fortification in organic milk** — FORTIFIED_VITAMINS caution flag fires on organic dairy products that use D3 as required by organic standards; may confuse users who expect a green for organic milk
-- **Node 8 vs Node 8b ordering for `en:eggs`** — found during the `is_meat` corroboration design review (July 2026): `'en:eggs'` is in `MEAT_CATEGORIES`, and in the L2 tree Node 8 (conventional meat) is evaluated before Node 8b (conventional eggs). An OFF-tagged egg product may be getting generic conventional-meat messaging instead of the dedicated egg messaging Node 8b was built for. The existing `isMeat is true for en:eggs` test (Suite H) only asserts the `isMeat` boolean, not which node actually fires or what flag/message the user sees, so this wasn't caught. Needs investigation before deciding on a fix.
 - **NEXT UP — `wheat`/`"wheatless"` semantic-negation false positive** (found during the July 2026 systematic bare-trigger audit, PROMPT_VERSION 37 session, deliberately excluded from that batch): a product labeled `"wheatless"` currently flags as *containing* wheat — the exact opposite of what the label claims. This is a structurally different bug than every collision fixed in that session (`corn`/`malt`/`farro`/`bha`/`beans`/`olean`/`rye`/`flax`/`miso`/`hing`) — those are all *unrelated-word* substring collisions fixed via `isAdjacentToLetterUnlessAllowlisted()`; `wheatless` is a *semantic negation* suffix, the same class of problem `isInFreeOrNonContext()` already solves for `"-free"`/`"non-"` (e.g. `"egg-free"`, `"canola-free"`). The fix is almost certainly extending that existing guard to also recognize `"-less"`, not adding a new letter-adjacency check. Needs its own session: confirm the fix doesn't accidentally suppress a real "wheat" declaration that happens to end in "less" for an unrelated reason (none currently known, but verify), add regression tests, and bump `PROMPT_VERSION` per the usual pattern since it changes real `flags`/`verdict` output.
 - **bare `'yeast'` corrupts the FORTIFIED_VITAMINS trigger `'selenium yeast'`** (found during the July 2026 `maskIgnoredIngredients()` word-boundary audit — see "Session — maskIgnoredIngredients() word-boundary fix" below): unlike the `culture`/`salt` collisions fixed in that session, `'yeast'` occurs as a genuine standalone word within `'selenium yeast'` (bounded by a space, not embedded inside a larger word) — so the letter-adjacency boundary check doesn't and shouldn't protect it; masking `'yeast'` there is "correctly" behaving per that check's own rule, just wrong for this one specific compound trigger. `'selenium yeast'` is FORTIFIED_VITAMINS's *only* selenium-related trigger (confirmed via grep — no bare `'selenium'` fallback), so this is a real, live information-loss bug: an organic product listing "selenium yeast" as a fortification ingredient silently fails to get the `fortified_vitamins` caution flag. Confirmed via direct testing (`containsFortifiedVitamins()` returns `true` on unmasked text, `false` after masking). Needs its own decision — options include excluding `'selenium yeast'` specifically from ever being masked, or having `containsFortifiedVitamins()` check against unmasked text for just this trigger — before implementing, since either approach has its own trade-offs worth reviewing first.
+- **`VerdictScreen.getUnverifiedCopy()` has no egg-specific messaging tier** (found during the MEAT_CATEGORIES `en:eggs` removal, PROMPT_VERSION 43 session): only a meat-specific branch and a generic fallback exist for the `unverifiedReason === 'no_ingredients'` case. Before that fix, a pure egg product with no ingredient data on file incorrectly got meat-specific copy ("grass-fed, pasture-raised..."); after the fix it now falls through to the generic non-meat message, which is accurate but not tailored to eggs. No `isEgg`-style signal exists anywhere in the codebase today (confirmed via a full-codebase search) — would need one added (mirroring how `isMeat` is threaded through `pages/api/scan.js` → the API response → `VerdictScreen`) before a dedicated egg-copy branch could be written. Not fixed — flagged for a future session, since it wasn't part of the requested scope for that fix.
 
 ---
 
