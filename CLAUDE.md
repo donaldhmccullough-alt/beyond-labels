@@ -4970,16 +4970,80 @@ deleted: `"isMeat is true for en:eggs"` had literally encoded the bug — rename
 `false`, with an inline comment explaining why the old assertion was wrong. Full suite at the time:
 1927 total (1926 passing, 1 known pre-existing failure, unaffected).
 
-**Known, reported (not silently patched) side effect**: `VerdictScreen.getUnverifiedCopy()` has no
-dedicated egg-specific messaging tier — only a meat-specific branch and a generic fallback. A
-no-ingredients egg product previously got the (egg-inappropriate) meat-specific copy
-("grass-fed, pasture-raised..."); after this fix it falls through to the generic non-meat message,
-which is accurate but not egg-tailored. Confirmed via a full-codebase search that no `isEgg`-style
-signal exists anywhere today. Left as a real, flagged content gap for a future session — not fixed
-here, since it wasn't part of the requested scope and doesn't warrant a silent scope expansion.
+**Known, reported (not silently patched) side effect — since closed, see the dedicated egg-copy
+changelog entry below**: `VerdictScreen.getUnverifiedCopy()` had no dedicated egg-specific messaging
+tier — only a meat-specific branch and a generic fallback. A no-ingredients egg product previously got
+the (egg-inappropriate) meat-specific copy ("grass-fed, pasture-raised..."); after this fix it fell
+through to the generic non-meat message, which was accurate but not egg-tailored. Confirmed via a
+full-codebase search that no `isEgg`-style signal existed anywhere at the time. Left as a flagged
+content gap in this session, since it wasn't part of the requested scope — implemented in a follow-up
+session, gated on `productCategory === 'eggs'` rather than a new bespoke boolean.
 
 Does not touch the swaps `'eggs'` category or `CATEGORY_TAG_MAP` — see that section's own changelog
 entry, a separate, independent addition.
+
+---
+
+### Session — VerdictScreen egg-copy tier (no_ingredients + productCategory 'eggs') (recommendation: no PROMPT_VERSION bump)
+> **Reported, not applied.** No `PROMPT_VERSION` change made in this session — see the bump
+> recommendation below; holding for confirmation either way.
+
+Closes the content gap flagged in the MEAT_CATEGORIES `en:eggs` removal changelog entry above:
+`VerdictScreen.getUnverifiedCopy()` had no dedicated egg-specific messaging for the
+`unverifiedReason === 'no_ingredients'` case — only a meat-specific branch and a generic fallback.
+
+**Signal used, and why**: gated on `productCategory === 'eggs'` rather than introducing a new
+bespoke `isEgg` boolean. `productCategory` is already computed server-side via `mapProductCategory()`
+(the same swap-category mapping the `'eggs'` swap category itself was recently added to), already
+flows through the `/api/scan` response, and — critically — is mutually exclusive with a real meat
+category by construction: `CATEGORY_TAG_MAP` is first-match-wins across its category list, and
+`MEAT_CATEGORIES` no longer contains any egg tag (see the `en:eggs` removal above), so a product
+categorized `'eggs'` cannot also be categorized `'meat'`. This reuses an existing, already-verified
+signal instead of adding a new one with its own edge cases to get right.
+
+**Implementation**: `getUnverifiedCopy(unverifiedReason, isMeat, userLevel, productCategory)`
+(`components/verdict/VerdictScreen.jsx`) — `productCategory` appended as a new 4th parameter (not
+inserted among the existing three) so every pre-existing call site, including this project's own
+tests, keeps working unchanged when it's omitted. The new egg branch is checked first, before the
+`isMeat` branches, so it takes priority in the case where both would otherwise apply — currently
+unreachable in real use, since `isMeat` can only be true here via `isMeatCategory` once
+`ingredientsText` is null (the whole premise of `no_ingredients`), and `isMeatCategory` no longer
+includes any egg tag either. `VerdictScreen`'s own render destructures `productCategory` from
+`scanResult` and threads it into the existing `getUnverifiedCopy()` call site.
+
+Final copy (not level-differentiated, unlike the meat branches):
+> "Joel here — we don't have enough information to tell you how these hens were raised, and honestly,
+> no label on a carton fully answers that either. Your best bet is a local farm or producer you can
+> actually ask questions of — someone who can tell you what their hens eat and how much room they have
+> to roam. If you are shopping labels, a certified organic or pasture-raised carton is a reasonable
+> starting point, but treat it as a data point, not a guarantee. You have the power to choose eggs
+> from a source you trust."
+
+**Tests**: new `__tests__/components/VerdictScreen.test.js` (8 tests, following the established
+require-only-no-rendering pattern already used for `ConcernCard.jsx`/`getFallbackSummary` and
+`SwapsScreen.jsx`/`FLAG_CATEGORY_MAP`, since this project has no React rendering test infrastructure)
+— the exact egg copy at both user levels, the priority-over-meat edge case, regression guards for both
+real meat-specific branches (`productCategory: 'meat'`), the generic non-meat/non-egg fallback, the
+final "couldn't identify" fallback (confirmed unaffected even when `productCategory` happens to be
+`'eggs'`, since it only applies to the `no_ingredients` reason), and a guard confirming every
+pre-existing 3-argument call site is unaffected when `productCategory` is omitted entirely.
+
+**Live-verified in the browser**, not just unit-tested: built a throwaway dev harness page
+(`app/dev-egg-copy-test/page.jsx`, deleted immediately after use — never part of the app's real
+routing) rendering `<VerdictScreen>` directly with a synthetic `unverified`/`no_ingredients`/
+`productCategory: 'eggs'` scan result. Confirmed the exact finalized copy string rendered verbatim,
+with zero console errors. Full suite: 1935 total (1934 passing, 1 known pre-existing failure,
+unaffected).
+
+**PROMPT_VERSION bump recommendation: no bump.** Applying the same precedent reasoning already
+established for frontend-only copy fixes (the ConcernCard rules-engine summary fallback, and the raw
+truncated-JSON explanation-parsing fix) — `PROMPT_VERSION` gates `analyzeIngredients()`'s
+`flags`/`verdict`/`clearedBy` contract and the Claude system prompt/user-message template in
+`pages/api/explain.js` (per `lib/cacheVersion.js`'s own doc comment). This change touches neither: no
+rules-engine code, no Claude prompt, no change to what gets computed or cached for any product —
+`productCategory`, `unverifiedReason`, and `isMeat` are all already correctly present in every cached
+row exactly as before. Only the frontend's choice of which display string to render, given
+already-present data, changed. Not applied — reported for confirmation, per instruction.
 
 ---
 
@@ -5782,7 +5846,6 @@ Items deferred from the June 2026 unverified ingredients audit — pending team 
 - **Vitamin D3 mandatory fortification in organic milk** — FORTIFIED_VITAMINS caution flag fires on organic dairy products that use D3 as required by organic standards; may confuse users who expect a green for organic milk
 - **NEXT UP — `wheat`/`"wheatless"` semantic-negation false positive** (found during the July 2026 systematic bare-trigger audit, PROMPT_VERSION 37 session, deliberately excluded from that batch): a product labeled `"wheatless"` currently flags as *containing* wheat — the exact opposite of what the label claims. This is a structurally different bug than every collision fixed in that session (`corn`/`malt`/`farro`/`bha`/`beans`/`olean`/`rye`/`flax`/`miso`/`hing`) — those are all *unrelated-word* substring collisions fixed via `isAdjacentToLetterUnlessAllowlisted()`; `wheatless` is a *semantic negation* suffix, the same class of problem `isInFreeOrNonContext()` already solves for `"-free"`/`"non-"` (e.g. `"egg-free"`, `"canola-free"`). The fix is almost certainly extending that existing guard to also recognize `"-less"`, not adding a new letter-adjacency check. Needs its own session: confirm the fix doesn't accidentally suppress a real "wheat" declaration that happens to end in "less" for an unrelated reason (none currently known, but verify), add regression tests, and bump `PROMPT_VERSION` per the usual pattern since it changes real `flags`/`verdict` output.
 - **bare `'yeast'` corrupts the FORTIFIED_VITAMINS trigger `'selenium yeast'`** (found during the July 2026 `maskIgnoredIngredients()` word-boundary audit — see "Session — maskIgnoredIngredients() word-boundary fix" below): unlike the `culture`/`salt` collisions fixed in that session, `'yeast'` occurs as a genuine standalone word within `'selenium yeast'` (bounded by a space, not embedded inside a larger word) — so the letter-adjacency boundary check doesn't and shouldn't protect it; masking `'yeast'` there is "correctly" behaving per that check's own rule, just wrong for this one specific compound trigger. `'selenium yeast'` is FORTIFIED_VITAMINS's *only* selenium-related trigger (confirmed via grep — no bare `'selenium'` fallback), so this is a real, live information-loss bug: an organic product listing "selenium yeast" as a fortification ingredient silently fails to get the `fortified_vitamins` caution flag. Confirmed via direct testing (`containsFortifiedVitamins()` returns `true` on unmasked text, `false` after masking). Needs its own decision — options include excluding `'selenium yeast'` specifically from ever being masked, or having `containsFortifiedVitamins()` check against unmasked text for just this trigger — before implementing, since either approach has its own trade-offs worth reviewing first.
-- **`VerdictScreen.getUnverifiedCopy()` has no egg-specific messaging tier** (found during the MEAT_CATEGORIES `en:eggs` removal, PROMPT_VERSION 43 session): only a meat-specific branch and a generic fallback exist for the `unverifiedReason === 'no_ingredients'` case. Before that fix, a pure egg product with no ingredient data on file incorrectly got meat-specific copy ("grass-fed, pasture-raised..."); after the fix it now falls through to the generic non-meat message, which is accurate but not tailored to eggs. No `isEgg`-style signal exists anywhere in the codebase today (confirmed via a full-codebase search) — would need one added (mirroring how `isMeat` is threaded through `pages/api/scan.js` → the API response → `VerdictScreen`) before a dedicated egg-copy branch could be written. Not fixed — flagged for a future session, since it wasn't part of the requested scope for that fix.
 
 ---
 

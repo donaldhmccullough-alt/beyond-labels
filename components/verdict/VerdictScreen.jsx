@@ -29,7 +29,24 @@ const FLAG_KEYWORDS = {
   'Vegan': ['milk', 'egg', 'meat', 'beef', 'pork', 'chicken', 'fish', 'gelatin', 'honey', 'whey', 'casein', 'lard'],
 };
 
-export function getUnverifiedCopy(unverifiedReason, isMeat, userLevel) {
+// `productCategory` is appended as a 4th parameter (rather than inserted
+// among the existing three) so every pre-existing call site — including
+// this project's own tests — keeps working unchanged when it's omitted.
+// Gated on `productCategory === 'eggs'` (the swap-category signal computed
+// server-side via mapProductCategory(), same real OFF-tag-derived data
+// `isMeat` itself is built from) rather than a new bespoke `isEgg` boolean,
+// specifically because that category already exists, already flows through
+// the API response, and is mutually exclusive with a real meat category by
+// construction (CATEGORY_TAG_MAP is first-match-wins, and MEAT_CATEGORIES
+// no longer includes any egg tag — see the MEAT_CATEGORIES en:eggs removal
+// changelog entry). Checked before the isMeat branches so it takes priority
+// in the (currently unreachable for the no_ingredients case, since isMeat
+// can only be true here via isMeatCategory once ingredientsText is null)
+// edge case where both would otherwise apply.
+export function getUnverifiedCopy(unverifiedReason, isMeat, userLevel, productCategory) {
+  if (unverifiedReason === 'no_ingredients' && productCategory === 'eggs') {
+    return "Joel here — we don't have enough information to tell you how these hens were raised, and honestly, no label on a carton fully answers that either. Your best bet is a local farm or producer you can actually ask questions of — someone who can tell you what their hens eat and how much room they have to roam. If you are shopping labels, a certified organic or pasture-raised carton is a reasonable starting point, but treat it as a data point, not a guarantee. You have the power to choose eggs from a source you trust.";
+  }
   if (unverifiedReason === 'no_ingredients' && isMeat && userLevel === 1) {
     return "We couldn't find the ingredient list for this product. Flip the package over and read the label before buying — skip it if you see any synthetic chemicals, artificial additives, artificial flavors, or preservatives.";
   }
@@ -110,7 +127,7 @@ export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, o
     );
   }
 
-  const { verdict, flags = [], productName, ingredients, unverifiedIngredients = [], unverifiedReason, isMeat = false } = scanResult;
+  const { verdict, flags = [], productName, ingredients, unverifiedIngredients = [], unverifiedReason, isMeat = false, productCategory } = scanResult;
 
   const hasLevel1SoftFlags = userLevel === 1 && flags.some(f => f.severity === 'caution' && LEVEL_1_YELLOW_CATEGORIES.has(f.category));
   const verdictColors = { red: '#C0392B', yellow: '#D4AC0D', green: '#27AE60', unverified: '#9A8260', inconclusive: '#D4872A' };
@@ -134,7 +151,7 @@ export default function VerdictScreen({ scanResult, userLevel = 1, onSeeSwaps, o
     return keywords.some(kw => ingredientsLower.includes(kw));
   });
 
-  const unverifiedCopy = getUnverifiedCopy(unverifiedReason, isMeat, userLevel);
+  const unverifiedCopy = getUnverifiedCopy(unverifiedReason, isMeat, userLevel, productCategory);
 
   const tl = [
     { color: '#E74C3C', active: verdict === 'red' },
