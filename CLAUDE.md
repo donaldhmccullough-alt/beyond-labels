@@ -5847,7 +5847,7 @@ Items deferred from the June 2026 unverified ingredients audit — pending team 
 - **NEXT UP — `wheat`/`"wheatless"` semantic-negation false positive** (found during the July 2026 systematic bare-trigger audit, PROMPT_VERSION 37 session, deliberately excluded from that batch): a product labeled `"wheatless"` currently flags as *containing* wheat — the exact opposite of what the label claims. This is a structurally different bug than every collision fixed in that session (`corn`/`malt`/`farro`/`bha`/`beans`/`olean`/`rye`/`flax`/`miso`/`hing`) — those are all *unrelated-word* substring collisions fixed via `isAdjacentToLetterUnlessAllowlisted()`; `wheatless` is a *semantic negation* suffix, the same class of problem `isInFreeOrNonContext()` already solves for `"-free"`/`"non-"` (e.g. `"egg-free"`, `"canola-free"`). The fix is almost certainly extending that existing guard to also recognize `"-less"`, not adding a new letter-adjacency check. Needs its own session: confirm the fix doesn't accidentally suppress a real "wheat" declaration that happens to end in "less" for an unrelated reason (none currently known, but verify), add regression tests, and bump `PROMPT_VERSION` per the usual pattern since it changes real `flags`/`verdict` output.
 - **bare `'yeast'` corrupts the FORTIFIED_VITAMINS trigger `'selenium yeast'`** (found during the July 2026 `maskIgnoredIngredients()` word-boundary audit — see "Session — maskIgnoredIngredients() word-boundary fix" below): unlike the `culture`/`salt` collisions fixed in that session, `'yeast'` occurs as a genuine standalone word within `'selenium yeast'` (bounded by a space, not embedded inside a larger word) — so the letter-adjacency boundary check doesn't and shouldn't protect it; masking `'yeast'` there is "correctly" behaving per that check's own rule, just wrong for this one specific compound trigger. `'selenium yeast'` is FORTIFIED_VITAMINS's *only* selenium-related trigger (confirmed via grep — no bare `'selenium'` fallback), so this is a real, live information-loss bug: an organic product listing "selenium yeast" as a fortification ingredient silently fails to get the `fortified_vitamins` caution flag. Confirmed via direct testing (`containsFortifiedVitamins()` returns `true` on unmasked text, `false` after masking). Needs its own decision — options include excluding `'selenium yeast'` specifically from ever being masked, or having `containsFortifiedVitamins()` check against unmasked text for just this trigger — before implementing, since either approach has its own trade-offs worth reviewing first.
 
-### Joel-voice certification-framing audit (July 2026 — IN PROGRESS: conventional_eggs RESOLVED, conventional_dairy PARTIALLY RESOLVED (see note below), glyphosate_heavy still NEEDS REVIEW)
+### Joel-voice certification-framing audit (July 2026 — IN PROGRESS: conventional_eggs RESOLVED, conventional_dairy RESOLVED, glyphosate_heavy still NEEDS REVIEW)
 
 Follow-up to implementing the new egg-copy tier in `VerdictScreen.getUnverifiedCopy()` (see that
 changelog entry above) — its stance ("your best bet is a local farm or producer you can actually ask
@@ -5863,12 +5863,13 @@ data point. This directly contradicts the stance established in the new egg-unve
 (local/known-source first, certification as secondary and imperfect). Fixing this needs a deliberate,
 collaborative wording decision per category — the same back-and-forth process used to finalize the egg
 copy — not a unilateral batch-fix. **`conventional_eggs` (items 9 and 10 below) has been through that
-process and is RESOLVED. `conventional_dairy` items 7 and 8 have now also been through it and are
-RESOLVED** — see the STAGED implementation notes after the table. **⚠️ Item 3 (`conventional_dairy`'s
-*other* instance, in `pages/api/scan.js`/`lib/verdictEngine.js` — see the flag below) was NOT part of
-either dairy pass and still uses the old "a meaningful alternative" phrasing** — this is a real gap,
-not an oversight in this note; see "Item 3 — NOT resolved, flagged" below the table.
-`glyphosate_heavy` (items 5, 6, 13) is still unchanged, pending its own wording pass.
+process and is RESOLVED. `conventional_dairy` (items 3, 7, and 8) has now also been through it in full
+and is RESOLVED** — see the STAGED implementation notes after the table, including the follow-up pass
+that closed item 3's split-state gap (the injected flag's own static summary text in
+`pages/api/scan.js`/`lib/verdictEngine.js`, a structurally separate code path from items 7/8's
+Claude-facing instructions — see "Item 3 — RESOLVED" below the table for the full before/after and how
+the two files' parity is enforced). `glyphosate_heavy` (items 5, 6, 13) is still unchanged, pending its
+own wording pass — the last item before the combined `PROMPT_VERSION` bump.
 
 **Full table of all 13 entries reviewed:**
 
@@ -5876,7 +5877,7 @@ not an oversight in this note; see "Item 3 — NOT resolved, flagged" below the 
 |---|---|---|---|
 | 1 | "Farmed or unlabeled seafood — Joel explains the difference between wild-caught and farmed: sourcing matters as much as ingredients. Look for a wild-caught certification, or seafood from a source you trust." | `pages/api/scan.js` L1 Override 2 (~line 291), mirrored in `lib/verdictEngine.js` (~line 171) | CONSISTENT — cert and "a source you trust" offered as parallel, equal options; no guarantee language |
 | 2 | "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed, pasture-raised, or meat from a farm you trust." | `pages/api/scan.js` L1 Override 2 (~line 292), mirrored in `lib/verdictEngine.js` (~line 172) | CONSISTENT — same balanced structure as #1 |
-| 3 | "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Organic dairy is a meaningful alternative when you're ready for that step." | `pages/api/scan.js` L1 Override 3 (~line 313), mirrored in `lib/verdictEngine.js` (~line 182) | **NEEDS REVIEW — NOT touched by the conventional_dairy rework below.** This is a distinct code path (an injected flag's own static `summary` string, shown directly — never routed through Claude) from items 7/8 (`pages/api/explain.js`'s SYSTEM_PROMPT/buildUserMessage note, which *are* resolved). See "Item 3 — NOT resolved, flagged" below the table |
+| 3 | ~~"Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Organic dairy is a meaningful alternative when you're ready for that step."~~ → **"Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Certified organic or grass-fed dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction."** | `pages/api/scan.js` L1 Override 3 (~line 313), mirrored in `lib/verdictEngine.js` (~line 182) | **RESOLVED — STAGED.** This is a distinct code path from items 7/8 (an injected flag's own static `summary` string, shown directly — never routed through Claude) — see "Item 3 — RESOLVED" below the table for the parity discipline between the two files |
 | 4 | *(benchmark, not under review)* "...Your best bet is a local farm or producer you can actually ask questions of... a certified organic or pasture-raised carton is a reasonable starting point, but treat it as a data point, not a guarantee." | `components/verdict/VerdictScreen.jsx` (new egg-unverified copy) | This is the stance the other 12 are being measured against |
 | 5 | "...He mentions the glyphosate-free certification as **the clearest signal** that a farmer chose differently." | `pages/api/explain.js` `SYSTEM_PROMPT`, line 49 | **NEEDS REVIEW** |
 | 6 | "...Mention that glyphosate-free certification is **the signal to look for**." | `pages/api/explain.js` `buildUserMessage()` inline `[Glyphosate note]`, line 113 | **NEEDS REVIEW** — reinforces #5 |
@@ -5918,33 +5919,50 @@ farmer chose"/"the meaningful alternative" phrasing absent, no leakage into unre
 dairy note text is unchanged. Full suite re-run: 1942 total (1941 passing, same 1 known pre-existing
 failure, unaffected).
 
-**⚠️ Item 3 — NOT resolved, flagged rather than silently left inconsistent.** `pages/api/scan.js`'s L1
-Override 3 (mirrored in `lib/verdictEngine.js`) has its *own*, separate `conventional_dairy` instance —
-an injected flag's static `summary` string ("Organic dairy is a meaningful alternative when you're
-ready for that step."), shown to the user directly and never routed through Claude at all. This is a
+**Item 3 — RESOLVED (STAGED, follow-up pass).** `pages/api/scan.js`'s L1 Override 3 (mirrored in
+`lib/verdictEngine.js`) has its *own*, separate `conventional_dairy` instance — an injected flag's
+static `summary` string, shown to the user directly and never routed through Claude at all. This is a
 structurally different code path from items 7/8 (the `SYSTEM_PROMPT`/`buildUserMessage()` instructions
-handed to Claude, which *are* resolved) — the dairy-wording task that produced the rework above only
-specified changes to `pages/api/explain.js`, so item 3 was left untouched rather than edited
-unilaterally. It still uses the pre-audit "a meaningful alternative" framing today, meaning
-`conventional_dairy` is currently in a split state: the AI-generated explanation (items 7/8, once
-live) will use the new "reasonable starting point" stance, but the injected flag's own summary text
-(item 3, visible on every L1 conventional_dairy card regardless of whether the AI explanation loads)
-still makes the old near-guarantee claim. Needs its own explicit decision — reword to match, or treat
-as intentionally distinct — before this category can be called fully consistent.
+handed to Claude), and was deliberately left out of the first dairy pass above, which only touched
+`pages/api/explain.js`. A follow-up session closed this gap: both files' `summary` string —
+
+> ~~"Conventional dairy — Joel explains what the farming system behind conventional dairy looks like:
+> GMO feed, synthetic hormones, antibiotics. Organic dairy is a meaningful alternative when you're
+> ready for that step."~~
+
+→
+
+> "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like:
+> GMO feed, synthetic hormones, antibiotics. Certified organic or grass-fed dairy is worth moving
+> toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction."
+
+were updated identically, confirmed byte-for-byte identical between the two files via a direct
+programmatic string-equality check (not just eyeballed) before committing. Three new tests were added
+to `__tests__/api/scan.test.js` (new describe block "V2. conventional_dairy L1 Override 3 summary text
+parity"), each exercised through the real `/api/scan` handler rather than testing the string in
+isolation: (1) legacy mode (`pages/api/scan.js`'s code path, the default) produces the new summary
+text and the old phrasing is gone; (2) live mode (`VERDICT_ENGINE_MODE=live`, `lib/verdictEngine.js`'s
+code path) produces the identical new summary text, proving the second file was actually updated too,
+not just the first; (3) a direct parity test running the same fixture through both modes and asserting
+the two resulting `flag.summary` strings are byte-identical to each other and to the expected new
+text — so a future edit to only one of the two files fails this suite immediately instead of silently
+drifting, the same discipline already applied to every other L1/`verdictEngine.js` parity check in this
+project. Full suite re-run: 1945 total (1944 passing, same 1 known pre-existing failure, unaffected).
+`conventional_dairy` (items 3, 7, 8) is now fully RESOLVED — no more split state.
 
 **⚠️ PROMPT_VERSION NOT YET BUMPED — holding for confirmation.** Per the precedent check below, every
 prior `SYSTEM_PROMPT` wording change in this project's history has bumped `PROMPT_VERSION` in the same
 commit with zero exceptions — this change needs one too. Deliberately not bumped yet: `glyphosate_heavy`
-wording is still being drafted (and item 3 above remains an open decision), and the plan is one
-combined bump covering `conventional_eggs`, `conventional_dairy`, and `glyphosate_heavy` together once
-all three are finalized, mirroring the reasoning behind the last consolidated bump (PROMPT_VERSION 43
-— see "Scan Cache Pattern" above, which bundled three unrelated fixes shipped in the same working
-session into one bump rather than three separate ones). Until the bump lands, this wording is
-effectively a no-op on real production traffic — the existing `scan_cache` cache-read
-`.eq('prompt_version', PROMPT_VERSION)` filter means no cached row can pick up new wording without a
-version change, and a fresh scan just calls Claude with the new instruction text under the *same*
-`PROMPT_VERSION`, indistinguishable in the cache from a pre-change row. This is a committed-but-dormant
-change, same category as several other STAGED-and-held changes documented elsewhere in this file.
+wording is still being drafted, and the plan is one combined bump covering `conventional_eggs`,
+`conventional_dairy`, and `glyphosate_heavy` together once all three are finalized, mirroring the
+reasoning behind the last consolidated bump (PROMPT_VERSION 43 — see "Scan Cache Pattern" above, which
+bundled three unrelated fixes shipped in the same working session into one bump rather than three
+separate ones). Until the bump lands, this wording is effectively a no-op on real production traffic —
+the existing `scan_cache` cache-read `.eq('prompt_version', PROMPT_VERSION)` filter means no cached row
+can pick up new wording without a version change, and a fresh scan just calls Claude (or, for items 3/7/8,
+just injects the new static string) with the new text under the *same* `PROMPT_VERSION`,
+indistinguishable in the cache from a pre-change row. This is a committed-but-dormant change, same
+category as several other STAGED-and-held changes documented elsewhere in this file.
 
 **Not flagged (N/A, not silently omitted)**: `conventional_crops`, the AI-generated `conventional_meat`
 path, and `bioengineering` are all Joel-owned per the voice-assignment list (`SYSTEM_PROMPT` line 43)
@@ -5959,14 +5977,13 @@ lib/cacheVersion.js` showing the version bump in the identical diff. This is a *
 consistent precedent than the rules-engine-only accuracy-fix debate** documented elsewhere in this
 file (e.g. the gluten-suppression fix, which correctly did *not* bump) — `SYSTEM_PROMPT` wording has
 never shipped without a bump in this codebase's history. `conventional_eggs` (items 9/10) and
-`conventional_dairy` (items 7/8) have now been reworded per this decision, per the implementation notes
-above — the `PROMPT_VERSION` bump this precedent calls for is being deliberately held, not skipped,
-until `glyphosate_heavy` is also finalized (and item 3's open question above is resolved one way or
-the other), so all three categories ship as one combined bump with one combined
-`scan_cache.explanation` purge rather than several separate ones. The remaining NEEDS REVIEW items are
-item 3 (`conventional_dairy`'s injected-flag summary, a distinct code path — see above) and
-`glyphosate_heavy` (5, 6, 13), plus the two historical-record rows (11, 12) that update automatically
-once the eventual bump ships.
+`conventional_dairy` (items 3, 7, 8 — now fully resolved across both `pages/api/explain.js` and the
+`pages/api/scan.js`/`lib/verdictEngine.js` injected-flag pair) have now been reworded per this
+decision, per the implementation notes above — the `PROMPT_VERSION` bump this precedent calls for is
+being deliberately held, not skipped, until `glyphosate_heavy` is also finalized, so all three
+categories ship as one combined bump with one combined `scan_cache.explanation` purge rather than
+several separate ones. The only remaining NEEDS REVIEW item is `glyphosate_heavy` (5, 6, 13), plus the
+two historical-record rows (11, 12) that update automatically once the eventual bump ships.
 
 ---
 

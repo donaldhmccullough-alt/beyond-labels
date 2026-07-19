@@ -310,7 +310,7 @@ function computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags,
         category:          'conventional_dairy',
         severity:          'caution',
         matchedIngredient: '',
-        summary:           "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Organic dairy is a meaningful alternative when you're ready for that step.",
+        summary:           "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Certified organic or grass-fed dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction.",
       }, ...flags];
       // A caution flag can upgrade green → yellow, but cannot override red.
       if (verdict === 'green') verdict = 'yellow';

@@ -3542,6 +3542,108 @@ describe('V. Live mode (VERDICT_ENGINE_MODE=live)', () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
+// V2. conventional_dairy L1 Override 3 summary text — parity between
+//     pages/api/scan.js (legacy path) and lib/verdictEngine.js (live path)
+//
+// Reworded July 2026 (Joel-voice certification-framing audit, item 3) —
+// certification framed as "worth moving toward... not a guarantee on its
+// own," dropping the old "a meaningful alternative when you're ready for
+// that step" phrasing. This injected flag's summary is a static string
+// duplicated in both files by construction (scan.js is the legacy/default
+// path; lib/verdictEngine.js is the Stage 5c corrected engine used at
+// VERDICT_ENGINE_MODE=live) — the two must never drift apart. Exercised
+// through the real handler in both modes with the identical fixture so a
+// future edit to only one copy fails this suite immediately.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('V2. conventional_dairy L1 Override 3 summary text parity', () => {
+  const ORIGINAL_ENV = { ...process.env };
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  const NEW_SUMMARY =
+    "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Certified organic or grass-fed dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction.";
+
+  /** Minimal OFF response builder, matching Suite S's own L1 dairy fixture shape. */
+  function dairyOffResp() {
+    return {
+      status: 1,
+      product: {
+        product_name:     'Fresh Whole Milk',
+        ingredients_text: 'whole milk, salt',
+        labels_tags:      [],
+        categories_tags:  ['en:dairy'],
+      },
+    };
+  }
+
+  test('legacy mode (pages/api/scan.js) injects the new summary text, and the old "meaningful alternative" phrasing is gone', async () => {
+    mockFetchOnce(dairyOffResp());
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001106', userLevel: 1 }), res);
+
+    const flag = res.body.flags.find(f => f.category === 'conventional_dairy');
+    expect(flag).toBeDefined();
+    expect(flag.summary).toBe(NEW_SUMMARY);
+    expect(flag.summary).not.toContain('meaningful alternative when you\'re ready for that step');
+  });
+
+  test('live mode (lib/verdictEngine.js) injects the SAME new summary text, and the old phrasing is gone there too', async () => {
+    process.env.VERDICT_ENGINE_MODE = 'live';
+    getSupabaseServer.mockReturnValueOnce({
+      from: jest.fn(() => ({
+        select:      jest.fn(function () { return this; }),
+        eq:          jest.fn(function () { return this; }),
+        maybeSingle: jest.fn().mockResolvedValue({ data: null }),
+        update:      jest.fn(function () { return this; }),
+        upsert:      jest.fn().mockResolvedValue({ error: null }),
+        insert:      jest.fn().mockResolvedValue({ error: null }),
+        then:        jest.fn(),
+        catch:       jest.fn(),
+      })),
+    });
+
+    mockFetchOnce(dairyOffResp());
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001107', userLevel: 1 }), res);
+
+    const flag = res.body.flags.find(f => f.category === 'conventional_dairy');
+    expect(flag).toBeDefined();
+    expect(flag.summary).toBe(NEW_SUMMARY);
+    expect(flag.summary).not.toContain('meaningful alternative when you\'re ready for that step');
+  });
+
+  test('PARITY — legacy and live mode produce byte-identical conventional_dairy summary text for the same fixture', async () => {
+    mockFetchOnce(dairyOffResp());
+    const legacyRes = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001108', userLevel: 1 }), legacyRes);
+    const legacySummary = legacyRes.body.flags.find(f => f.category === 'conventional_dairy').summary;
+
+    process.env.VERDICT_ENGINE_MODE = 'live';
+    getSupabaseServer.mockReturnValueOnce({
+      from: jest.fn(() => ({
+        select:      jest.fn(function () { return this; }),
+        eq:          jest.fn(function () { return this; }),
+        maybeSingle: jest.fn().mockResolvedValue({ data: null }),
+        update:      jest.fn(function () { return this; }),
+        upsert:      jest.fn().mockResolvedValue({ error: null }),
+        insert:      jest.fn().mockResolvedValue({ error: null }),
+        then:        jest.fn(),
+        catch:       jest.fn(),
+      })),
+    });
+    mockFetchOnce(dairyOffResp());
+    const liveRes = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001109', userLevel: 1 }), liveRes);
+    const liveSummary = liveRes.body.flags.find(f => f.category === 'conventional_dairy').summary;
+
+    expect(legacySummary).toBe(liveSummary);
+    expect(legacySummary).toBe(NEW_SUMMARY);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 // W. Phase A — unconditional corroboration-signal flag injection
 //
 // conventional_meat, conventional_dairy, and the three organic sub-tree
