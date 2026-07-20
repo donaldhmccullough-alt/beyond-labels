@@ -6041,7 +6041,7 @@ surface — is now fully closed, with the code live-eligible pending deploy.
 
 ---
 
-### Session — trans_fats explanation fix: bare "hydrogenated" hedge + PHO-ban factual correction (July 2026, STAGED — PROMPT_VERSION not bumped)
+### Session — trans_fats explanation fix: bare "hydrogenated" hedge + PHO-ban factual correction (July 2026, wording APPROVED — PROMPT_VERSION not yet bumped)
 
 Follow-up to a read-only investigation (prompted by the earlier "downsides of Option B" severity-model
 discussion): confirmed `TRANS_FATS`'s bare `'hydrogenated'` trigger fires on **11 of 12** real
@@ -6088,10 +6088,10 @@ co-occurring) gets ONLY the qualified-case instruction, never the hedge** — th
 qualified trigger's presence, not whether bare `'hydrogenated'` is the *only* one. This wording was
 given verbatim by direct instruction; no drafting judgment was needed for this half of the fix.
 
-**Fix 2 — `lib/rulesEngine.js`'s `TRANS_FATS` fallback summary (line ~2640-2652) — ⚠️ DRAFT, NOT YET
-APPROVED.** Same pattern as `glyphosate_heavy`'s newly-discovered 4th surface (see the audit above):
-a per-trigger dynamic template, distinct from the Claude-facing prompt instruction, rendered directly by
-`ConcernCard.getFallbackSummary()` whenever the AI explanation is missing. Drafted (not confirmed) as:
+**Fix 2 — `lib/rulesEngine.js`'s `TRANS_FATS` fallback summary (line ~2640-2652) — ✅ APPROVED, FINAL.**
+Same pattern as `glyphosate_heavy`'s newly-discovered 4th surface (see the audit above): a per-trigger
+dynamic template, distinct from the Claude-facing prompt instruction, rendered directly by
+`ConcernCard.getFallbackSummary()` whenever the AI explanation is missing.
 
 > ~~"Contains "hydrogenated" — a trans fat or hydrogenated oil directly linked to cardiovascular disease
 > and systemic inflammation."~~ (unchanged for `'partially hydrogenated'`/`'margarine'`/`'shortening'` —
@@ -6103,18 +6103,19 @@ a per-trigger dynamic template, distinct from the Claude-facing prompt instructi
 > with no exceptions, this most often means fully hydrogenated oil (not a meaningful trans fat source),
 > though it's flagged to be safe given the possibility of imported or mislabeled products."
 
-This specific sentence has **not** been signed off — implemented and tested so the mechanism can be
-verified end-to-end, but flagged here (and in the code itself, via an inline comment at the trigger
-loop) as awaiting explicit wording approval before it's treated as final, the same way the egg/dairy/
-glyphosate wording drafts were reviewed individually before being locked in.
+This exact sentence was implemented, tested, and shipped as a draft in commit `77a055f`, then
+**explicitly approved as final** in a follow-up confirmation — no wording change, only the
+draft→approved status update (this commit, plus the inline code comment and the test describe block
+name in `lib/rulesEngine.test.js`, which no longer say "DRAFT").
 
-**Tests added**: `__tests__/api/explain.test.js`, new describe block "A6. buildUserMessage() —
-trans_fats note wording" (7 tests) — bare-`'hydrogenated'`-only gets the hedge; the hedge explicitly
-forbids "active loopholes" language; `'partially hydrogenated'`/`'margarine'`/`'shortening'` each get the
-unhedged instruction; the exact 075706151011 mixed-trigger shape gets only the qualified instruction, not
-the hedge; and a regression guard confirming the note isn't injected for unrelated categories.
-`lib/rulesEngine.test.js`, new describe block "80. TRANS_FATS flag summary — bare "hydrogenated" hedge
-(DRAFT)" (4 tests) — the new hedged summary for bare `'hydrogenated'`; regression guards confirming
+**Tests added** (commit `77a055f`, unchanged by this status update): `__tests__/api/explain.test.js`,
+new describe block "A6. buildUserMessage() — trans_fats note wording" (7 tests) — bare-`'hydrogenated'`
+-only gets the hedge; the hedge explicitly forbids "active loopholes" language; `'partially
+hydrogenated'`/`'margarine'`/`'shortening'` each get the unhedged instruction; the exact 075706151011
+mixed-trigger shape gets only the qualified instruction, not the hedge; and a regression guard
+confirming the note isn't injected for unrelated categories. `lib/rulesEngine.test.js`, describe block
+"80. TRANS_FATS flag summary — bare "hydrogenated" hedge" (4 tests) — the new hedged summary for bare
+`'hydrogenated'`; regression guards confirming
 `'partially hydrogenated'`, `'margarine'`, and `'shortening'` all keep the original unhedged summary
 byte-for-byte; and a regression guard confirming `severity`/`verdict` are completely unaffected (still
 `reject`/`red`, both trigger shapes) — this fix touches explanation text only, never verdict computation.
@@ -6133,17 +6134,19 @@ touched** — it will keep serving the inaccurate "loopholes remain" text until 
 rescanned (a fresh cache miss) or a future `scan_cache` purge runs. Flagged here explicitly so it isn't
 mistaken for a live, already-correct explanation if referenced again later.
 
-**PROMPT_VERSION: not bumped, and deliberately NOT folded into the 43→44 group above.** Current value
-is **44** — that bump already landed and closed out the Joel-voice audit (`conventional_eggs`,
-`conventional_dairy`, `glyphosate_heavy`) in a prior, already-committed session; there is nothing else
-currently staged or uncommitted that this could combine with (`git status` at the time of this fix showed
-only the four files this session touched — `pages/api/explain.js`, `lib/rulesEngine.js`, and their two
-test files). This fix should get **its own separate future bump (44→45)**, once Fix 2's draft wording is
-confirmed — bundling it retroactively into the already-shipped 43→44 bump isn't possible (that commit is
-already made), and there's no other pending prompt change to combine it with going forward. Per this
-project's own established precedent (checked and cited above), any `SYSTEM_PROMPT`/`buildUserMessage()`
-wording change bumps `PROMPT_VERSION` — Fix 1 alone would already qualify; Fix 2, once approved, ships in
-the same bump rather than a separate one, since both are part of the same trans_fats accuracy fix.
+**PROMPT_VERSION: still not bumped, and still deliberately NOT folded into the 43→44 group above.**
+Current value is **44** — that bump already landed and closed out the Joel-voice audit
+(`conventional_eggs`, `conventional_dairy`, `glyphosate_heavy`) in a prior, already-committed session;
+there is nothing else currently staged or uncommitted that this could combine with (`git status` at the
+time of this fix showed only the four files this session touched — `pages/api/explain.js`,
+`lib/rulesEngine.js`, and their two test files). Both Fix 1 and Fix 2 are now fully approved — the
+"once Fix 2's draft wording is confirmed" condition that previously blocked the bump no longer applies —
+but the actual `PROMPT_VERSION` bump itself has still not been requested or performed as of this status
+update; it remains its own separate future bump (44→45), not bundled retroactively into the
+already-shipped 43→44 bump (that commit is already made). Per this project's own established precedent
+(checked and cited above), any `SYSTEM_PROMPT`/`buildUserMessage()` wording change bumps
+`PROMPT_VERSION` — both fixes are now fully specified and tested, so the next explicit instruction to
+bump can proceed without any further wording review blocking it.
 
 ---
 
