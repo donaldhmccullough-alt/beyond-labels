@@ -804,7 +804,35 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 45** (bumped from 44 — an accuracy/tone feedback pass from Dr. Sina McCullough after using the app, seven originally-requested fixes landing as eight edits once a pre-flight audit found the prompt's actual content didn't match what several of the fixes assumed):
+**Current PROMPT_VERSION is 46** (bumped from 45 — a single-sentence fix to the `conventional_meat`
+paragraph's shopping guidance, caught via a real live scan against the newly-deployed app, not
+simulated testing: barcode 732153119239, "Baked Pork Rinds Pink Himalayan Sea Salt," returned "look
+for pasture-raised pork from a farm you trust" with zero mention of organic. Root cause: the shopping
+guidance only offered `"grass-fed and grass-finished"` or `"pasture-raised"` — for pork, "grass-fed"
+correctly doesn't apply and the model dropped it, but `"certified organic"` was never offered as an
+option at all, unlike every other `conventional_*` paragraph (`conventional_dairy`,
+`conventional_eggs`, `conventional_crops`), all of which lead with organic. Fixed by adding
+`"certified organic"` as the first item in the shopping-guidance list — `"choose certified organic,
+grass-fed and grass-finished, or pasture-raised meat from a farm you trust"` — the only change; every
+other sentence in the paragraph (the confinement/feedlot framing, the beef-cattle-specific hormone
+clause, the seafood/gelatin disambiguation) is byte-identical to the PROMPT_VERSION 45 version, and
+was independently re-checked for cattle-only bias before the fix — none found beyond the
+already-correctly-scoped hormone clause. New test: `__tests__/api/explain.test.js`'s existing A12
+block gained one new assertion (`"certified organic"` present in the shopping guidance) plus an
+updated exact-string assertion for the reworded sentence — no new describe block, since this is a
+narrow addition to already-tested paragraph content, not new subject matter. Full suite: **2,050
+total (2,049 passing, same 1 known pre-existing unrelated failure)**, up from 2,049 by exactly the 1
+new assertion. Verified via in-session generation (no `ANTHROPIC_API_KEY` configured in this
+environment, same method as every other generation this session — no real API calls or charges):
+regenerated the pork rinds example and confirmed "certified organic" now appears; regenerated Beef
+Bologna and confirmed "grass-fed and grass-finished" still appears correctly alongside the new organic
+mention, not replaced by it. `scan_cache` was **not** purged as part of this bump, consistent with the
+deferral pattern established across every prior bump this session — existing rows (including the real
+pork rinds row that surfaced this bug, still cached at `prompt_version: 45`) keep serving the
+pre-fix wording until individually rescanned or a future purge runs
+`DELETE FROM scan_cache WHERE prompt_version < 46`.
+
+Earlier history: **`PROMPT_VERSION 45`** (bumped from 44 — an accuracy/tone feedback pass from Dr. Sina McCullough after using the app, seven originally-requested fixes landing as eight edits once a pre-flight audit found the prompt's actual content didn't match what several of the fixes assumed):
 1. **New `conventional_crops` paragraph.** SYSTEM_PROMPT had no dedicated paragraph for this category before this session (it relied only on the general Joel-voice guidance) — so "organic ≠ regenerative" (certification governs inputs like synthetic pesticides/GMO seed, not tillage/no-till/cover-cropping practices), the "no fillers or synthetic additives" alternative standard (not the non-existent "minimal fillers" the fix was originally framed against), and wheat's GMO exclusion (below) all had to be authored fresh, not corrected.
 2. **Hedging sweep.** Origin/practice claims ("conventional dairy means...", "hens fed GMO grain...") reworded from settled fact to hedged language ("typically means", "commonly fed") across the three paragraphs that actually had certification-adjacent framing to sweep — `glyphosate_heavy`, `conventional_dairy`, `conventional_eggs` — plus the new `conventional_crops` paragraph. `bioengineering` and `conventional_meat` have no dedicated SYSTEM_PROMPT paragraph and were left alone per explicit scope, relying on the general shared-voice hedging instruction added to the "Together your voice is:" section. Each swept paragraph also gained Joel's actual verbal signature — "When shopping in the grocery store, choose..." — replacing the more clinical "reasonable starting point rather than proof" framing as its alternative-suggestion language.
 3. **Grass-fed precision, all 7 real locations** (found via grep, not assumed from the original fix request, which only named SYSTEM_PROMPT): bare `"grass-fed"` (a label that permits minimal actual pasture time) → `"grass-fed and grass-finished"` in the SYSTEM_PROMPT `conventional_dairy` paragraph, the `buildUserMessage()` `[Dairy note]`, the static injected `conventional_meat`/`conventional_dairy` flag summaries in `pages/api/scan.js` (lines 292/313) and their byte-parity mirrors in `lib/verdictEngine.js` (lines 172/182, enforced by Suite V2), and `components/verdict/VerdictScreen.jsx`'s L2 no-ingredients/meat unverified-copy message.
@@ -6345,9 +6373,15 @@ deliberate deferral already established across the 42→43→44 bumps (see "Scan
 This is now a fourth consecutive un-purged bump; `DELETE FROM scan_cache WHERE prompt_version < 45`
 will clear all four generations in one pass whenever a purge eventually runs.
 
-**Not yet pushed or deployed** — per this project's own "committed ≠ deployed" discipline (see the
-deploy-gap incident elsewhere in this file), this entry documents work completed and tested locally
-only; push/deploy is a separate, explicit action not requested as part of this session.
+**Confirmed pushed and deployed to production August 5, 2026** (not just committed, and not left
+stale like the entry below once was — see the correction added there). Pushed as commit `65700fe`
+alongside the `conventional_meat`/`meatScenario` follow-up documented in the next entry (both landed
+in the same push, after both were reviewed and approved). Deploy confirmed via GitHub's commit status
+API (`GET /repos/.../commits/65700fe.../status`) — the `Vercel` context shows `state: success`,
+`description: "Deployment has completed"`. The live app (`beyond-labels-eight.vercel.app`) was loaded
+directly afterward and confirmed rendering correctly with zero console errors. No `scan_cache` purge
+was run as part of this push — none of these commits' changes require one (see each entry's own
+purge note above).
 
 ---
 
@@ -6443,7 +6477,75 @@ confirmed to correctly avoid feedlot/hormone language entirely and redirect to
 wild-caught-vs-farmed and gelatin-sourcing framing respectively, matching what the new `[Meat note:
 ...]` instructs.
 
-**No deploy, no push** — local verification only, per explicit instruction throughout.
+**Confirmed pushed and deployed to production August 5, 2026** (not just committed): pushed as commit
+`65700fe`, Vercel auto-deployed from `origin/mvp-beta` (no manual trigger available or needed —
+confirmed via GitHub's commit status API, `state: success`, `"Deployment has completed"`). A live
+scan against the deployed app immediately surfaced a real gap in this exact paragraph within hours of
+going live — see the follow-up entry immediately below.
+
+---
+
+### Session — pork rinds fix: conventional_meat shopping guidance missing "certified organic" (August 2026, PROMPT_VERSION 45 → 46)
+
+Caught via a **real live scan against the just-deployed app** — not simulated testing, not a session's
+own post-implementation exercise like the `meatScenario` gap the entry above documents. Within hours
+of the `conventional_meat` paragraph going live, scanning barcode 732153119239 ("Baked Pork Rinds Pink
+Himalayan Sea Salt," ingredients `"Pork Skin, Salt, Pink Himalayan Sea Salt, Sea Salt"`) produced a
+real generated explanation ending in *"look for pasture-raised pork from a farm you trust"* — zero
+mention of organic certification, despite the underlying flag itself being specifically titled
+`"Conventional meat product without USDA Organic certification"`.
+
+**Root cause.** The paragraph's shopping-guidance sentence only ever offered two options: `"grass-fed
+and grass-finished"` or `"pasture-raised."` Grass-fed is a ruminant/cattle-specific term that doesn't
+meaningfully apply to pigs — the model correctly recognized this and dropped it for a pork product,
+which is the *right* call — but with no third option available, that left only `"pasture-raised"`
+standing alone, and organic was never in the list to fall back on at all. This is inconsistent with
+every other `conventional_*` paragraph in SYSTEM_PROMPT (`conventional_dairy`, `conventional_eggs`,
+`conventional_crops`), all of which lead their shopping guidance with `"certified organic"` as the
+primary signal — `conventional_meat` was the one outlier.
+
+**Fix — one sentence, everything else byte-identical.** Before touching anything, every other clause in
+the paragraph was re-checked specifically for cattle-only framing that might read oddly for pork or
+poultry: the confinement/feedlot language ("confinement" is the umbrella term covering hog and poultry
+operations, not just cattle feedlots), the GMO-grain and antibiotics claims (accurate and
+non-species-specific), and the hormone clause (already correctly scoped to `"conventional beef cattle
+specifically"` — worth keeping exactly as-is, since hormone use is actually federally prohibited in
+US pork and poultry production, so a pork/chicken reader isn't misled here either way). None of these
+needed changing. Only the shopping-guidance sentence was reworded:
+
+> ~~"...his guidance is to choose grass-fed and grass-finished or pasture-raised meat from a farm you
+> trust..."~~ → **"...his guidance is to choose certified organic, grass-fed and grass-finished, or
+> pasture-raised meat from a farm you trust..."**
+
+`"Certified organic"` now leads the list, matching the established pattern from every other
+`conventional_*` paragraph. For a pork product, the model can now correctly drop `"grass-fed and
+grass-finished"` while still having two real, applicable options left — `"certified organic"` and
+`"pasture-raised"` — instead of the single-option fallback that produced the original gap.
+
+**Tests.** Updated (not replaced) the existing `A12` block in `__tests__/api/explain.test.js` — no new
+describe block, since this is a narrow addition to already-tested paragraph content, not new subject
+matter. The pre-existing exact-string assertion for the shopping-guidance sentence was updated to the
+new wording, and one new test was added asserting `"certified organic"` is present, with an inline
+comment naming the real barcode as the regression this guards against. `lib/cacheVersion.js`'s
+`PROMPT_VERSION` bumped 45 → 46; the two hardcoded version references (`__tests__/api/scan.test.js:2071`
+and `__tests__/pages/admin/swap-candidates.test.js`'s `CURRENT_PROMPT_VERSION` constant — the same two
+spots that needed updating for the 44→45 bump) were updated in lockstep. Full suite: **2,050 total
+(2,049 passing, same 1 known pre-existing unrelated failure)** — up from 2,049 by exactly the one new
+assertion.
+
+**Verification, in-session generation** (no `ANTHROPIC_API_KEY` configured in this environment, same
+method as every other generation this session — confirmed no real Anthropic API calls or charges
+occurred): regenerated the exact real pork rinds product (barcode 732153119239, using its real
+`scan_cache` ingredient text and flag data, including the already-live `meatScenario: 'land_animal'`
+field) and confirmed the model's shopping guidance now correctly reaches for `"certified organic"` for
+a pork product. Separately regenerated Beef Bologna (barcode 044700008850, the same land-animal test
+product used throughout the `meatScenario` follow-up above) and confirmed `"grass-fed and
+grass-finished"` still appears correctly for a beef product, now alongside — not replaced by — the new
+organic mention.
+
+**Not yet pushed or deployed** — held for review, per explicit instruction, matching the review-first
+pattern used for every change this entire session. `scan_cache` was not purged; see the `PROMPT_VERSION`
+note above for the exact purge command whenever one is eventually run.
 
 ---
 

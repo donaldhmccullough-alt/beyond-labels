@@ -2068,7 +2068,7 @@ describe('M. PROMPT_VERSION', () => {
   test('PROMPT_VERSION is 44 (v44: Joel-voice certification-framing rewrites — conventional_eggs, conventional_dairy, glyphosate_heavy)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(45);
+    expect(PROMPT_VERSION).toBe(46);
   });
 });
 

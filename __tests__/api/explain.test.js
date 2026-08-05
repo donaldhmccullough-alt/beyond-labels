@@ -679,6 +679,16 @@ describe('A11. SYSTEM_PROMPT — new trans_fats paragraph (GRAS-reversal reframe
 // same conventional_meat category also fires for farmed/unlabeled seafood and
 // animal-derived gelatin in non-meat products, where feedlot/hormone framing
 // would be actively wrong.
+//
+// Shopping-guidance sentence reworded in a follow-up fix, caught via a real
+// live scan post-deploy (not simulated testing) — barcode 732153119239, "Baked
+// Pork Rinds": the paragraph never offered "certified organic" as a shopping
+// signal, unlike every other conventional_* paragraph, which all lead with
+// organic. For pork specifically, "grass-fed and grass-finished" doesn't
+// meaningfully apply, so the model correctly dropped it — but with organic
+// never offered at all, the only fallback left was "pasture-raised" alone.
+// "Certified organic" now leads the list, matching conventional_dairy/
+// conventional_eggs/conventional_crops's established pattern.
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('A12. SYSTEM_PROMPT — new conventional_meat paragraph', () => {
@@ -702,8 +712,17 @@ describe('A12. SYSTEM_PROMPT — new conventional_meat paragraph', () => {
 
   test('uses "grass-fed and grass-finished," not bare "grass-fed," in the shopping guidance', () => {
     const section = meatSection();
-    expect(section).toContain('choose grass-fed and grass-finished or pasture-raised meat from a farm you trust');
+    expect(section).toContain('choose certified organic, grass-fed and grass-finished, or pasture-raised meat from a farm you trust');
     expect(section).not.toMatch(/\bgrass-fed meat\b/);
+  });
+
+  test('includes "certified organic" as a shopping signal, matching every other conventional_* paragraph — the pork rinds fix', () => {
+    // Regression guard for the real live-scan bug (barcode 732153119239):
+    // pork has no meaningful "grass-fed" signal, and organic was never
+    // offered as a fallback, so the only guidance left was "pasture-raised"
+    // alone with zero certification mentioned at all.
+    const section = meatSection();
+    expect(section).toContain('choose certified organic');
   });
 
   test('includes the product-name disambiguation instruction for seafood/gelatin scenarios', () => {
