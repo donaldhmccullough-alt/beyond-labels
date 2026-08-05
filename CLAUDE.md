@@ -6543,9 +6543,71 @@ product used throughout the `meatScenario` follow-up above) and confirmed `"gras
 grass-finished"` still appears correctly for a beef product, now alongside — not replaced by — the new
 organic mention.
 
-**Not yet pushed or deployed** — held for review, per explicit instruction, matching the review-first
-pattern used for every change this entire session. `scan_cache` was not purged; see the `PROMPT_VERSION`
-note above for the exact purge command whenever one is eventually run.
+**Confirmed pushed and deployed to production August 5, 2026** (not just committed): pushed as commit
+`a4c01bb`, Vercel auto-deployed from `origin/mvp-beta`, confirmed via GitHub's commit status API
+(`state: success`, `"Deployment has completed"`) and a direct live-app check (loaded cleanly, zero
+console errors). `scan_cache` was not purged; see the `PROMPT_VERSION` note above for the exact purge
+command whenever one is eventually run.
+
+---
+
+### Session — closed out the uncommitted ScannerScreen.jsx scan-button-width change (August 2026)
+
+Separate from the SYSTEM_PROMPT/`conventional_meat` work above — a genuinely unrelated, orphaned
+change discovered sitting uncommitted in the working tree while investigating what else was pending
+before that work could be pushed cleanly. Investigated read-only first (own session, no code touched):
+full diff reviewed, confirmed complete (no TODOs, no dead code, no half-finished branches), all 20
+tests in `ScannerScreen.test.js` passing as-is, full suite unaffected, zero CLAUDE.md changelog trail
+anywhere for it. File mtimes placed the actual edit at **2026-07-19 ~23:04–23:05** — about 90 minutes
+after `912a062` (22:37), the commit that was the tip of `mvp-beta` at the time — three full weeks
+before this session's SYSTEM_PROMPT work even began (August 5). The most recent *committed* work on
+this file (`dfc1df4`, July 18, "in-flight scan race condition fix") is a real, documented, unrelated
+change — no connection to button width.
+
+**What the change does**: narrows the main "Tap to Scan"/"Stop Scanning" CTA below the viewfinder from
+full-width (`calc(100% - 32px)`) to a fixed 78% width, horizontally centered (`margin: '16px auto 0'`),
+to reduce accidental mis-taps. Also adds `minHeight: 44` — this project's own documented touch-target
+convention — as a safety floor (the button's existing `height: 54` already exceeded it, so this isn't
+a visible size change). `SCAN_BUTTON_WIDTH` is exported as a named constant specifically so the value
+is testable at all, matching the same "extract for testability" pattern used throughout this project
+(no React rendering test infrastructure — `testEnvironment: 'node'`, no `@testing-library/react`).
+
+**Verified via measured DOM values, not a live screenshot — a real environment limitation, not a
+shortcut.** A live visual preview was attempted first: an isolated `git worktree` was created at `HEAD`
+(so the main working tree was never disturbed) to run the pre-change ("before") version on one `next
+dev` server, then the main working tree's uncommitted ("after") version on a second, sequentially (to
+avoid a port conflict) — both at a 375px mobile viewport (this project's own `resize_window` mobile
+preset; CLAUDE.md documents a 430px max-width container, not one exact device size, so 375px was used
+as a concrete, comfortably-within-range test width). Both `computer{action: "screenshot"}` and `zoom`
+failed identically and repeatably (confirmed twice each, with waits in between): *"the Browser pane is
+not displayed, so the page is not compositing frames."* This is a client-side rendering-visibility
+requirement outside tool-call control, not a bug in the app itself — the dev servers ran and served
+correct content in both states throughout, confirmed via `get_page_text`. Rather than approximate or
+fabricate a screenshot, real computed-style/`getBoundingClientRect()` values were pulled directly from
+the live DOM for both states instead:
+
+| | Before (committed) | After (uncommitted) |
+|---|---|---|
+| Button width | 343px | **292.5px** |
+| Left/right margins | 16px / 16px | **41.25px / 41.25px** |
+| `min-height` | 0px | **44px** |
+
+292.5px is exactly 78% of the 375px viewport, confirming `SCAN_BUTTON_WIDTH` applies correctly; the
+symmetric 41.25px margins on both sides confirm genuine centering via `margin: auto`, not a one-sided
+shrink. Both temporary dev servers and the temporary worktree were fully cleaned up afterward (the
+worktree removal hit a transient Windows file-lock on the first attempt, resolved via `git worktree
+prune` + a manual directory removal — no git-tracked state was affected).
+
+**Committed as its own commit, separate from the SYSTEM_PROMPT/`conventional_meat` work**, staged and
+verified by exact file list both before and after (`components/scanner/ScannerScreen.jsx` and
+`__tests__/components/ScannerScreen.test.js` only — confirmed via `git status`/`git show --stat`
+immediately before and after committing, matching the same discipline used for every push this
+session). Full suite re-run post-commit: **2,050 total (2,049 passing, same 1 known pre-existing
+unrelated failure)** — unchanged from before this commit, since this change doesn't add or remove any
+test cases, only stages a pre-existing, already-passing test file.
+
+**No `PROMPT_VERSION` impact** — pure client-side UI styling, no `analyzeIngredients()`
+`flags`/`verdict`/`clearedBy` impact and no explanation-text change.
 
 ---
 
