@@ -34,6 +34,7 @@
 const {
   isNetworkError,
   createProcessBarcodeHandler,
+  SCAN_BUTTON_WIDTH,
 } = require('../../components/scanner/ScannerScreen');
 
 jest.mock('../../lib/userProfile', () => ({
@@ -88,6 +89,28 @@ describe('isNetworkError()', () => {
 
   test('null is NOT a network error (defensive — should not throw)', () => {
     expect(isNetworkError(null)).toBe(false);
+  });
+});
+
+describe('SCAN_BUTTON_WIDTH — scan/stop-scanning CTA narrowed from full-width', () => {
+  // The button was previously full-width (`calc(100% - 32px)`), making it
+  // easy to mis-hit. Narrowed to a fixed percentage, horizontally centered
+  // via `margin: '16px auto 0'` in the real JSX. Exported as a plain constant
+  // specifically so this is testable at all without a rendering harness.
+
+  test('is set to 78%, not full-width', () => {
+    expect(SCAN_BUTTON_WIDTH).toBe('78%');
+  });
+
+  test('is comfortably within the 75-80% target range', () => {
+    const pct = parseFloat(SCAN_BUTTON_WIDTH);
+    expect(pct).toBeGreaterThanOrEqual(75);
+    expect(pct).toBeLessThanOrEqual(80);
+  });
+
+  test('is no longer the old full-width calc() expression', () => {
+    expect(SCAN_BUTTON_WIDTH).not.toBe('calc(100% - 32px)');
+    expect(SCAN_BUTTON_WIDTH).not.toBe('100%');
   });
 });
 

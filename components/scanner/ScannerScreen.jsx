@@ -18,6 +18,14 @@ import * as Sentry from '@sentry/nextjs';
 const OFFLINE_MESSAGE = '📶 No internet connection — check your connection and try again.';
 const GENERIC_ERROR_MESSAGE = 'Something went wrong. Please try again.';
 
+// Exported so the width can be asserted on directly in tests — this project
+// has no React rendering test infrastructure (testEnvironment: 'node', no
+// @testing-library/react), so a plain constant is the only way to make an
+// inline JSX style value testable at all. Narrowed from full-width
+// (calc(100% - 32px)) to reduce accidental mis-taps on the Stop
+// Scanning/Tap to Scan CTA below the viewfinder.
+export const SCAN_BUTTON_WIDTH = '78%';
+
 // fetch() only *rejects* (as opposed to resolving with a non-ok status) when
 // the request never reached a server at all — no connectivity, DNS failure, a
 // dropped connection mid-request. Per the Fetch spec that's always a
@@ -338,7 +346,7 @@ export default function ScannerScreen({ user, userLevel = 2, onScanResult }) {
       </div>
 
       {/* Scan button */}
-      <button onClick={scanning ? stopCamera : startCamera} style={{ margin: '16px 16px 0', width: 'calc(100% - 32px)', height: 54, background: scanning ? 'linear-gradient(135deg, #3A5A40, #4D7B55)' : 'linear-gradient(135deg, #D4872A, #F0A83C)', color: 'white', fontFamily: 'var(--font-inter), system-ui, sans-serif', fontSize: 17, fontWeight: 700, border: 'none', borderRadius: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, transition: 'all 0.15s' }}>
+      <button onClick={scanning ? stopCamera : startCamera} style={{ margin: '16px auto 0', width: SCAN_BUTTON_WIDTH, minHeight: 44, height: 54, background: scanning ? 'linear-gradient(135deg, #3A5A40, #4D7B55)' : 'linear-gradient(135deg, #D4872A, #F0A83C)', color: 'white', fontFamily: 'var(--font-inter), system-ui, sans-serif', fontSize: 17, fontWeight: 700, border: 'none', borderRadius: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, transition: 'all 0.15s' }}>
         {scanning ? 'Stop Scanning' : 'Tap to Scan'}
       </button>
 
