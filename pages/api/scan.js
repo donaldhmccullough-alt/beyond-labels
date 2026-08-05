@@ -289,12 +289,13 @@ function computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags,
         // caution for the same "Joel explains..." phrasing convention).
         const summary = l1IsSeafood
           ? 'Farmed or unlabeled seafood — Joel explains the difference between wild-caught and farmed: sourcing matters as much as ingredients. Look for a wild-caught certification, or seafood from a source you trust.'
-          : 'Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed, pasture-raised, or meat from a farm you trust.';
+          : 'Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed and grass-finished, pasture-raised, or meat from a farm you trust.';
         flags = [{
           category:          'conventional_meat',
           severity:          'caution',
           matchedIngredient: '',
           summary,
+          meatScenario:      l1IsSeafood ? 'seafood' : 'land_animal',
         }, ...flags];
         // A caution flag can upgrade green → yellow, but cannot override red.
         if (verdict === 'green') verdict = 'yellow';
@@ -310,7 +311,7 @@ function computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags,
         category:          'conventional_dairy',
         severity:          'caution',
         matchedIngredient: '',
-        summary:           "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Certified organic or grass-fed dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction.",
+        summary:           "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic or grass-fed and grass-finished dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction.",
       }, ...flags];
       // A caution flag can upgrade green → yellow, but cannot override red.
       if (verdict === 'green') verdict = 'yellow';
@@ -478,6 +479,7 @@ function computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags,
           severity:          'reject',
           matchedIngredient: '',
           summary:           'Farmed or unlabeled seafood — wild-caught certification not found',
+          meatScenario:      'seafood',
         }, ...flags];
       } else if (isGameMeat) {
         // Mirrors Node 6: game meat is wild-harvested by nature — no flag.
@@ -488,6 +490,7 @@ function computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags,
           severity:          'reject',
           matchedIngredient: '',
           summary:           'Conventional meat product without USDA Organic certification',
+          meatScenario:      'land_animal',
         }, ...flags];
       } else if (maskedText && containsMeatDerived(maskedText)) {
         // Mirrors Node 8c: animal-derived gelatin without organic cert.
@@ -496,6 +499,7 @@ function computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags,
           severity:          'reject',
           matchedIngredient: '',
           summary:           'Contains animal-derived gelatin without organic certification.',
+          meatScenario:      'gelatin',
         }, ...flags];
       }
 

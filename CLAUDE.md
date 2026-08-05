@@ -19,8 +19,39 @@ Beyond Labels is a mobile-first food ingredient scanner app. Users scan a produc
 ---
 
 ## Repository & Branches
-- `master` — production baseline
-- `mvp-beta` — active development branch; MVP simplifications applied here
+- `master` — labeled "production baseline" by naming convention, but **this is not
+  currently the live branch** — see the naming-mismatch warning below.
+- `mvp-beta` — active development branch; MVP simplifications applied here. **This
+  is also Vercel's actual configured Production Branch.** Every push to
+  `origin/mvp-beta` triggers an immediate live deployment to
+  `beyond-labels-eight.vercel.app` — the real, user-facing app — regardless of the
+  branch's name or its "active development" label. There is no separate staging/
+  preview branch in front of it for this repo; `mvp-beta` **is** production.
+
+**⚠️ Naming mismatch — read before pushing to `mvp-beta` for any reason, including
+"just to save work" or "just to back it up on origin."** The branch names alone
+suggest `mvp-beta` is a pre-production branch and `master` is what's actually
+live. That is backwards. Confirmed directly
+via the GitHub commit-status API (`GET /repos/.../commits/<sha>/status`) showing a
+`Vercel` context with `state: success, description: "Deployment has completed"`
+immediately after pushes to `origin/mvp-beta`, repeated across many sessions in
+this file's own changelog (search for "Vercel auto-deployed from `origin/mvp-beta`"
+above) — there is no equivalent evidence anywhere of `master` ever being deployed.
+Do not assume "push to origin, not production" is a safe, low-stakes request for
+this branch — on this repo, for `mvp-beta`, those are the same action.
+
+**2026-07-20 incident that prompted this correction**: a request was made to
+"push the `mvp-beta` branch to origin" with explicit instructions not to touch
+`master` and not to deploy to production, on the (reasonable, given this section's
+prior wording) assumption that pushing a non-`master` branch would not affect
+production. The push succeeded exactly as scoped (only `mvp-beta` was touched,
+`master` was never referenced) — but it also triggered a real Vercel production
+deployment of `beyond-labels-eight.vercel.app`, confirmed via the same commit-status
+check described above. No harm resulted (the deployed commits were a bug fix and
+five approved, already-tested ingredient-list additions — see the rules-engine
+changelog entries dated around this correction), but the mismatch between what was
+asked ("not production") and what actually happened ("production, immediately") is
+exactly the kind of surprise this section exists to prevent going forward.
 
 ---
 
@@ -67,9 +98,36 @@ lib/
   rulesEngine.js          — deterministic ingredient analysis engine (core logic)
   rulesEngine.test.js     — Jest tests for rules engine (35 describe blocks; 2050 tests total; block 20 = SYNTHETIC_ADDITIVES bucket-1 expansion (91 tests); block 21 = FD&C "No." normalization (19 tests); block 22 = mechanically separated meat (3 tests); block 23 = interesterified variants, lake forms, dye synonyms, new E-numbers, stearyl emulsifiers, cyclamate (78 tests); block 24 = synonym/E-number expansion: nitrates, BVO, bleaching agents, BHA/BHT names, SLS, E-numbers e320/e321/e924/e950–e955 (50 tests); block 25 = gluten grains expansion: ancient grains, botanical names, asafoetida/hing, smoke flavoring, brown rice syrup (34 tests); block 26 = H2: artifact phrases and red list additions — polysorbates, synthetic phosphates, red 3/#-normalizer (17 tests); block 27 = I: Sina gluten expansion — 65 new GLUTEN_GRAINS entries across corn derivatives, wheat flour varieties, barley/rye/oat forms, processed ingredients (22 tests); block 28 = FORTIFIED_VITAMINS group — synthetic vitamin fortification detection (61 tests); block 29 = NATURAL_COLORANTS group — plant-derived colorant detection (12 tests); block 32 = containsMilkDerived, containsEggDerived, ALWAYS_IGNORE_INGREDIENTS — new helper functions and ignore-list constant (32 tests); block 33 = GLYPHOSATE_HEAVY — high-glyphosate-risk crops: pea protein, oat milk, buckwheat, ascorbic acid, lecithin, potato starch, papaya, glyphosate-free escape hatch for oats/wheat, GLYPHOSATE_HEAVY export (11 tests); block 34 = CONVENTIONAL_CROPS_NO_FLAG — sunflower lecithin range-claim without flag (5 tests); block 35 = REVIEWED_CLEAN_INGREDIENTS — display-only suppression filter, Set export, almond flour/arrowroot suppressed, unknown ingredient still surfaces, engine flags/verdict unaffected (5 tests))
   __tests__/api/scan.test.js — Jest integration tests for /api/scan handler (18 suites A–R; 156 tests total; suite H = L2 decision tree coverage: cert gate, organic path, non-organic path, seafood/meat/dairy logic, isMeatProduct detection, L2 organic requirement, L1 no-op — 16 tests; suite I = inconclusive verdict: all ingredients unrecognized — 3 tests; suite J = L1 explicit overrides — gluten suppression, conventional meat caution injection (8 tests); suite K = L2 flags array cleanup — gluten suppression and organic conventional_crops strip (5 tests); suite L = universal L2 decision tree — 17 integration scenarios covering all 14 nodes plus 11b (L5 updated: eggs now produce conventional_eggs not conventional_meat; L16/L17 added for the glyphosate_heavy-reject-forces-red fix and its glyphosate-free-downgrade regression guard); suite M = PROMPT_VERSION contract — 1 test; suite N = wild-caught detection — product name signals, farmed exclusions, seed oil short-circuit (4 tests); suite O = cert_unconfirmed — all-organic ingredient prefix detection, trivial ingredient exclusion, non-organic partial mix, usda-organic cert bypass (4 tests); suite P = conventional_eggs — non-meat product with eggs, organic prefix clearance, meat+eggs both flags, dairy-only no-interference (4 tests); suite Q = detectWildCaught standalone wild signal — product name only, ingredients signal, non-seafood unaffected, astaxanthin farmed exclusion (4 tests); suite R = pure-water GREEN path — artesian water + minerals, sparkling water, water+natural-flavor regression, coconut water non-match (4 tests))
-  ── Combined test total: 1,222 tests (1,034 rulesEngine + 177 scan + 11 explain) — corrected July 2026; the
-     previously documented 2,731 figure was inflated by summing jest runs across stale
-     .claude/worktrees/ copies of the test files alongside the real root-only source of truth ──
+  ── Combined test total: 2,032 tests (2,031 passing, 1 known pre-existing unrelated
+     failure — the rulesEngine.test.js cross-list contradiction test tracked across many
+     sessions below) across 25 test suite files, confirmed August 2026 by running
+     `npx jest --testPathIgnorePatterns=".claude/worktrees"`. Per-file breakdown for the
+     three files this line has historically tracked: rulesEngine.test.js = 1,252 (1,251
+     passing), scan.test.js = 291, explain.test.js = 52 — the remaining ~437 tests are
+     spread across the many other test files added since (verdictEngine.test.js,
+     VerdictScreen.test.js, ConcernCard.test.js, ScannerScreen.test.js, the swap-candidates/
+     account-deletion/auth test suites, and others), which this 3-file breakdown format was
+     never extended to cover.
+
+     ⚠️ THIS LINE DRIFTS — confirmed stale as of this correction (it had said 1,222 for
+     every session since "corrected July 2026," while the real count climbed past 2,000).
+     Investigated per explicit request: every session since that correction has faithfully
+     logged its OWN before/after delta inside its OWN changelog entry further down this
+     file — that discipline never lapsed, and those numbers check out against each other
+     session-to-session. What never happened is any session going back to update THIS one
+     aggregate summary line, which lives outside the changelog in the static file-structure
+     listing above. This is a structural gap, not a recurring behavioral one: nothing in the
+     established per-session habit says "also reconcile the top-of-file total" — only "log
+     your own session's delta" — so there was no step whose omission this line's staleness
+     would have flagged. Conclusion: not a one-time miss and not a sign the update-CLAUDE.md
+     habit itself is failing — it's an index entry with no owner. Treat this number as
+     advisory, not authoritative, and re-run the command above before relying on it; if it
+     drifts again, the fix is the same correction applied here, not a process overhaul.
+
+     Prior (now-stale) figure, preserved for context: "1,222 tests (1,034 rulesEngine +
+     177 scan + 11 explain) — corrected July 2026; the previously documented 2,731 figure
+     was inflated by summing jest runs across stale .claude/worktrees/ copies of the test
+     files alongside the real root-only source of truth." ──
   onboardingData.js       — QUESTIONS array (13 Qs), STAGES array (5 stages), getStageFromScore()
   userProfile.js          — localStorage profile read/write/clear helpers
   userLevel.js            — getUserLevel(), setUserLevel(), hasUserLevel() — localStorage bl_user_level
@@ -746,11 +804,26 @@ To invalidate the cache after a prompt change:
 2. Run the SQL from `getCacheInvalidationSQL(newVersion)` in `lib/cacheUtils.js` against the Supabase DB
 3. Deploy — new scans rebuild the cache at the new version
 
-**Current PROMPT_VERSION is 44** (bumped from 43 — covers the three Joel-voice certification-framing rewrites from the "Joel-voice certification-framing audit" entry below: `conventional_eggs`, `conventional_dairy` (including its L1 Override 3 injected-flag summary, updated identically in both `pages/api/scan.js` and `lib/verdictEngine.js`), and `glyphosate_heavy` (including the newly-discovered `lib/rulesEngine.js` per-trigger fallback summary — the fourth surface documented in that same audit entry). This bump is different in kind from every prior bump above — none of these four changed `flags`/`verdict`/`clearedBy` computation, only the *explanation text* a user sees (the Claude-facing `SYSTEM_PROMPT`/`buildUserMessage()` instructions, and the two static/template fallback summary strings). It still gets a bump because this project's own established precedent — confirmed directly via git history in the audit entry below (`db6b419`, `8f05c05`, `c5e1d8d`, `2ccd6cd`, and others) — is that every `SYSTEM_PROMPT`/`buildUserMessage()` wording change has bumped `PROMPT_VERSION` with zero exceptions, and the `lib/rulesEngine.js` fallback summary is itself a real, stored-in-`scan_cache`-via-`flags[].summary` piece of user-facing text that would otherwise stay stale indefinitely on a cache hit.
+**Current PROMPT_VERSION is 45** (bumped from 44 — an accuracy/tone feedback pass from Dr. Sina McCullough after using the app, seven originally-requested fixes landing as eight edits once a pre-flight audit found the prompt's actual content didn't match what several of the fixes assumed):
+1. **New `conventional_crops` paragraph.** SYSTEM_PROMPT had no dedicated paragraph for this category before this session (it relied only on the general Joel-voice guidance) — so "organic ≠ regenerative" (certification governs inputs like synthetic pesticides/GMO seed, not tillage/no-till/cover-cropping practices), the "no fillers or synthetic additives" alternative standard (not the non-existent "minimal fillers" the fix was originally framed against), and wheat's GMO exclusion (below) all had to be authored fresh, not corrected.
+2. **Hedging sweep.** Origin/practice claims ("conventional dairy means...", "hens fed GMO grain...") reworded from settled fact to hedged language ("typically means", "commonly fed") across the three paragraphs that actually had certification-adjacent framing to sweep — `glyphosate_heavy`, `conventional_dairy`, `conventional_eggs` — plus the new `conventional_crops` paragraph. `bioengineering` and `conventional_meat` have no dedicated SYSTEM_PROMPT paragraph and were left alone per explicit scope, relying on the general shared-voice hedging instruction added to the "Together your voice is:" section. Each swept paragraph also gained Joel's actual verbal signature — "When shopping in the grocery store, choose..." — replacing the more clinical "reasonable starting point rather than proof" framing as its alternative-suggestion language.
+3. **Grass-fed precision, all 7 real locations** (found via grep, not assumed from the original fix request, which only named SYSTEM_PROMPT): bare `"grass-fed"` (a label that permits minimal actual pasture time) → `"grass-fed and grass-finished"` in the SYSTEM_PROMPT `conventional_dairy` paragraph, the `buildUserMessage()` `[Dairy note]`, the static injected `conventional_meat`/`conventional_dairy` flag summaries in `pages/api/scan.js` (lines 292/313) and their byte-parity mirrors in `lib/verdictEngine.js` (lines 172/182, enforced by Suite V2), and `components/verdict/VerdictScreen.jsx`'s L2 no-ingredients/meat unverified-copy message.
+4. **`"synthetic hormones"` removed from every `conventional_dairy` reference** (SYSTEM_PROMPT paragraph, `buildUserMessage()` note, both static flag summaries above) — rBST/rBGH use in dairy cows has declined significantly and is not standard practice; growth hormones are primarily a beef-cattle practice. `conventional_meat` was confirmed via grep to have zero hormone language anywhere in the codebase (no dedicated SYSTEM_PROMPT paragraph exists for it at all), so per explicit instruction none was added.
+5. **Wheat's GMO exclusion**, folded into the new `conventional_crops` paragraph — no commercially grown GMO wheat exists in the U.S. (unlike corn, soy, and sugar beets); wheat may be described as conventionally grown/sprayed (including glyphosate pre-harvest desiccation) but never as GMO, even hedged. `glyphosate_heavy` was confirmed to already correctly describe wheat as sprayed/desiccated only — no regression introduced by its hedging rework.
+6. **New `trans_fats` paragraph** for the qualified branch (`"partially hydrogenated"`/`"margarine"`/`"shortening"` — a real trans fat source) reframing the FDA's 2015 GRAS revocation and 2018 outright ban as regulators acting decisively on strong evidence, not as more of the same lax-GRAS-oversight problem the general shared-voice skepticism line (line 65) implied by default with nothing category-specific to override it. Does not touch the separate bare-`"hydrogenated"` branch (see the prior-pending note below).
+7. **The adjacent `lib/rulesEngine.js` per-trigger fallback summary** for the same qualified trans_fats branch (shown by `ConcernCard.getFallbackSummary()` only when the AI explanation is missing) reworded to match — kept short, since it's a fallback string, not the full narrative explanation.
 
-**⚠️ `scan_cache` was deliberately NOT purged for this bump either — same deliberate choice as the 42→43 bump, not an oversight.** The usual step 2 (`DELETE FROM scan_cache WHERE prompt_version < 44`) was explicitly skipped on instruction: every existing row (whatever `prompt_version` it's currently sitting at — see the still-outstanding `< 43`/`< 42` purges below) remains completely untouched, kept for ongoing manual review, not discarded. Existing cached rows continue serving their pre-rework explanation text — including live examples of the exact "the clearest signal"/"the meaningful alternative" phrasing quoted throughout the audit entry below — until each barcode is individually rescanned fresh. Only **new** scans going forward pick up `prompt_version: 44` and the reworded text; a cache **hit** on an existing row is unaffected until that specific `(barcode, user_level)` pair naturally falls out of cache or is manually rescanned. This is now the **third** consecutive bump (`42`→`43`→`44`) shipped without a purge — whenever a purge is eventually run, `DELETE FROM scan_cache WHERE prompt_version < 44` alone will correctly clear all three generations of stale rows in one pass, since it's a `<` comparison, not a version-by-version purge. Not done as part of this session.
+**This bump also folds in a previously-pending, already-implemented-but-never-versioned change**: the bare-`"hydrogenated"` FDA-ban-complete hedge (a *different* trans_fats branch than fixes 6/7 above) was fully coded and its wording approved in an earlier session, but `PROMPT_VERSION` was never bumped for it at the time — both land together in this single 44→45 bump.
 
-Earlier history: **`PROMPT_VERSION 43`** covered three real `flags`/`verdict`-changing fixes shipped in the same session: the allergen-advisory `stripAllergenAdvisory()` facility-disclosure fix, the `FORTIFIED_VITAMINS` `"calcium phosphate"` substring-collision fix, and the `MEAT_CATEGORIES` `en:eggs`/`en:egg-products`/`en:poultry-eggs` removal — see their respective changelog entries below for each. The `en:milk-substitutes` `CATEGORY_TAG_MAP` addition and the gluten_grains L2-suppression-gap fix shipped in the same overall working session but were **not** part of that bump — both were separately confirmed as pure category-mapping / suppression-only changes with no `flags`/`verdict`/`clearedBy` impact, per this project's established precedent (see their own changelog entries). `scan_cache` was likewise deliberately not purged at the time — all 332 rows were kept at `prompt_version: 42` for manual review (e.g. barcode 810001560522's `fortified_vitamins` flag, the four pure-egg-carton `conventional_meat` duplicates), a departure from every bump before it. `PROMPT_VERSION 42` was the L2 tree flag-injection unification — `conventional_meat`/`conventional_dairy`/organic sub-tree flags are now injected unconditionally instead of only when the tree happens to reach their node, plus `clearedBy: 'organic'` now persists alongside a red verdict from an unrelated instant-red flag — see the "Session — L2 tree flag-injection unification" changelog entry below. `scan_cache` was never invalidated for that bump either — the `< 42` purge was still outstanding when the `< 43` decision above was made, so both purges are now bundled into whatever future purge eventually runs. Per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until verified live. `PROMPT_VERSION 42` also included the `maskIgnoredIngredients()` word-boundary fix (see "Session — maskIgnoredIngredients() word-boundary fix" below) — folded in without its own bump since zero `scan_cache` rows existed at `prompt_version = 42` at the time it shipped, confirmed by direct query before that fix was written.
+Every drafted paragraph and every before/after diff was reviewed and confirmed in chat before any file was touched, mirroring the collaborative-wording process already established for the Joel-voice audit below. New test coverage: 17 new presence-check tests in `__tests__/api/explain.test.js` (blocks A7–A11, plus one new test added to A4) asserting the new/changed `SYSTEM_PROMPT`/`buildUserMessage()` content directly against the exported constants — `lib/rulesEngine.test.js`'s own test count is byte-unchanged (1,252 total, 1,251 passing) since only two existing test assertions were reworded (describe block 80's qualified-branch fallback text), no new logic branches were added anywhere. Full suite: **2,032 total (2,031 passing, same 1 known pre-existing failure** — the cross-list contradiction test from the collision-word audit series, unrelated, unchanged).
+
+**⚠️ `scan_cache` was NOT purged for this bump — consistent with the deliberate deferral pattern already established across the 42→43→44 bumps below, now extended to a fourth consecutive un-purged bump.** No purge instruction was given this session; existing rows keep serving pre-rework wording (bare `"grass-fed"`, `"synthetic hormones"`, the old "reasonable starting point" framing, the pre-GRAS-reversal trans_fats framing, etc.) until individually rescanned or a future purge runs `DELETE FROM scan_cache WHERE prompt_version < 45`, which will clear all four generations in one pass.
+
+**Golden master snapshot regenerated for this bump** (see "Golden Master Snapshot" section below) — 8 entries in `scripts/goldenMaster/snapshot-baseline.json` were frozen copies of the exact `conventional_meat`/`conventional_dairy` static flag summaries changed by fix 3/4 above (and were already stale before this session, predating even the prior live wording); re-ran `captureSnapshot.js` after all other edits landed so the snapshot reflects current legacy behavior again. Verified via grep that zero occurrences of the old wording remain in the regenerated file.
+
+Earlier history: **`PROMPT_VERSION 44`** covered the three Joel-voice certification-framing rewrites from the "Joel-voice certification-framing audit" entry below: `conventional_eggs`, `conventional_dairy` (including its L1 Override 3 injected-flag summary, updated identically in both `pages/api/scan.js` and `lib/verdictEngine.js`), and `glyphosate_heavy` (including the newly-discovered `lib/rulesEngine.js` per-trigger fallback summary — the fourth surface documented in that same audit entry). This bump was different in kind from every prior bump before it — none of those four changed `flags`/`verdict`/`clearedBy` computation, only the *explanation text* a user sees (the Claude-facing `SYSTEM_PROMPT`/`buildUserMessage()` instructions, and the two static/template fallback summary strings). It still got a bump because this project's own established precedent — confirmed directly via git history in the audit entry below (`db6b419`, `8f05c05`, `c5e1d8d`, `2ccd6cd`, and others) — is that every `SYSTEM_PROMPT`/`buildUserMessage()` wording change has bumped `PROMPT_VERSION` with zero exceptions, and the `lib/rulesEngine.js` fallback summary is itself a real, stored-in-`scan_cache`-via-`flags[].summary` piece of user-facing text that would otherwise stay stale indefinitely on a cache hit. `scan_cache` was deliberately NOT purged for this bump either — same deliberate choice as the 42→43 bump, not an oversight: the usual `DELETE FROM scan_cache WHERE prompt_version < 44` was explicitly skipped on instruction, every existing row kept for ongoing manual review, not discarded. This was the **third** consecutive bump (`42`→`43`→`44`) shipped without a purge.
+
+**`PROMPT_VERSION 43`** covered three real `flags`/`verdict`-changing fixes shipped in the same session: the allergen-advisory `stripAllergenAdvisory()` facility-disclosure fix, the `FORTIFIED_VITAMINS` `"calcium phosphate"` substring-collision fix, and the `MEAT_CATEGORIES` `en:eggs`/`en:egg-products`/`en:poultry-eggs` removal — see their respective changelog entries below for each. The `en:milk-substitutes` `CATEGORY_TAG_MAP` addition and the gluten_grains L2-suppression-gap fix shipped in the same overall working session but were **not** part of that bump — both were separately confirmed as pure category-mapping / suppression-only changes with no `flags`/`verdict`/`clearedBy` impact, per this project's established precedent (see their own changelog entries). `scan_cache` was likewise deliberately not purged at the time — all 332 rows were kept at `prompt_version: 42` for manual review (e.g. barcode 810001560522's `fortified_vitamins` flag, the four pure-egg-carton `conventional_meat` duplicates), a departure from every bump before it. `PROMPT_VERSION 42` was the L2 tree flag-injection unification — `conventional_meat`/`conventional_dairy`/organic sub-tree flags are now injected unconditionally instead of only when the tree happens to reach their node, plus `clearedBy: 'organic'` now persists alongside a red verdict from an unrelated instant-red flag — see the "Session — L2 tree flag-injection unification" changelog entry below. `scan_cache` was never invalidated for that bump either — the `< 42` purge was still outstanding when the `< 43` decision above was made, so both purges are now bundled into whatever future purge eventually runs. Per the deploy-gap incident documented below, treat "committed" and "confirmed deployed" as separate claims until verified live. `PROMPT_VERSION 42` also included the `maskIgnoredIngredients()` word-boundary fix (see "Session — maskIgnoredIngredients() word-boundary fix" below) — folded in without its own bump since zero `scan_cache` rows existed at `prompt_version = 42` at the time it shipped, confirmed by direct query before that fix was written.
 
 **⚠️ Deploy-without-purge in progress (July 2026) — deliberate, temporary, not an oversight.** The commits carrying the PROMPT_VERSION 40→41 and 41→42 bumps (`61d258e` through `a5998a2`) had themselves been sitting local-only for an unknown stretch — `origin/mvp-beta` was still on the PROMPT_VERSION **40** code the entire time, meaning the actually-deployed app has been stamping every fresh scan with `prompt_version: 40`, not 41 or 42, until this push. Those 9 commits were pushed to `origin/mvp-beta` via a fast-forward (`git push origin a5998a2:mvp-beta`) specifically **without** running either purge — no `DELETE FROM scan_cache WHERE prompt_version < 41` and no `< 42`. This was an explicit choice, not a skipped step: the purge is being **intentionally deferred** so that today's `scan_cache` rows (all currently at `prompt_version: 40`, since that's what the live app had been running) can be reviewed first, before they're irreversibly deleted.
 
@@ -6147,6 +6220,230 @@ already-shipped 43→44 bump (that commit is already made). Per this project's o
 (checked and cited above), any `SYSTEM_PROMPT`/`buildUserMessage()` wording change bumps
 `PROMPT_VERSION` — both fixes are now fully specified and tested, so the next explicit instruction to
 bump can proceed without any further wording review blocking it.
+
+---
+
+### Session — accuracy/tone feedback pass from Dr. Sina McCullough: conventional_crops paragraph, hedging sweep, grass-fed/hormone corrections, trans_fats GRAS-reversal reframe (August 2026, PROMPT_VERSION 44 → 45)
+
+Seven fixes requested from real accuracy/tone feedback after using the app, scoped down through a
+pre-flight audit (grepping every phrase referenced in the request against the actual live
+`SYSTEM_PROMPT` and related surfaces) before any file was touched — several fixes assumed text
+that didn't exist and had to be re-scoped in collaboration before drafting began. Full before/after
+wording for every change was reviewed and confirmed in chat first, mirroring the process already
+established for the "Joel-voice certification-framing audit" above.
+
+**Audit findings, confirmed before drafting anything:**
+- `conventional_crops` had **no dedicated SYSTEM_PROMPT paragraph at all** — only `glyphosate_heavy`,
+  `conventional_dairy`, `conventional_eggs`, and `olive_oil_adulteration` did. The phrase the original
+  feedback quoted ("feeds the soil instead of bypassing it") does not exist anywhere in the codebase —
+  confirmed via a whole-repo case-insensitive grep. Same for "minimal fillers" (zero matches anywhere)
+  and any wheat+GMO conflation (none found — `glyphosate_heavy` already correctly described wheat as
+  sprayed/desiccated only).
+- Bare `"grass-fed"` exists in **7 real locations across 4 files**, not just SYSTEM_PROMPT: the
+  SYSTEM_PROMPT `conventional_dairy` paragraph, the `buildUserMessage()` `[Dairy note]`, two static
+  injected flag summaries in `pages/api/scan.js` (L1 Override 2's `conventional_meat` caution, L1
+  Override 3's `conventional_dairy` caution), their byte-parity mirrors in `lib/verdictEngine.js`
+  (enforced by the existing Suite V2 parity test), and `components/verdict/VerdictScreen.jsx`'s L2
+  no-ingredients/meat unverified-copy message. Confirmed via a grep of `lib/scanHelpers.js`'s
+  `OFF_LABEL_MAP` that `"grass-fed"` is **never checked as a certification label anywhere in verdict
+  logic** — it is purely advisory text inside already-decided flags, never a condition that clears a
+  flag or upgrades a verdict, so no rules-engine decision was needed, only a wording sweep.
+- `"synthetic hormones"` for `conventional_dairy` was duplicated in the same 3 non-SYSTEM_PROMPT
+  surfaces as grass-fed (buildUserMessage note + both static flag summaries), not just the
+  SYSTEM_PROMPT paragraph. `conventional_meat` was confirmed via grep to have **zero hormone language
+  anywhere** (it has no dedicated paragraph at all) — per instruction, none was added.
+- The "GRAS never required long-term independent research" framing the feedback described for
+  `trans_fats` does not exist as literal text anywhere — it is emergent: `trans_fats` had no dedicated
+  paragraph either, so Claude fell back to the general shared-voice line ("Skeptical of ... GRAS
+  designations ... without independent long-term research," line 65) applying by default with nothing
+  category-specific to override it. A related, previously-undiscovered adjacent surface was found
+  during this audit: `lib/rulesEngine.js`'s own static fallback `flag.summary` for the same qualified
+  trans_fats trigger (shown by `ConcernCard.getFallbackSummary()` when the AI explanation is missing) —
+  reworded in step with the new paragraph, per confirmation.
+
+**Seven fixes, landing as eight edits:**
+
+1. **New `conventional_crops` paragraph** (SYSTEM_PROMPT, placed first among the per-category
+   paragraphs, since `conventional_crops` leads the Joel-ownership list at line 43) — authored fresh,
+   not corrected, since none existed. Covers organic-accuracy (inputs only — no synthetic
+   pesticides/GMO seed — not proof of regenerative farming, no-till, or cover cropping), the "no
+   fillers or synthetic additives" alternative standard, and wheat's GMO exclusion (no commercially
+   grown GMO wheat exists in the U.S., unlike corn/soy/sugar beets — described only as conventionally
+   grown/sprayed, never GMO, even hedged).
+2. **Hedging sweep + shopping-phrase swap** — `glyphosate_heavy`, `conventional_dairy`,
+   `conventional_eggs`, and the new `conventional_crops` paragraph reworded from settled-fact framing
+   ("conventional dairy means...") to hedged language ("typically means...", "commonly fed..."), and
+   their "reasonable starting point rather than proof" alternative-suggestion framing replaced with
+   Joel's actual verbal signature — "When shopping in the grocery store, choose..." — as the primary
+   framing for what to look for instead. A new general instruction was also added to the shared
+   "Together your voice is:" section directing this hedging discipline for any future category.
+   `bioengineering` and `conventional_meat` were explicitly left un-swept (no dedicated paragraphs
+   exist for either, and authoring new ones was out of scope for this round) — they rely on the new
+   general instruction alone.
+3. **Grass-fed precision, all 7 locations** — bare `"grass-fed"` → `"grass-fed and grass-finished"`
+   (per direct instruction, the longer form over `"100% grass-fed"`) everywhere it appeared as a
+   qualifying signal, across SYSTEM_PROMPT, `buildUserMessage()`, `pages/api/scan.js`,
+   `lib/verdictEngine.js`, and `VerdictScreen.jsx`.
+4. **Hormone correction** — `"synthetic hormones"` removed from every `conventional_dairy` surface;
+   antibiotics language kept (accurate). The static flag-summary strings' 3-item comma list ("GMO
+   feed, synthetic hormones, antibiotics") became a 2-item list joined with "and" ("GMO feed and
+   antibiotics") rather than a dangling 2-item comma list, for grammatical smoothness — confirmed with
+   the requester before implementing.
+5. **Wheat's GMO exclusion** — folded into the new `conventional_crops` paragraph (fix 1);
+   `glyphosate_heavy` re-confirmed to already correctly avoid any wheat+GMO conflation, no regression.
+6. **New `trans_fats` paragraph** for the qualified branch (`"partially hydrogenated"`/`"margarine"`/
+   `"shortening"`) — frames the FDA's 2015 GRAS revocation and 2018 outright ban of partially
+   hydrogenated oils as regulators acting decisively on strong evidence, explicitly forbidding the
+   "more of the same lax oversight" framing the general GRAS-skepticism line produces by default.
+   Scoped narrowly to the qualified triggers — the separate bare-`"hydrogenated"` `buildUserMessage()`
+   note (already correct, approved in a prior session) was left untouched.
+7. **`lib/rulesEngine.js` fallback reword** — the qualified-branch trans_fats fallback `flag.summary`
+   ("...a trans fat or hydrogenated oil directly linked to cardiovascular disease and systemic
+   inflammation") replaced with a short version matching the new framing: "...the primary source of
+   artificial trans fats, though the FDA revoked its GRAS status in 2015 and banned it outright by
+   2018, so this likely reflects an outdated formulation or import rather than a current gap in
+   oversight." Bare-`"hydrogenated"`'s own fallback (already correct, approved in a prior session) was
+   left untouched.
+
+**This bump also folds in a previously-pending, already-implemented-but-never-versioned change**: the
+bare-`"hydrogenated"` FDA-ban-complete hedge — coded and its wording approved in an earlier session
+(commits `77a055f`/`3c8cf28`), but `PROMPT_VERSION` was never bumped for it — lands together with this
+session's work in the single 44→45 bump.
+
+**A real regression was caught mid-session, before any commit**: bumping `PROMPT_VERSION` broke
+`__tests__/pages/admin/swap-candidates.test.js` (`A10: defaults currentPromptVersion to the real
+PROMPT_VERSION constant when omitted` — expected `"confirmed"`, got `"stale_prompt_version"`). That
+file has a locally-defined `const CURRENT_PROMPT_VERSION = 44;` (line 50) that the initial audit's
+grep for `PROMPT_VERSION).toBe(` missed entirely, since this file references the constant differently
+(as fixture data, not a direct assertion pattern). Updated to `45`; full suite re-confirmed green
+afterward. Worth remembering for the next bump: grep for the bare number too (`= 44`, `: 44`), not
+just the one known assertion pattern.
+
+**Test count, reconciled precisely.** Baseline was independently verified before any edit (the "709"
+figure originally assumed for `rulesEngine.test.js` was stale — see the CLAUDE.md drift note added to
+the top-of-file test-count summary in this same session): actual baseline was **1,252 total / 1,251
+passing** for `rulesEngine.test.js` alone, **2,015 total / 2,014 passing** for the full suite. This
+session added **17 new presence-check tests** to `__tests__/api/explain.test.js` (blocks A7–A11
+asserting the new/changed `SYSTEM_PROMPT` content directly, plus one new test added to A4 for the
+dairy note's hormone/grass-fed fix) and **reworded 2 existing test assertions** in `rulesEngine.test.js`
+describe block 80 (no new/removed test cases — `rulesEngine.test.js`'s own count is confirmed
+byte-unchanged at 1,252/1,251) and **1 stale line 3566 constant** in `scan.test.js`, plus updated
+`verdictEngine.test.js`/`VerdictScreen.test.js`'s hardcoded copy strings and the two `PROMPT_VERSION`
+assertions (`scan.test.js:2071` and the swap-candidates regression above). Final: **2,032 total, 2,031
+passing, same 1 known pre-existing unrelated failure** (the cross-list contradiction test from the
+collision-word audit series) — 2,015 + 17 = 2,032, confirmed exact.
+
+**Golden master snapshot regenerated** (`npx jest --testMatch "**/scripts/goldenMaster/captureSnapshot.js"
+--runInBand`, run after every other edit landed, per instruction) — 8 frozen entries in
+`scripts/goldenMaster/snapshot-baseline.json` carried the exact `conventional_meat`/`conventional_dairy`
+static strings changed by fixes 3/4 (and were already stale before this session — the frozen dairy text
+predated even the prior live wording from the Joel-voice audit). Confirmed via grep that zero
+old-wording occurrences remain in the regenerated file.
+
+**`scan_cache` was NOT purged** — no purge instruction was given this session, consistent with the
+deliberate deferral already established across the 42→43→44 bumps (see "Scan Cache Pattern" above).
+This is now a fourth consecutive un-purged bump; `DELETE FROM scan_cache WHERE prompt_version < 45`
+will clear all four generations in one pass whenever a purge eventually runs.
+
+**Not yet pushed or deployed** — per this project's own "committed ≠ deployed" discipline (see the
+deploy-gap incident elsewhere in this file), this entry documents work completed and tested locally
+only; push/deploy is a separate, explicit action not requested as part of this session.
+
+---
+
+### Session — follow-up: new conventional_meat paragraph + meatScenario disambiguation field (August 2026, same overall session as PROMPT_VERSION 45)
+
+Found during this session's own post-implementation testing — **not** part of Dr. Sina's original
+feedback list. A local, in-session generation exercise (no `ANTHROPIC_API_KEY` configured in this
+environment, so no real Anthropic API calls or charges occurred at any point in this session)
+confirmed `conventional_meat` had no dedicated SYSTEM_PROMPT paragraph, so a real generated
+explanation defaulted to bare `"grass-fed"` with zero steering — the `"grass-fed and grass-finished"`
+fix only ever lived in the rarely-shown static fallback summary (`pages/api/scan.js:292` /
+`lib/verdictEngine.js:172`, only rendered by `ConcernCard.getFallbackSummary()` when the AI
+explanation is missing).
+
+**New `conventional_meat` SYSTEM_PROMPT paragraph** (placed after `conventional_crops`, before
+`glyphosate_heavy`):
+> For conventional_meat: Joel explains what "conventional" means for land-animal meat — animals
+> commonly raised in confinement or feedlot systems, fed conventional GMO grain, treated with
+> antibiotics as routine practice, and — unlike dairy cattle — given hormone implants, which remain
+> standard practice for conventional beef cattle specifically. If the product name doesn't clearly
+> point to land-animal meat (seafood, or a non-meat product like candy or marshmallows where this
+> flag most likely reflects gelatin), skip the feedlot/hormone specifics and focus on sourcing more
+> generally. When shopping in the grocery store, his guidance is to choose grass-fed and
+> grass-finished or pasture-raised meat from a farm you trust — the label is a starting point, not
+> proof, since not every farm behind those words operates the same way. Tone: matter-of-fact,
+> practical. 2-3 sentences.
+
+Hormones are stated plainly (not hedged like the rest of the paragraph) per direct instruction — the
+correction from the earlier PROMPT_VERSION 44→45 session ("hormones are a beef cattle issue, not a
+dairy one") belongs specifically here, and USDA data puts hormone-implant use in conventional beef
+cattle at a genuine majority, closer to settled fact than the other, genuinely per-product-uncertain
+claims in this paragraph.
+
+**A real scoping problem was found and fixed before drafting, not after.** `conventional_meat` is not
+only land-animal meat — the same category also fires for **farmed/unlabeled seafood** (`scan.js` L1
+Override 2's seafood branch and L2 Node 5b) and for **animal-derived gelatin in non-meat products**
+(L2 Node 8c only — e.g. marshmallows, gummies). Every injection site left `matchedIngredient` empty,
+so `buildUserMessage()` sent Claude an identical `conventional_meat (reject): found ""` line
+regardless of which of the three real scenarios it was — meaning a confidently-worded
+feedlot/hormone paragraph would have been factually wrong for a farmed-salmon or gelatin-candy
+product hitting the same category. Wild-caught seafood and game meat were separately confirmed
+(via direct grep of `scan.js`) to never inject `conventional_meat` at all — true no-op branches,
+nothing to scope around.
+
+**Two-layer fix, per direct approval — the paragraph alone wasn't judged sufficient:**
+1. The paragraph itself instructs Claude to check the product name and skip feedlot/hormone specifics
+   when it doesn't clearly indicate land-animal meat (the only signal available if this were the only
+   layer).
+2. **`meatScenario: 'land_animal' | 'seafood' | 'gelatin'`** — a new, purely additive field set at all
+   5 real injection sites (2 in `scan.js`'s L1 Override 2 — the seafood/land-animal branches of one
+   `flags = [{...}]` literal — and 3 in L2 Phase A: Node 5b/seafood, Node 8/land-animal, Node
+   8c/gelatin), mirrored identically in `lib/verdictEngine.js` for byte-parity. `buildUserMessage()`
+   gained a new `conventional_meat` branch reading `catFlags[0]?.meatScenario` and injecting one of
+   three explicit `[Meat note: ...]` instructions — or, if the field is absent (any future/legacy
+   caller not yet updated), a defensive fallback reinforcing the paragraph's own product-name
+   reasoning rather than assuming a scenario. This gives Claude the real code-level signal the
+   injection site already has, instead of relying on inference alone.
+
+**Risk assessment, verified directly before implementing, not assumed:** grepped every test in
+`scan.test.js` touching `conventional_meat` flags (~20 tests) — all assert individual properties
+(`.category`/`.severity`/`.summary`/`.matchedIngredient`) via `.find()`/`.some()`, never a whole-object
+`toEqual()`; confirmed zero `toEqual()` deep-equality checks anywhere in the suite reference a
+`conventional_meat` flag object. `flags` is a single `jsonb` Supabase column with no schema
+constraint on internal shape. `ConcernCard.jsx` only reads named properties, never iterates all keys.
+A new field nothing existing reads is genuinely inert outside the one new consumer added for it —
+confirmed empirically (existing tests all still pass unchanged), not just reasoned about in the
+abstract.
+
+**Tests added:**
+- `__tests__/api/scan.test.js`, new Suite Z (6 tests) — `meatScenario` set correctly at each of the 5
+  real injection sites (L1 land-animal, L1 seafood, L2 land-animal, L2 seafood, L2 gelatin) plus a
+  regression guard confirming wild-caught seafood/game meat still never inject `conventional_meat` at
+  all.
+- `__tests__/api/explain.test.js`, new blocks A12 (5 tests, the SYSTEM_PROMPT paragraph itself —
+  hormone/beef-cattle specificity, confinement/antibiotics hedging, `"grass-fed and grass-finished"`
+  not bare `"grass-fed"`, the product-name disambiguation instruction, the standard starting-point
+  caveat) and A13 (5 tests, the `buildUserMessage()` note — all three real scenario branches plus the
+  no-`meatScenario`-set fallback and a regression guard that the note isn't injected for unrelated
+  categories).
+
+Full suite: **2,049 total (2,048 passing, same 1 known pre-existing unrelated failure)**, up from
+2,033 — reconciled exactly (6 + 10 = 16 new tests). Golden master snapshot regenerated a second time
+this session (`npx jest --testMatch "**/scripts/goldenMaster/captureSnapshot.js" --runInBand`) —
+confirmed via grep that all 8 previously-affected `conventional_meat` entries now carry the new
+`meatScenario` field.
+
+**Verification, in-session generation (no real API calls, same method as every other generation this
+session):** regenerated the Beef Bologna example (Fix B's land-animal test product) and confirmed the
+generated `conventional_meat` explanation now genuinely says "grass-fed and grass-finished," not bare
+"grass-fed" — the gap this whole follow-up exists to close. Generated one new seafood-scenario example
+(Farm-Raised Atlantic Salmon, L2) and one new gelatin-scenario example (Marshmallows, L2) — both
+confirmed to correctly avoid feedlot/hormone language entirely and redirect to
+wild-caught-vs-farmed and gelatin-sourcing framing respectively, matching what the new `[Meat note:
+...]` instructs.
+
+**No deploy, no push** — local verification only, per explicit instruction throughout.
 
 ---
 

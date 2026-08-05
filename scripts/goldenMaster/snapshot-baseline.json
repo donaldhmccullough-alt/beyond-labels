@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-11T12:00:42.715Z",
+  "generatedAt": "2026-08-03T01:26:30.419Z",
   "totalCases": 135,
   "results": [
     {
@@ -19,7 +19,7 @@
             "category": "trans_fats",
             "severity": "reject",
             "matchedIngredient": "partially hydrogenated",
-            "summary": "Contains \"partially hydrogenated\" — a trans fat or hydrogenated oil directly linked to cardiovascular disease and systemic inflammation."
+            "summary": "Contains \"partially hydrogenated\" — the primary source of artificial trans fats, though the FDA revoked its GRAS status in 2015 and banned it outright by 2018, so this likely reflects an outdated formulation or import rather than a current gap in oversight."
           }
         ],
         "clearedBy": null,
@@ -47,7 +47,7 @@
             "category": "trans_fats",
             "severity": "reject",
             "matchedIngredient": "partially hydrogenated",
-            "summary": "Contains \"partially hydrogenated\" — a trans fat or hydrogenated oil directly linked to cardiovascular disease and systemic inflammation."
+            "summary": "Contains \"partially hydrogenated\" — the primary source of artificial trans fats, though the FDA revoked its GRAS status in 2015 and banned it outright by 2018, so this likely reflects an outdated formulation or import rather than a current gap in oversight."
           }
         ],
         "clearedBy": null,
@@ -355,7 +355,7 @@
             "category": "glyphosate_heavy",
             "severity": "caution",
             "matchedIngredient": "oats",
-            "summary": "Contains \"oats\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"oats\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -383,7 +383,7 @@
             "category": "glyphosate_heavy",
             "severity": "reject",
             "matchedIngredient": "oats",
-            "summary": "Contains \"oats\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"oats\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -455,7 +455,8 @@
             "category": "conventional_meat",
             "severity": "caution",
             "matchedIngredient": "",
-            "summary": "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed, pasture-raised, or meat from a farm you trust."
+            "summary": "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed and grass-finished, pasture-raised, or meat from a farm you trust.",
+            "meatScenario": "land_animal"
           }
         ],
         "clearedBy": null,
@@ -485,7 +486,8 @@
             "category": "conventional_meat",
             "severity": "reject",
             "matchedIngredient": "",
-            "summary": "Conventional meat product without USDA Organic certification"
+            "summary": "Conventional meat product without USDA Organic certification",
+            "meatScenario": "land_animal"
           }
         ],
         "clearedBy": null,
@@ -513,7 +515,7 @@
             "category": "conventional_dairy",
             "severity": "caution",
             "matchedIngredient": "",
-            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Organic dairy is a meaningful alternative when you're ready for that step."
+            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic or grass-fed and grass-finished dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction."
           }
         ],
         "clearedBy": null,
@@ -545,10 +547,7 @@
           }
         ],
         "clearedBy": null,
-        "unverifiedIngredients": [
-          "Whole milk",
-          "cheddar cheese"
-        ],
+        "unverifiedIngredients": [],
         "isMeat": false,
         "oliveCaveat": false,
         "unverifiedReason": null,
@@ -710,9 +709,7 @@
           }
         ],
         "clearedBy": "organic",
-        "unverifiedIngredients": [
-          "beet juice concentrate"
-        ],
+        "unverifiedIngredients": [],
         "isMeat": false,
         "oliveCaveat": false,
         "unverifiedReason": null,
@@ -925,7 +922,7 @@
             "category": "glyphosate_heavy",
             "severity": "caution",
             "matchedIngredient": "oats",
-            "summary": "Contains \"oats\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"oats\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -955,7 +952,7 @@
             "category": "glyphosate_heavy",
             "severity": "caution",
             "matchedIngredient": "oats",
-            "summary": "Contains \"oats\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"oats\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": "glyphosate-free",
@@ -1033,7 +1030,8 @@
             "category": "conventional_meat",
             "severity": "caution",
             "matchedIngredient": "",
-            "summary": "Farmed or unlabeled seafood — Joel explains the difference between wild-caught and farmed: sourcing matters as much as ingredients. Look for a wild-caught certification, or seafood from a source you trust."
+            "summary": "Farmed or unlabeled seafood — Joel explains the difference between wild-caught and farmed: sourcing matters as much as ingredients. Look for a wild-caught certification, or seafood from a source you trust.",
+            "meatScenario": "seafood"
           }
         ],
         "clearedBy": null,
@@ -1063,7 +1061,8 @@
             "category": "conventional_meat",
             "severity": "reject",
             "matchedIngredient": "",
-            "summary": "Farmed or unlabeled seafood — wild-caught certification not found"
+            "summary": "Farmed or unlabeled seafood — wild-caught certification not found",
+            "meatScenario": "seafood"
           }
         ],
         "clearedBy": null,
@@ -1143,7 +1142,8 @@
             "category": "conventional_meat",
             "severity": "caution",
             "matchedIngredient": "",
-            "summary": "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed, pasture-raised, or meat from a farm you trust."
+            "summary": "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed and grass-finished, pasture-raised, or meat from a farm you trust.",
+            "meatScenario": "land_animal"
           }
         ],
         "clearedBy": null,
@@ -1173,7 +1173,8 @@
             "category": "conventional_meat",
             "severity": "reject",
             "matchedIngredient": "",
-            "summary": "Conventional meat product without USDA Organic certification"
+            "summary": "Conventional meat product without USDA Organic certification",
+            "meatScenario": "land_animal"
           }
         ],
         "clearedBy": null,
@@ -1523,7 +1524,7 @@
             "category": "conventional_dairy",
             "severity": "caution",
             "matchedIngredient": "",
-            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Organic dairy is a meaningful alternative when you're ready for that step."
+            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic or grass-fed and grass-finished dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction."
           }
         ],
         "clearedBy": null,
@@ -1635,7 +1636,7 @@
             "category": "glyphosate_heavy",
             "severity": "caution",
             "matchedIngredient": "peas",
-            "summary": "Contains \"peas\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"peas\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -1663,7 +1664,7 @@
             "category": "glyphosate_heavy",
             "severity": "reject",
             "matchedIngredient": "peas",
-            "summary": "Contains \"peas\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"peas\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -1691,7 +1692,7 @@
             "category": "glyphosate_heavy",
             "severity": "caution",
             "matchedIngredient": "beans",
-            "summary": "Contains \"beans\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"beans\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -1719,7 +1720,7 @@
             "category": "glyphosate_heavy",
             "severity": "reject",
             "matchedIngredient": "beans",
-            "summary": "Contains \"beans\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"beans\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -1747,7 +1748,7 @@
             "category": "glyphosate_heavy",
             "severity": "caution",
             "matchedIngredient": "beans",
-            "summary": "Contains \"beans\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"beans\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -1775,7 +1776,7 @@
             "category": "glyphosate_heavy",
             "severity": "reject",
             "matchedIngredient": "beans",
-            "summary": "Contains \"beans\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"beans\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -1845,7 +1846,7 @@
             "category": "glyphosate_heavy",
             "severity": "caution",
             "matchedIngredient": "oats",
-            "summary": "Contains \"oats\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"oats\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -1873,7 +1874,7 @@
             "category": "glyphosate_heavy",
             "severity": "reject",
             "matchedIngredient": "oats",
-            "summary": "Contains \"oats\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"oats\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -1999,7 +2000,7 @@
             "category": "conventional_dairy",
             "severity": "caution",
             "matchedIngredient": "",
-            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Organic dairy is a meaningful alternative when you're ready for that step."
+            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic or grass-fed and grass-finished dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction."
           },
           {
             "category": "seed_oils",
@@ -2029,7 +2030,7 @@
             "category": "glyphosate_heavy",
             "severity": "caution",
             "matchedIngredient": "wheat flour",
-            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           },
           {
             "category": "bioengineering",
@@ -2078,6 +2079,12 @@
         "verdict": "red",
         "flags": [
           {
+            "category": "conventional_dairy",
+            "severity": "reject",
+            "matchedIngredient": "",
+            "summary": "Conventional dairy product without USDA Organic certification"
+          },
+          {
             "category": "seed_oils",
             "severity": "reject",
             "matchedIngredient": "soybean oil",
@@ -2105,7 +2112,7 @@
             "category": "glyphosate_heavy",
             "severity": "reject",
             "matchedIngredient": "wheat flour",
-            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           },
           {
             "category": "bioengineering",
@@ -2135,8 +2142,6 @@
         "clearedBy": null,
         "unverifiedIngredients": [
           "ENRICHED MACARONI",
-          "CHEESE SAUCE MIX",
-          "WHEY",
           "SODIUM TRIPOLYPHOSPHATE"
         ],
         "isMeat": false,
@@ -2162,7 +2167,7 @@
             "category": "conventional_dairy",
             "severity": "caution",
             "matchedIngredient": "",
-            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Organic dairy is a meaningful alternative when you're ready for that step."
+            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic or grass-fed and grass-finished dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction."
           },
           {
             "category": "seed_oils",
@@ -2174,7 +2179,7 @@
             "category": "glyphosate_heavy",
             "severity": "caution",
             "matchedIngredient": "wheat flour",
-            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -2199,6 +2204,12 @@
         "verdict": "red",
         "flags": [
           {
+            "category": "conventional_dairy",
+            "severity": "reject",
+            "matchedIngredient": "",
+            "summary": "Conventional dairy product without USDA Organic certification"
+          },
+          {
             "category": "seed_oils",
             "severity": "reject",
             "matchedIngredient": "canola oil",
@@ -2208,13 +2219,11 @@
             "category": "glyphosate_heavy",
             "severity": "reject",
             "matchedIngredient": "wheat flour",
-            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
-        "unverifiedIngredients": [
-          "Whole milk"
-        ],
+        "unverifiedIngredients": [],
         "isMeat": false,
         "oliveCaveat": false,
         "unverifiedReason": null,
@@ -2238,7 +2247,7 @@
             "category": "conventional_dairy",
             "severity": "caution",
             "matchedIngredient": "",
-            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Organic dairy is a meaningful alternative when you're ready for that step."
+            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic or grass-fed and grass-finished dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction."
           },
           {
             "category": "conventional_crops",
@@ -2256,7 +2265,7 @@
             "category": "glyphosate_heavy",
             "severity": "caution",
             "matchedIngredient": "wheat flour",
-            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -2281,6 +2290,12 @@
         "verdict": "red",
         "flags": [
           {
+            "category": "conventional_dairy",
+            "severity": "reject",
+            "matchedIngredient": "",
+            "summary": "Conventional dairy product without USDA Organic certification"
+          },
+          {
             "category": "conventional_crops",
             "severity": "reject",
             "matchedIngredient": "sugar",
@@ -2296,13 +2311,11 @@
             "category": "glyphosate_heavy",
             "severity": "reject",
             "matchedIngredient": "wheat flour",
-            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
-        "unverifiedIngredients": [
-          "whole milk"
-        ],
+        "unverifiedIngredients": [],
         "isMeat": false,
         "oliveCaveat": false,
         "unverifiedReason": null,
@@ -2382,7 +2395,8 @@
             "category": "conventional_meat",
             "severity": "caution",
             "matchedIngredient": "",
-            "summary": "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed, pasture-raised, or meat from a farm you trust."
+            "summary": "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed and grass-finished, pasture-raised, or meat from a farm you trust.",
+            "meatScenario": "land_animal"
           },
           {
             "category": "conventional_eggs",
@@ -2425,7 +2439,8 @@
             "category": "conventional_meat",
             "severity": "reject",
             "matchedIngredient": "",
-            "summary": "Conventional meat product without USDA Organic certification"
+            "summary": "Conventional meat product without USDA Organic certification",
+            "meatScenario": "land_animal"
           },
           {
             "category": "conventional_eggs",
@@ -2441,10 +2456,7 @@
           }
         ],
         "clearedBy": null,
-        "unverifiedIngredients": [
-          "chicken broth",
-          "chicken"
-        ],
+        "unverifiedIngredients": [],
         "isMeat": true,
         "oliveCaveat": false,
         "unverifiedReason": null,
@@ -2567,7 +2579,7 @@
             "category": "glyphosate_heavy",
             "severity": "reject",
             "matchedIngredient": "wheat flour",
-            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -2675,20 +2687,7 @@
       },
       "output": {
         "verdict": "inconclusive",
-        "flags": [
-          {
-            "category": "gluten_grains",
-            "severity": "caution",
-            "matchedIngredient": "oat flour",
-            "summary": "Contains \"oat flour\" — gluten protein is present. Not safe for individuals with celiac disease or non-celiac gluten sensitivity."
-          },
-          {
-            "category": "gluten_grains",
-            "severity": "caution",
-            "matchedIngredient": "wheat",
-            "summary": "Contains \"wheat\" — gluten protein is present. Not safe for individuals with celiac disease or non-celiac gluten sensitivity."
-          }
-        ],
+        "flags": [],
         "clearedBy": "organic",
         "unverifiedIngredients": [
           "AGAVE INULIN",
@@ -2754,7 +2753,6 @@
         "clearedBy": "organic",
         "unverifiedIngredients": [
           "blueberry purée",
-          "whole milk powder",
           "cherry purée"
         ],
         "isMeat": false,
@@ -2789,7 +2787,7 @@
             "category": "glyphosate_heavy",
             "severity": "caution",
             "matchedIngredient": "semolina",
-            "summary": "Contains \"semolina\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"semolina\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -2826,7 +2824,7 @@
             "category": "glyphosate_heavy",
             "severity": "reject",
             "matchedIngredient": "semolina",
-            "summary": "Contains \"semolina\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"semolina\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -3012,7 +3010,7 @@
             "category": "glyphosate_heavy",
             "severity": "caution",
             "matchedIngredient": "wheat flour",
-            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -3040,7 +3038,7 @@
             "category": "glyphosate_heavy",
             "severity": "reject",
             "matchedIngredient": "wheat flour",
-            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -3310,7 +3308,7 @@
             "category": "glyphosate_heavy",
             "severity": "caution",
             "matchedIngredient": "wheat flour",
-            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -3340,7 +3338,7 @@
             "category": "glyphosate_heavy",
             "severity": "caution",
             "matchedIngredient": "wheat flour",
-            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": "glyphosate-free",
@@ -3548,13 +3546,13 @@
             "category": "glyphosate_heavy",
             "severity": "caution",
             "matchedIngredient": "chickpea",
-            "summary": "Contains \"chickpea\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"chickpea\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           },
           {
             "category": "glyphosate_heavy",
             "severity": "caution",
             "matchedIngredient": "pea protein",
-            "summary": "Contains \"pea protein\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"pea protein\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -3582,13 +3580,13 @@
             "category": "glyphosate_heavy",
             "severity": "reject",
             "matchedIngredient": "chickpea",
-            "summary": "Contains \"chickpea\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"chickpea\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           },
           {
             "category": "glyphosate_heavy",
             "severity": "reject",
             "matchedIngredient": "pea protein",
-            "summary": "Contains \"pea protein\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"pea protein\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           }
         ],
         "clearedBy": null,
@@ -3791,7 +3789,7 @@
             "category": "glyphosate_heavy",
             "severity": "caution",
             "matchedIngredient": "wheat flour",
-            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           },
           {
             "category": "natural_flavors",
@@ -3843,7 +3841,7 @@
             "category": "glyphosate_heavy",
             "severity": "reject",
             "matchedIngredient": "wheat flour",
-            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. Look for a glyphosate-free or USDA Organic certification to reduce residue exposure."
+            "summary": "Contains \"wheat flour\" — a crop where glyphosate is routinely applied as a pre-harvest desiccant. A glyphosate-free or USDA Organic label can point toward lower exposure, though it's not a guarantee."
           },
           {
             "category": "natural_flavors",

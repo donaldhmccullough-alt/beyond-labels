@@ -2068,7 +2068,7 @@ describe('M. PROMPT_VERSION', () => {
   test('PROMPT_VERSION is 44 (v44: Joel-voice certification-framing rewrites — conventional_eggs, conventional_dairy, glyphosate_heavy)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(44);
+    expect(PROMPT_VERSION).toBe(45);
   });
 });
 
@@ -3563,7 +3563,7 @@ describe('V2. conventional_dairy L1 Override 3 summary text parity', () => {
   });
 
   const NEW_SUMMARY =
-    "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed, synthetic hormones, antibiotics. Certified organic or grass-fed dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction.";
+    "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic or grass-fed and grass-finished dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction.";
 
   /** Minimal OFF response builder, matching Suite S's own L1 dairy fixture shape. */
   function dairyOffResp() {
@@ -4110,5 +4110,125 @@ describe('Y. productSubcategory detection', () => {
     await handler(makeReq('POST', { barcode: '000000001104', userLevel: 2 }), res);
     expect(res.statusCode).toBe(404);
     expect(res.body.productSubcategory).toBeNull();
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Z. conventional_meat — meatScenario field
+//
+// Added in the same session as the new conventional_meat SYSTEM_PROMPT
+// paragraph (accuracy/tone feedback pass, PROMPT_VERSION 45). conventional_meat
+// fires for three real, distinguishable scenarios in scan.js's injection logic
+// (land-animal meat, farmed/unlabeled seafood, animal-derived gelatin in a
+// non-meat product) but every injection site previously left matchedIngredient
+// empty, giving buildUserMessage() no signal to tell them apart — risking a
+// land-animal "feedlot/hormone" explanation being generated for a farmed-salmon
+// or gelatin-candy product. meatScenario is a new, purely additive field
+// ('land_animal' | 'seafood' | 'gelatin') set at all 5 injection sites (2 in
+// L1 Override 2, 3 in L2 Phase A) so buildUserMessage() can inject a note that
+// steers the explanation correctly — see the "buildUserMessage() — meatScenario
+// note" block in __tests__/api/explain.test.js for that half.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('Z. conventional_meat — meatScenario field', () => {
+  test('L1: land-animal meat → meatScenario "land_animal"', async () => {
+    mockFetchOnce({
+      status: 1,
+      product: {
+        product_name:     'Beef Bologna',
+        ingredients_text: 'beef, water, salt',
+        labels_tags:      [],
+        categories_tags:  ['en:beef'],
+      },
+    });
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000002001', userLevel: 1 }), res);
+    const flag = res.body.flags.find(f => f.category === 'conventional_meat');
+    expect(flag).toBeDefined();
+    expect(flag.meatScenario).toBe('land_animal');
+  });
+
+  test('L1: farmed/unlabeled seafood → meatScenario "seafood"', async () => {
+    mockFetchOnce({
+      status: 1,
+      product: {
+        product_name:     'Farm-Raised Atlantic Salmon',
+        ingredients_text: 'salmon, water, salt',
+        labels_tags:      [],
+        categories_tags:  ['en:salmon'],
+      },
+    });
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000002002', userLevel: 1 }), res);
+    const flag = res.body.flags.find(f => f.category === 'conventional_meat');
+    expect(flag).toBeDefined();
+    expect(flag.meatScenario).toBe('seafood');
+  });
+
+  test('L2: land-animal meat → meatScenario "land_animal"', async () => {
+    mockFetchOnce({
+      status: 1,
+      product: {
+        product_name:     'Beef Bologna',
+        ingredients_text: 'beef, water, salt',
+        labels_tags:      [],
+        categories_tags:  ['en:beef'],
+      },
+    });
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000002003', userLevel: 2 }), res);
+    const flag = res.body.flags.find(f => f.category === 'conventional_meat');
+    expect(flag).toBeDefined();
+    expect(flag.meatScenario).toBe('land_animal');
+  });
+
+  test('L2: farmed/unlabeled seafood → meatScenario "seafood"', async () => {
+    mockFetchOnce({
+      status: 1,
+      product: {
+        product_name:     'Farm-Raised Atlantic Salmon',
+        ingredients_text: 'salmon, water, salt',
+        labels_tags:      [],
+        categories_tags:  ['en:salmon'],
+      },
+    });
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000002004', userLevel: 2 }), res);
+    const flag = res.body.flags.find(f => f.category === 'conventional_meat');
+    expect(flag).toBeDefined();
+    expect(flag.meatScenario).toBe('seafood');
+  });
+
+  test('L2: animal-derived gelatin in a non-meat product → meatScenario "gelatin"', async () => {
+    mockFetchOnce({
+      status: 1,
+      product: {
+        product_name:     'Marshmallows',
+        ingredients_text: 'sugar, corn syrup, gelatin, natural flavor',
+        labels_tags:      [],
+        categories_tags:  [],
+      },
+    });
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000002005', userLevel: 2 }), res);
+    expect(res.body.isMeat).toBe(false);
+    const flag = res.body.flags.find(f => f.category === 'conventional_meat');
+    expect(flag).toBeDefined();
+    expect(flag.meatScenario).toBe('gelatin');
+  });
+
+  test('regression: wild-caught seafood and game meat still never inject a conventional_meat flag at all (no meatScenario to check)', async () => {
+    mockFetchOnce({
+      status: 1,
+      product: {
+        product_name:     'Wild Caught Alaskan Salmon',
+        ingredients_text: 'wild salmon, salt',
+        labels_tags:      ['en:wild-caught'],
+        categories_tags:  ['en:salmon'],
+      },
+    });
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000002006', userLevel: 2 }), res);
+    expect(res.body.flags.some(f => f.category === 'conventional_meat')).toBe(false);
   });
 });

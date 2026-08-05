@@ -51,7 +51,7 @@ export function getUnverifiedCopy(unverifiedReason, isMeat, userLevel, productCa
     return "We couldn't find the ingredient list for this product. Flip the package over and read the label before buying — skip it if you see any synthetic chemicals, artificial additives, artificial flavors, or preservatives.";
   }
   if (unverifiedReason === 'no_ingredients' && isMeat && userLevel === 2) {
-    return "We couldn't find this product in our database. Look for the USDA Organic seal before buying, and use your best judgment on quality — grass-fed, pasture-raised, or sourced from a farm you trust is always the better choice.";
+    return "We couldn't find this product in our database. Look for the USDA Organic seal before buying, and use your best judgment on quality — grass-fed and grass-finished, pasture-raised, or sourced from a farm you trust is always the better choice.";
   }
   if (unverifiedReason === 'no_ingredients') {
     return "We found this product but it has no ingredient data on file. We can't screen what we can't see — check the label directly.";

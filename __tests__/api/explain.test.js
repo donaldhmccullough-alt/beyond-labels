@@ -25,7 +25,7 @@ jest.mock('@anthropic-ai/sdk', () => {
 });
 
 const handler = require('../../pages/api/explain').default;
-const { parseExplanationResponse, buildUserMessage } = require('../../pages/api/explain');
+const { parseExplanationResponse, buildUserMessage, SYSTEM_PROMPT } = require('../../pages/api/explain');
 
 function makeReq(method = 'POST', body = {}) {
   return { method, body };
@@ -204,6 +204,14 @@ describe('A3. buildUserMessage() — conventional_eggs note wording', () => {
 // note, not a certification-framing one) was deliberately left unchanged —
 // see CLAUDE.md's "Joel-voice certification-framing audit" entry for the
 // full before/after and the reasoning for leaving the L1 note alone.
+//
+// Reworded again in a later session (PROMPT_VERSION 44→45, accuracy/tone
+// feedback pass): "synthetic hormones" removed (hormone use is primarily a
+// beef-cattle practice — rBST/rBGH use in dairy cows has declined
+// significantly and is not standard practice), and bare "grass-fed" →
+// "grass-fed and grass-finished" (a bare "grass-fed" label alone does not
+// guarantee meaningful pasture time; only "100%"/"grass-finished" variants
+// carry real meaning).
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('A4. buildUserMessage() — conventional_dairy note wording', () => {
@@ -261,6 +269,21 @@ describe('A4. buildUserMessage() — conventional_dairy note wording', () => {
     expect(message).toContain(
       "[Level 1 dairy note: this is an awareness item — organic dairy is one of the most impactful food swaps available, but conventional dairy is extremely common. Frame organic dairy as a step to take when ready, not a reason to feel bad about today's choices. Use especially gentle, encouraging language.]"
     );
+  });
+
+  test('conventional_dairy note no longer mentions synthetic hormones, and uses "grass-fed and grass-finished" not bare "grass-fed"', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'conventional_dairy', severity: 'caution', matchedIngredient: '', summary: 'x' }],
+      'Test Product',
+      'milk, salt, water',
+      2,
+      null,
+      null
+    );
+    expect(message).not.toContain('synthetic hormones');
+    expect(message).toContain('GMO feed and antibiotics');
+    expect(message).toContain('grass-fed and grass-finished certification');
   });
 });
 
@@ -455,6 +478,303 @@ describe('A6. buildUserMessage() — trans_fats note wording', () => {
       null
     );
     expect(message).not.toContain('Trans fat note');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// A7. SYSTEM_PROMPT — new conventional_crops paragraph
+//
+// Added in an accuracy/tone feedback session (PROMPT_VERSION 44→45).
+// conventional_crops previously had no dedicated paragraph in SYSTEM_PROMPT
+// at all — it relied only on the general Joel-voice guidance, which had no
+// certification-framing language to get wrong (or right). The new paragraph
+// covers: organic-accuracy (certification is about inputs — no synthetic
+// pesticides/GMO seed — not proof of regenerative practices, no-till, or
+// cover cropping), the "no fillers or synthetic additives" alternative
+// standard, wheat's GMO exclusion (no commercially grown GMO wheat exists in
+// the U.S. — unlike corn, soy, and sugar beets), hedged origin/practice
+// language, and Joel's "When shopping in the grocery store, choose
+// organic..." shopping-guidance signature. Presence-check only — SYSTEM_PROMPT
+// is a static template literal, not a function of inputs like
+// buildUserMessage(), so these assert directly against the constant.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('A7. SYSTEM_PROMPT — new conventional_crops paragraph', () => {
+  test('includes the organic-accuracy distinction: inputs, not regenerative practices', () => {
+    expect(SYSTEM_PROMPT).toContain('For conventional_crops:');
+    expect(SYSTEM_PROMPT).toContain('organic certification is about inputs, not practices');
+    expect(SYSTEM_PROMPT).toContain('not proof of regenerative farming, no-till, or cover cropping');
+  });
+
+  test('includes the "no fillers or synthetic additives" alternative standard, not the old "minimal fillers" framing', () => {
+    expect(SYSTEM_PROMPT).toContain('no fillers or synthetic additives');
+    expect(SYSTEM_PROMPT).not.toContain('minimal fillers');
+  });
+
+  test('wheat is excluded from GMO language — described only as conventionally grown/sprayed, never GMO', () => {
+    expect(SYSTEM_PROMPT).toContain('wheat has no commercially grown GMO variety in the U.S.');
+    expect(SYSTEM_PROMPT).toContain('never as GMO');
+  });
+
+  test('the wheat exception is explicitly conditional on wheat being among this flag\'s matched ingredients, not a blanket aside', () => {
+    // Reworded in a follow-up session: the original phrasing folded the wheat
+    // exception into the same sentence as the general GMO-seed claim ("...aside
+    // from wheat...are typically grown from GMO seed as well"), with no signal
+    // that the wheat mention should only appear when wheat is actually flagged.
+    // Confirms the instruction is now structurally scoped, not just present.
+    expect(SYSTEM_PROMPT).toContain('with one exception: if wheat is among the matched ingredients for this flag');
+  });
+
+  test("includes Joel's shopping-store guidance signature", () => {
+    expect(SYSTEM_PROMPT).toContain('When shopping in the grocery store, his guidance is to choose organic');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// A8. SYSTEM_PROMPT — glyphosate_heavy paragraph (hedging + shopping-phrase)
+//
+// Reworded in the same session as A7 — origin/practice claims hedged
+// ("commonly"/"typically" rather than settled fact about this specific
+// product), and the "reasonable starting point" framing replaced with Joel's
+// shopping-store guidance signature. Wheat regression-checked per Fix 6: this
+// paragraph must keep describing wheat as sprayed/desiccated only, never as
+// GMO — confirmed no regression was introduced by this reword.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('A8. SYSTEM_PROMPT — glyphosate_heavy paragraph wording', () => {
+  function glyphosateSection() {
+    return SYSTEM_PROMPT.slice(
+      SYSTEM_PROMPT.indexOf('For glyphosate_heavy:'),
+      SYSTEM_PROMPT.indexOf('For conventional_dairy:')
+    );
+  }
+
+  test('hedges the residue-level claim rather than stating it as settled fact', () => {
+    expect(glyphosateSection()).toContain('typically means higher residue levels');
+  });
+
+  test('incorporates the shopping-store guidance signature, dropping "reasonable starting point"', () => {
+    const section = glyphosateSection();
+    expect(section).toContain('When shopping in the grocery store, his guidance is to choose glyphosate-free or certified organic');
+    expect(section).not.toContain('reasonable starting point');
+  });
+
+  test('regression: wheat is still described only as sprayed/desiccated, never as GMO', () => {
+    const section = glyphosateSection();
+    expect(section).toContain('wheat');
+    expect(section).not.toMatch(/wheat[^.]*GMO/i);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// A9. SYSTEM_PROMPT — conventional_dairy paragraph (hedging + hormones +
+//     grass-fed + shopping-phrase)
+//
+// Distinct from A4 above, which tests buildUserMessage()'s shorter injected
+// [Dairy note] — this block tests the full SYSTEM_PROMPT paragraph. Reworded
+// in the same session as A7/A8: "synthetic hormones" removed (hormone use is
+// primarily a beef-cattle practice, not standard for dairy cows), bare
+// "grass-fed" replaced with "grass-fed and grass-finished," origin claims
+// hedged, and "reasonable starting point" replaced with the shopping-store
+// guidance signature.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('A9. SYSTEM_PROMPT — conventional_dairy paragraph wording', () => {
+  function dairySection() {
+    return SYSTEM_PROMPT.slice(
+      SYSTEM_PROMPT.indexOf('For conventional_dairy:'),
+      SYSTEM_PROMPT.indexOf('For conventional_eggs:')
+    );
+  }
+
+  test('no longer claims dairy cows are treated with synthetic hormones', () => {
+    const section = dairySection();
+    expect(section).not.toContain('synthetic hormones');
+    expect(section).toContain('antibiotics');
+  });
+
+  test('uses "grass-fed and grass-finished," not bare "grass-fed," as the qualifying signal', () => {
+    const section = dairySection();
+    expect(section).toContain('grass-fed and grass-finished');
+    expect(section).not.toMatch(/\bgrass-fed dairy\b/);
+  });
+
+  test('hedges the farming-practice claim rather than stating it as settled fact', () => {
+    expect(dairySection()).toContain('conventional dairy typically means cows fed GMO corn and soy');
+  });
+
+  test('incorporates the shopping-store guidance signature', () => {
+    expect(dairySection()).toContain('When shopping in the grocery store, his guidance is to choose certified organic or grass-fed and grass-finished dairy');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// A10. SYSTEM_PROMPT — conventional_eggs paragraph (hedging + shopping-phrase)
+//
+// Reworded in the same session as A7-A9. No hormone or grass-fed changes —
+// neither term appears in this paragraph ("pasture-raised" is the
+// egg-appropriate term and was not in scope for correction).
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('A10. SYSTEM_PROMPT — conventional_eggs paragraph wording', () => {
+  function eggsSection() {
+    return SYSTEM_PROMPT.slice(
+      SYSTEM_PROMPT.indexOf('For conventional_eggs:'),
+      SYSTEM_PROMPT.indexOf('For olive_oil_adulteration:')
+    );
+  }
+
+  test('hedges the farming-practice claim rather than stating it as settled fact', () => {
+    expect(eggsSection()).toContain('hens are commonly fed GMO grain');
+  });
+
+  test('incorporates the shopping-store guidance signature, dropping "reasonable starting point"', () => {
+    const section = eggsSection();
+    expect(section).toContain('When shopping in the grocery store, his guidance is to choose certified organic or pasture-raised eggs');
+    expect(section).not.toContain('reasonable starting point');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// A11. SYSTEM_PROMPT — new trans_fats paragraph (GRAS-reversal reframe)
+//
+// Added in the same session as A7-A10 — targets the "partially
+// hydrogenated"/"margarine"/"shortening" branch specifically; bare
+// "hydrogenated" is a separate branch handled entirely by the
+// buildUserMessage() note tested in A6 above (unchanged by this addition).
+// Before this paragraph existed, Claude had nothing category-specific to
+// override the general shared-voice GRAS-skepticism line (line 65), producing
+// an outdated "GRAS never required long-term research" framing for a case
+// where regulators actually revoked GRAS status and banned the ingredient
+// outright — the opposite of ongoing lax oversight.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('A11. SYSTEM_PROMPT — new trans_fats paragraph (GRAS-reversal reframe)', () => {
+  test('frames the FDA revoking GRAS status and banning partially hydrogenated oils as regulators acting decisively', () => {
+    expect(SYSTEM_PROMPT).toContain('revoked their GRAS status in 2015');
+    expect(SYSTEM_PROMPT).toContain('banned partially hydrogenated oils outright by 2018');
+    expect(SYSTEM_PROMPT).toContain('regulators acting decisively on strong evidence');
+  });
+
+  test('explicitly forbids framing this as more of the same lax-GRAS-oversight problem', () => {
+    expect(SYSTEM_PROMPT).toContain('not as another example of lax GRAS oversight');
+  });
+
+  test('scoped to the qualified triggers only, not bare "hydrogenated"', () => {
+    expect(SYSTEM_PROMPT).toContain('not bare "hydrogenated," which is handled separately');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// A12. SYSTEM_PROMPT — new conventional_meat paragraph
+//
+// Added in a follow-up to the A7-A11 session — found during that session's own
+// post-implementation testing (not part of Dr. Sina's original feedback list):
+// conventional_meat had no dedicated paragraph at all, so a real generated
+// explanation for it defaulted to bare "grass-fed" with no steering, since the
+// "grass-fed and grass-finished" fix only ever lived in the rarely-shown static
+// fallback summary (pages/api/scan.js:292 / lib/verdictEngine.js:172). This
+// paragraph is also deliberately scoped to land-animal meat specifically — see
+// A13 below and the meatScenario tests in scan.test.js's Suite Z for why: the
+// same conventional_meat category also fires for farmed/unlabeled seafood and
+// animal-derived gelatin in non-meat products, where feedlot/hormone framing
+// would be actively wrong.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('A12. SYSTEM_PROMPT — new conventional_meat paragraph', () => {
+  function meatSection() {
+    return SYSTEM_PROMPT.slice(
+      SYSTEM_PROMPT.indexOf('For conventional_meat:'),
+      SYSTEM_PROMPT.indexOf('For glyphosate_heavy:')
+    );
+  }
+
+  test('includes hormone implants as standard practice for conventional beef cattle specifically (not dairy)', () => {
+    const section = meatSection();
+    expect(section).toContain('given hormone implants, which remain standard practice for conventional beef cattle specifically');
+  });
+
+  test('includes antibiotics and confinement/feedlot framing, hedged', () => {
+    const section = meatSection();
+    expect(section).toContain('animals commonly raised in confinement or feedlot systems');
+    expect(section).toContain('treated with antibiotics as routine practice');
+  });
+
+  test('uses "grass-fed and grass-finished," not bare "grass-fed," in the shopping guidance', () => {
+    const section = meatSection();
+    expect(section).toContain('choose grass-fed and grass-finished or pasture-raised meat from a farm you trust');
+    expect(section).not.toMatch(/\bgrass-fed meat\b/);
+  });
+
+  test('includes the product-name disambiguation instruction for seafood/gelatin scenarios', () => {
+    const section = meatSection();
+    expect(section).toContain("If the product name doesn't clearly point to land-animal meat");
+    expect(section).toContain('skip the feedlot/hormone specifics');
+  });
+
+  test('includes the standard "starting point, not proof" caveat, matching the other conventional_* paragraphs', () => {
+    const section = meatSection();
+    expect(section).toContain('the label is a starting point, not proof');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// A13. buildUserMessage() — conventional_meat meatScenario note
+//
+// Added alongside A12 — the second, code-level disambiguation layer. Unlike
+// every other per-category note in this function, this one is driven by real
+// data set at the flag-injection site in scan.js/verdictEngine.js
+// (meatScenario: 'land_animal' | 'seafood' | 'gelatin'), not by the flag's
+// category or matchedIngredient alone, since those are identical across all
+// three real scenarios (matchedIngredient is always '' for every
+// conventional_meat injection). The fourth branch (no meatScenario set) is a
+// defensive fallback for any caller not yet updated to set the field —
+// verified separately below so the graceful-degradation design is provable,
+// not just assumed.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('A13. buildUserMessage() — conventional_meat meatScenario note', () => {
+  function messageFor(meatScenario) {
+    const flag = { category: 'conventional_meat', severity: 'reject', matchedIngredient: '', summary: 'x' };
+    if (meatScenario !== undefined) flag.meatScenario = meatScenario;
+    return buildUserMessage('red', [flag], 'Test Product', 'beef, water, salt', 2, null, null);
+  }
+
+  test('meatScenario "land_animal" → note confirms the feedlot/hormone framing applies', () => {
+    const message = messageFor('land_animal');
+    expect(message).toContain('land-animal meat or poultry — the feedlot/hormone framing in the system prompt applies directly');
+  });
+
+  test('meatScenario "seafood" → note explicitly forbids feedlot/hormone language', () => {
+    const message = messageFor('seafood');
+    expect(message).toContain('triggered by farmed or unlabeled seafood, not land-animal meat — do not use feedlot/hormone language');
+    expect(message).toContain('wild-caught vs. farmed sourcing');
+  });
+
+  test('meatScenario "gelatin" → note explicitly forbids feedlot/hormone language and reframes as gelatin sourcing', () => {
+    const message = messageFor('gelatin');
+    expect(message).toContain('triggered by animal-derived gelatin in a non-meat product');
+    expect(message).toContain('do not use feedlot/hormone language');
+    expect(message).toContain('gelatin-sourcing concern');
+  });
+
+  test('no meatScenario set → falls back to the product-name disambiguation instruction, not a crash or a false assumption', () => {
+    const message = messageFor(undefined);
+    expect(message).toContain('check the product name — if it does not clearly indicate land-animal meat');
+    expect(message).not.toContain('feedlot/hormone framing in the system prompt applies directly');
+  });
+
+  test('the note is not injected for unrelated categories', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'seed_oils', severity: 'reject', matchedIngredient: 'canola oil', summary: 'x' }],
+      'Test Product',
+      'canola oil, salt',
+      2,
+      null,
+      null
+    );
+    expect(message).not.toContain('Meat note');
   });
 });
 

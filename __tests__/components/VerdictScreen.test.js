@@ -55,7 +55,7 @@ describe('getUnverifiedCopy() — egg copy tier (productCategory === "eggs")', (
   test('regression guard — a real meat product (productCategory "meat", not "eggs") still gets the L2 meat-specific copy', () => {
     const copy = getUnverifiedCopy('no_ingredients', true, 2, 'meat');
     expect(copy).toBe(
-      "We couldn't find this product in our database. Look for the USDA Organic seal before buying, and use your best judgment on quality — grass-fed, pasture-raised, or sourced from a farm you trust is always the better choice."
+      "We couldn't find this product in our database. Look for the USDA Organic seal before buying, and use your best judgment on quality — grass-fed and grass-finished, pasture-raised, or sourced from a farm you trust is always the better choice."
     );
     expect(copy).not.toBe(EGG_COPY);
   });
