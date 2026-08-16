@@ -2068,7 +2068,7 @@ describe('M. PROMPT_VERSION', () => {
   test('PROMPT_VERSION is 44 (v44: Joel-voice certification-framing rewrites — conventional_eggs, conventional_dairy, glyphosate_heavy)', () => {
     // Import from lib/cacheVersion — never from pages/api/explain.js
     const { PROMPT_VERSION } = require('../../lib/cacheVersion');
-    expect(PROMPT_VERSION).toBe(46);
+    expect(PROMPT_VERSION).toBe(47);
   });
 });
 
@@ -2962,6 +2962,31 @@ describe('T. fetchExplanation() — Claude response parsing', () => {
 
     errorSpy.mockRestore();
   });
+
+  test('T8: productCategory is threaded through to buildUserMessage() — an organic, zero-flag dairy product gets the dairy-specific pass note in the message sent to Claude (PROMPT_VERSION 47)', async () => {
+    mockAnthropicCreate.mockResolvedValueOnce({
+      content: [{ type: 'text', text: '{"summary":"Certified organic, no concerns here.","details":{}}' }],
+    });
+    mockFetchOnce({
+      status: 1,
+      product: {
+        product_name:     'Organic Whole Milk',
+        ingredients_text: 'organic milk',
+        labels_tags:      ['en:usda-organic'],
+        categories_tags:  ['en:milks'],
+      },
+    });
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001008', userLevel: 2 }), res);
+
+    expect(res.body.verdict).toBe('green');
+    expect(res.body.clearedBy).toBe('organic');
+    expect(res.body.productCategory).toBe('dairy');
+    expect(res.body.flags).toEqual([]);
+
+    const sentMessage = mockAnthropicCreate.mock.calls[0][0].messages[0].content;
+    expect(sentMessage).toContain('sourcing dairy directly from a farm you trust is the next step up');
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -3563,7 +3588,7 @@ describe('V2. conventional_dairy L1 Override 3 summary text parity', () => {
   });
 
   const NEW_SUMMARY =
-    "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic or grass-fed and grass-finished dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction.";
+    "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic AND grass-fed (look for '100% grass-fed' or 'grass-fed and grass-finished') is worth moving toward when you're ready — together they're a more meaningful step than either alone.";
 
   /** Minimal OFF response builder, matching Suite S's own L1 dairy fixture shape. */
   function dairyOffResp() {
@@ -3637,6 +3662,111 @@ describe('V2. conventional_dairy L1 Override 3 summary text parity', () => {
     const liveRes = makeRes();
     await handler(makeReq('POST', { barcode: '000000001109', userLevel: 1 }), liveRes);
     const liveSummary = liveRes.body.flags.find(f => f.category === 'conventional_dairy').summary;
+
+    expect(legacySummary).toBe(liveSummary);
+    expect(legacySummary).toBe(NEW_SUMMARY);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// V3. conventional_meat L1 Override 2 (land-animal branch) summary text —
+//     parity between pages/api/scan.js (legacy path) and lib/verdictEngine.js
+//     (live path)
+//
+// Reworded in a PROMPT_VERSION 47 follow-up session, same organic-AND-grass-fed
+// combined framing as V2 above (conventional_dairy) — "or" alternatives
+// replaced with organic AND grass-fed together, with pasture-raised kept as a
+// distinct living-conditions signal (unlike dairy, which has no pasture-raised
+// equivalent). This injected flag's summary is a static string duplicated in
+// both files by construction, same as V2 — the two must never drift apart.
+// The seafood branch of this same ternary (l1IsSeafood ? '...' : '...') is
+// unaffected by this rework and is not covered here — see Suite S for its own
+// coverage.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('V3. conventional_meat L1 Override 2 (land-animal) summary text parity', () => {
+  const ORIGINAL_ENV = { ...process.env };
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  const NEW_SUMMARY =
+    "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for meat that's both certified organic and grass-fed ('100% grass-fed' or 'grass-fed and grass-finished'), plus pasture-raised as a sign of better living conditions — together they're a more meaningful standard than any single claim alone.";
+
+  /** Minimal OFF response builder — non-organic land-animal meat, no eggs/dairy interference. */
+  function meatOffResp() {
+    return {
+      status: 1,
+      product: {
+        product_name:     'Ground Beef',
+        ingredients_text: 'beef, salt',
+        labels_tags:      [],
+        categories_tags:  ['en:beef'],
+      },
+    };
+  }
+
+  test('legacy mode (pages/api/scan.js) injects the new summary text, and the old "or" alternatives phrasing is gone', async () => {
+    mockFetchOnce(meatOffResp());
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001110', userLevel: 1 }), res);
+
+    const flag = res.body.flags.find(f => f.category === 'conventional_meat');
+    expect(flag).toBeDefined();
+    expect(flag.meatScenario).toBe('land_animal');
+    expect(flag.summary).toBe(NEW_SUMMARY);
+    expect(flag.summary).not.toContain('grass-fed and grass-finished, pasture-raised, or meat from a farm you trust');
+  });
+
+  test('live mode (lib/verdictEngine.js) injects the SAME new summary text, and the old phrasing is gone there too', async () => {
+    process.env.VERDICT_ENGINE_MODE = 'live';
+    getSupabaseServer.mockReturnValueOnce({
+      from: jest.fn(() => ({
+        select:      jest.fn(function () { return this; }),
+        eq:          jest.fn(function () { return this; }),
+        maybeSingle: jest.fn().mockResolvedValue({ data: null }),
+        update:      jest.fn(function () { return this; }),
+        upsert:      jest.fn().mockResolvedValue({ error: null }),
+        insert:      jest.fn().mockResolvedValue({ error: null }),
+        then:        jest.fn(),
+        catch:       jest.fn(),
+      })),
+    });
+
+    mockFetchOnce(meatOffResp());
+    const res = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001111', userLevel: 1 }), res);
+
+    const flag = res.body.flags.find(f => f.category === 'conventional_meat');
+    expect(flag).toBeDefined();
+    expect(flag.meatScenario).toBe('land_animal');
+    expect(flag.summary).toBe(NEW_SUMMARY);
+    expect(flag.summary).not.toContain('grass-fed and grass-finished, pasture-raised, or meat from a farm you trust');
+  });
+
+  test('PARITY — legacy and live mode produce byte-identical conventional_meat summary text for the same fixture', async () => {
+    mockFetchOnce(meatOffResp());
+    const legacyRes = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001112', userLevel: 1 }), legacyRes);
+    const legacySummary = legacyRes.body.flags.find(f => f.category === 'conventional_meat').summary;
+
+    process.env.VERDICT_ENGINE_MODE = 'live';
+    getSupabaseServer.mockReturnValueOnce({
+      from: jest.fn(() => ({
+        select:      jest.fn(function () { return this; }),
+        eq:          jest.fn(function () { return this; }),
+        maybeSingle: jest.fn().mockResolvedValue({ data: null }),
+        update:      jest.fn(function () { return this; }),
+        upsert:      jest.fn().mockResolvedValue({ error: null }),
+        insert:      jest.fn().mockResolvedValue({ error: null }),
+        then:        jest.fn(),
+        catch:       jest.fn(),
+      })),
+    });
+    mockFetchOnce(meatOffResp());
+    const liveRes = makeRes();
+    await handler(makeReq('POST', { barcode: '000000001113', userLevel: 1 }), liveRes);
+    const liveSummary = liveRes.body.flags.find(f => f.category === 'conventional_meat').summary;
 
     expect(legacySummary).toBe(liveSummary);
     expect(legacySummary).toBe(NEW_SUMMARY);

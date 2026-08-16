@@ -283,7 +283,24 @@ describe('A4. buildUserMessage() — conventional_dairy note wording', () => {
     );
     expect(message).not.toContain('synthetic hormones');
     expect(message).toContain('GMO feed and antibiotics');
-    expect(message).toContain('grass-fed and grass-finished certification');
+    expect(message).toContain('grass-fed and grass-finished (or 100% grass-fed) label');
+  });
+
+  test('[Dairy note] frames organic certification together with a grass-fed and grass-finished (or 100% grass-fed) label, not as "or" alternatives and without the "and...and" repetition — matches the SYSTEM_PROMPT paragraph (PROMPT_VERSION 47 follow-up, second pass)', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'conventional_dairy', severity: 'caution', matchedIngredient: '', summary: 'x' }],
+      'Test Product',
+      'milk, salt, water',
+      2,
+      null,
+      null
+    );
+    expect(message).toContain('Frame organic certification together with a grass-fed and grass-finished (or 100% grass-fed) label');
+    expect(message).toContain("a different feed and antibiotic protocol");
+    expect(message).toContain('and not every organic operation runs the same way.]');
+    expect(message).not.toContain('Frame organic or grass-fed');
+    expect(message).not.toContain('Frame organic and grass-fed and grass-finished certification');
   });
 });
 
@@ -604,7 +621,19 @@ describe('A9. SYSTEM_PROMPT — conventional_dairy paragraph wording', () => {
   });
 
   test('incorporates the shopping-store guidance signature', () => {
-    expect(dairySection()).toContain('When shopping in the grocery store, his guidance is to choose certified organic or grass-fed and grass-finished dairy');
+    expect(dairySection()).toContain("When shopping in the grocery store, his guidance is to choose dairy that's both certified organic and grass-fed");
+  });
+
+  test('recommends organic AND grass-fed together, not as interchangeable "or" alternatives', () => {
+    const section = dairySection();
+    expect(section).toContain("both certified organic and grass-fed");
+    expect(section).toContain('meaningfully better feed and antibiotic protocol than either claim alone');
+    expect(section).not.toContain('choose certified organic or grass-fed');
+  });
+
+  test('qualifies the grass-fed claim with "100% grass-fed" or "grass-fed and grass-finished", never bare "grass-fed" alone as the standard', () => {
+    const section = dairySection();
+    expect(section).toContain('look for "100% grass-fed" or "grass-fed and grass-finished" on the label');
   });
 });
 
@@ -712,7 +741,7 @@ describe('A12. SYSTEM_PROMPT — new conventional_meat paragraph', () => {
 
   test('uses "grass-fed and grass-finished," not bare "grass-fed," in the shopping guidance', () => {
     const section = meatSection();
-    expect(section).toContain('choose certified organic, grass-fed and grass-finished, or pasture-raised meat from a farm you trust');
+    expect(section).toContain('"100% grass-fed" or "grass-fed and grass-finished" on the label');
     expect(section).not.toMatch(/\bgrass-fed meat\b/);
   });
 
@@ -722,7 +751,19 @@ describe('A12. SYSTEM_PROMPT — new conventional_meat paragraph', () => {
     // offered as a fallback, so the only guidance left was "pasture-raised"
     // alone with zero certification mentioned at all.
     const section = meatSection();
-    expect(section).toContain('choose certified organic');
+    expect(section).toContain('certified organic');
+  });
+
+  test('recommends organic AND grass-fed together, not as interchangeable "or" alternatives — the same combined-framing fix applied to conventional_dairy in the prior session', () => {
+    const section = meatSection();
+    expect(section).toContain("choose meat that's both certified organic and grass-fed");
+    expect(section).not.toContain('choose certified organic, grass-fed and grass-finished, or pasture-raised meat');
+  });
+
+  test('keeps pasture-raised as a distinct living-conditions signal alongside organic/grass-fed, rather than dropping it (unlike dairy, which has no pasture-raised equivalent)', () => {
+    const section = meatSection();
+    expect(section).toContain('plus pasture-raised as a marker of better living conditions');
+    expect(section).toContain('meaningfully better feed, care, and no routine antibiotics or hormones than any single claim alone');
   });
 
   test('includes the product-name disambiguation instruction for seafood/gelatin scenarios', () => {
@@ -733,7 +774,7 @@ describe('A12. SYSTEM_PROMPT — new conventional_meat paragraph', () => {
 
   test('includes the standard "starting point, not proof" caveat, matching the other conventional_* paragraphs', () => {
     const section = meatSection();
-    expect(section).toContain('the label is a starting point, not proof');
+    expect(section).toContain('The label is a starting point, not proof');
   });
 });
 
@@ -794,6 +835,100 @@ describe('A13. buildUserMessage() — conventional_meat meatScenario note', () =
       null
     );
     expect(message).not.toContain('Meat note');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// A14. buildUserMessage() — organic-cleared pass note (dairy/meat/eggs, via productCategory)
+//
+// PROMPT_VERSION 47. Originally dairy-only: a certified-organic product with
+// no other flags previously got only the generic "No concerning ingredients
+// found" pass message, with no forward guidance — this flagsSection branch
+// nudges toward farm-direct sourcing as an aspirational next step, without
+// ever implying the organic purchase itself wasn't good enough.
+// buildUserMessage() gained a new 8th parameter, `productCategory` (from
+// mapProductCategory() in lib/scanHelpers.js, e.g. 'dairy'/'meat'/'eggs'),
+// threaded through from pages/api/scan.js's fetchExplanation() and
+// pages/api/explain.js's handler — required to scope this branch correctly.
+//
+// Generalized in a follow-up session (same session as the conventional_meat
+// organic-AND-grass-fed SYSTEM_PROMPT fix) to also cover 'meat' and 'eggs' —
+// same shape (celebrate the pass, then a brief non-preachy nudge), but the
+// closing "next step" clause is category-appropriate: dairy → "closer to
+// knowing exactly how the animals were raised"; meat → "...how the animal
+// was raised and finished"; eggs → "...how the hens were raised and what
+// they were fed." productCategory itself is reused directly as the sourcing
+// noun ("sourcing dairy/meat/eggs directly from a farm you trust").
+//
+// Presence-check only, same limitation as every other buildUserMessage()
+// block — this only asserts the instruction text handed to Claude, not
+// Claude's actual generated wording.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('A14. buildUserMessage() — organic-cleared pass note (dairy/meat/eggs)', () => {
+  test.each([
+    ['dairy', 'Organic Whole Milk', 'organic milk',  'dairy product', 'sourcing dairy directly from a farm you trust is the next step up', 'closer to knowing exactly how the animals were raised.'],
+    ['meat',  'Organic Ground Beef', 'organic beef', 'meat product',  'sourcing meat directly from a farm you trust is the next step up',  'closer to knowing exactly how the animal was raised and finished.'],
+    ['eggs',  'Organic Eggs', 'organic eggs',         'egg product',   'sourcing eggs directly from a farm you trust is the next step up',  'closer to knowing exactly how the hens were raised and what they were fed.'],
+  ])('verdict green + zero flags + clearedBy "organic" + productCategory "%s" → nudges toward farm-direct sourcing with the category-appropriate closing clause', (category, productName, ingredients, expectedLabel, expectedSourcingClause, expectedClosing) => {
+    const message = buildUserMessage('green', [], productName, ingredients, 2, 'organic', null, category);
+    expect(message).toContain(`This ${expectedLabel} is certified organic with no other flags`);
+    expect(message).toContain(expectedSourcingClause);
+    expect(message).toContain(expectedClosing);
+    expect(message).toContain('Frame this as an aspiration, not a requirement');
+    expect(message).toContain('never imply the organic purchase wasn\'t good enough');
+    expect(message).toContain('Return "details": {}');
+  });
+
+  test('regression: verdict green + zero flags + clearedBy "organic" but productCategory is NOT dairy/meat/eggs → falls through to the generic pass message', () => {
+    const message = buildUserMessage('green', [], 'Organic Apples', 'organic apples', 2, 'organic', null, 'snacks');
+    expect(message).toContain('No concerning ingredients found — product passed all checks.');
+    expect(message).not.toContain('sourcing dairy directly from a farm you trust');
+    expect(message).not.toContain('sourcing meat directly from a farm you trust');
+    expect(message).not.toContain('sourcing eggs directly from a farm you trust');
+  });
+
+  test('regression: productCategory "meat" but clearedBy is NOT "organic" → does not fire (e.g. non-gmo-project-verified meat)', () => {
+    const message = buildUserMessage('yellow', [], 'Meat Product', 'beef', 2, 'non-gmo-project-verified', null, 'meat');
+    expect(message).not.toContain('sourcing meat directly from a farm you trust');
+  });
+
+  test('regression: productCategory "eggs" + clearedBy "organic" but verdict is not green → does not fire', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'additives', severity: 'reject', matchedIngredient: 'red 40', summary: 'x' }],
+      'Egg Product', 'eggs, red 40', 2, 'organic', null, 'eggs'
+    );
+    expect(message).not.toContain('sourcing eggs directly from a farm you trust');
+  });
+
+  test('regression: productCategory "meat" + clearedBy "organic" + verdict green, but a flag IS present → routes through the normal "Flagged categories" branch instead', () => {
+    const message = buildUserMessage(
+      'green',
+      [{ category: 'fortified_vitamins', severity: 'caution', matchedIngredient: 'vitamin d3', summary: 'x' }],
+      'Meat Product', 'beef, vitamin d3', 2, 'organic', null, 'meat'
+    );
+    expect(message).toContain('Flagged categories:');
+    expect(message).not.toContain('sourcing meat directly from a farm you trust');
+  });
+
+  test('the three categories do not cross-contaminate — meat productCategory never produces dairy or eggs wording, and vice versa', () => {
+    const meatMessage = buildUserMessage('green', [], 'Organic Beef', 'organic beef', 2, 'organic', null, 'meat');
+    expect(meatMessage).not.toContain('sourcing dairy directly');
+    expect(meatMessage).not.toContain('sourcing eggs directly');
+    expect(meatMessage).not.toContain('how the animals were raised.');
+    expect(meatMessage).not.toContain('how the hens were raised');
+
+    const eggsMessage = buildUserMessage('green', [], 'Organic Eggs', 'organic eggs', 2, 'organic', null, 'eggs');
+    expect(eggsMessage).not.toContain('sourcing dairy directly');
+    expect(eggsMessage).not.toContain('sourcing meat directly');
+    expect(eggsMessage).not.toContain('how the animal was raised and finished');
+  });
+
+  test('omitting productCategory entirely (backward compatibility — existing callers not yet updated) defaults to null and does not crash or misfire the dairy branch', () => {
+    const message = buildUserMessage('green', [], 'Organic Whole Milk', 'organic milk', 2, 'organic', null);
+    expect(message).toContain('No concerning ingredients found — product passed all checks.');
+    expect(message).not.toContain('sourcing dairy directly from a farm you trust');
   });
 });
 
@@ -880,6 +1015,23 @@ describe('C. Handler — Claude response parsing', () => {
     expect(mockAnthropicCreate).toHaveBeenCalledWith(
       expect.objectContaining({ max_tokens: 2000 })
     );
+  });
+
+  test('C4b: productCategory from req.body is threaded through to buildUserMessage() — confirmed via the actual message sent to Claude', async () => {
+    mockAnthropicCreate.mockResolvedValueOnce({
+      content: [{ type: 'text', text: '{"summary":"Great choice.","details":{}}' }],
+    });
+    const res = makeRes();
+    await handler(
+      makeReq('POST', {
+        verdict: 'green', flags: [], productName: 'Organic Whole Milk',
+        ingredients: 'organic milk', userLevel: 2, clearedBy: 'organic', productCategory: 'dairy',
+      }),
+      res
+    );
+    expect(res.statusCode).toBe(200);
+    const sentMessage = mockAnthropicCreate.mock.calls[0][0].messages[0].content;
+    expect(sentMessage).toContain('sourcing dairy directly from a farm you trust is the next step up');
   });
 
   // ── Observability logging (console only, never persisted anywhere) ──

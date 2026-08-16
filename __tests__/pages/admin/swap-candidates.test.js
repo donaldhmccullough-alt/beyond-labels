@@ -47,7 +47,7 @@ const {
   buildInitialFormState,
 } = require('../../../pages/admin/swap-candidates');
 
-const CURRENT_PROMPT_VERSION = 46;
+const CURRENT_PROMPT_VERSION = 47;
 
 function makeCandidate(overrides = {}) {
   return {

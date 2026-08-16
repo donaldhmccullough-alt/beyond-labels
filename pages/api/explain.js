@@ -48,11 +48,11 @@ Joel's explanations focus on what the ingredient signals about how the food was 
 
 For conventional_crops: Joel explains that organic certification is about inputs, not practices — it means no synthetic pesticides and no GMO seed, but it is not proof of regenerative farming, no-till, or cover cropping, since most organic operations still till and monocrop like their conventional neighbors. Conventional crops are commonly grown with synthetic pesticides and herbicides and are typically grown from GMO seed as well — with one exception: if wheat is among the matched ingredients for this flag, note that wheat has no commercially grown GMO variety in the U.S. and should be described only as conventionally grown and sprayed, never as GMO. When shopping in the grocery store, his guidance is to choose organic, and look for no fillers or synthetic additives — that's the real standard worth holding a product to, not proof of regenerative practice. Tone: matter-of-fact, honest about what the organic label does and doesn't guarantee. 2-3 sentences.
 
-For conventional_meat: Joel explains what "conventional" means for land-animal meat — animals commonly raised in confinement or feedlot systems, fed conventional GMO grain, treated with antibiotics as routine practice, and — unlike dairy cattle — given hormone implants, which remain standard practice for conventional beef cattle specifically. If the product name doesn't clearly point to land-animal meat (seafood, or a non-meat product like candy or marshmallows where this flag most likely reflects gelatin), skip the feedlot/hormone specifics and focus on sourcing more generally. When shopping in the grocery store, his guidance is to choose certified organic, grass-fed and grass-finished, or pasture-raised meat from a farm you trust — the label is a starting point, not proof, since not every farm behind those words operates the same way. Tone: matter-of-fact, practical. 2-3 sentences.
+For conventional_meat: Joel explains what "conventional" means for land-animal meat — animals commonly raised in confinement or feedlot systems, fed conventional GMO grain, treated with antibiotics as routine practice, and — unlike dairy cattle — given hormone implants, which remain standard practice for conventional beef cattle specifically. If the product name doesn't clearly point to land-animal meat (seafood, or a non-meat product like candy or marshmallows where this flag most likely reflects gelatin), skip the feedlot/hormone specifics and focus on sourcing more generally. When shopping in the grocery store, his guidance is to choose meat that's both certified organic and grass-fed — look for "100% grass-fed" or "grass-fed and grass-finished" on the label, plus pasture-raised as a marker of better living conditions — since together these point toward meaningfully better feed, care, and no routine antibiotics or hormones than any single claim alone. The label is a starting point, not proof, since not every farm behind those words operates the same way. Tone: matter-of-fact, practical. 2-3 sentences.
 
 For glyphosate_heavy: Joel explains pre-harvest desiccation — farmers commonly spray glyphosate directly on crops like oats, wheat, and barley to dry them down evenly before harvest, a practice that typically means higher residue levels in the final food than a standard field application. He frames this as a farming system choice, not an accident — prioritizing yield consistency over residue minimization. When shopping in the grocery store, his guidance is to choose glyphosate-free or certified organic — it points toward a farm that skipped this practice, though the label alone doesn't guarantee residue-free food. Tone: matter-of-fact, not alarmist. 2-3 sentences.
 
-For conventional_dairy: Joel explains the farming system angle — conventional dairy typically means cows fed GMO corn and soy and treated with antibiotics as routine practice. When shopping in the grocery store, his guidance is to choose certified organic or grass-fed and grass-finished dairy, since it points toward a different feed and antibiotic protocol — though the label alone doesn't guarantee how a particular farm operates, and not every organic operation runs the same way. Tone: matter-of-fact, not alarming. 2-3 sentences.
+For conventional_dairy: Joel explains the farming system angle — conventional dairy typically means cows fed GMO corn and soy and treated with antibiotics as routine practice. When shopping in the grocery store, his guidance is to choose dairy that's both certified organic and grass-fed — look for "100% grass-fed" or "grass-fed and grass-finished" on the label — since together they point toward a meaningfully better feed and antibiotic protocol than either claim alone. The label is a starting point, not proof, and not every organic or grass-fed operation runs the same way. Tone: matter-of-fact, not alarming. 2-3 sentences.
 
 For conventional_eggs: Joel explains what "conventional" means for egg farming — hens are commonly fed GMO grain, sprayed with pesticides, and kept in high-density conditions without outdoor access. When shopping in the grocery store, his guidance is to choose certified organic or pasture-raised eggs, since the label points toward better feed and living conditions — though it isn't proof, and not every farm behind those words treats their hens the same way. Tone: matter-of-fact, practical. 2-3 sentences.
 
@@ -96,8 +96,11 @@ When the user message indicates this is a Level 2 (Already Label-Conscious) user
  * @param {string}   productName — product name from Open Food Facts
  * @param {string|null} ingredients — raw ingredients text
  * @param {1|2}      userLevel   — 1 = beginner lenient, 2 = strict (default)
+ * @param {string|null} productCategory — swap category from mapProductCategory()
+ *   (lib/scanHelpers.js), e.g. 'dairy'. Used to target category-specific
+ *   pass messaging (see the organic-cleared dairy branch in flagsSection).
  */
-export function buildUserMessage(verdict, flags, productName, ingredients, userLevel = 2, clearedBy = null, unverifiedReason = null) {
+export function buildUserMessage(verdict, flags, productName, ingredients, userLevel = 2, clearedBy = null, unverifiedReason = null, productCategory = null) {
   // Group flags by category so Claude sees one entry per category
   const byCategory = {};
   (flags || []).forEach(flag => {
@@ -133,7 +136,7 @@ export function buildUserMessage(verdict, flags, productName, ingredients, userL
       line += '\n    [Glyphosate note: explain using the pre-harvest desiccation angle — glyphosate is sprayed directly on these crops shortly before harvest to dry them down evenly, not just as a field herbicide. This results in higher residue levels in the final food. Frame glyphosate-free or organic certification as a reasonable starting point pointing toward a farm that skipped this practice, not proof of it — the label alone doesn\'t guarantee residue-free food.]';
     }
     if (cat === 'conventional_dairy') {
-      line += '\n    [Dairy note: focus on what conventional dairy signals about the farming system — GMO feed and antibiotics — rather than listing scary chemicals. Frame organic or grass-fed and grass-finished certification as a reasonable starting point pointing toward a different system, not proof of it — the label alone doesn\'t guarantee how a particular farm operates.]';
+      line += '\n    [Dairy note: focus on what conventional dairy signals about the farming system — GMO feed and antibiotics — rather than listing scary chemicals. Frame organic certification together with a grass-fed and grass-finished (or 100% grass-fed) label as a reasonable starting point pointing toward a different feed and antibiotic protocol, not proof of it — the label alone doesn\'t guarantee how a particular farm operates, and not every organic operation runs the same way.]';
     }
     if (cat === 'conventional_dairy' && userLevel === 1) {
       line += '\n    [Level 1 dairy note: this is an awareness item — organic dairy is one of the most impactful food swaps available, but conventional dairy is extremely common. Frame organic dairy as a step to take when ready, not a reason to feel bad about today\'s choices. Use especially gentle, encouraging language.]';
@@ -157,6 +160,19 @@ export function buildUserMessage(verdict, flags, productName, ingredients, userL
     ? `\nIngredients list: ${ingredients.substring(0, 600)}`
     : '';
 
+  // Category-specific product noun + closing "next step" clause for the
+  // organic-cleared pass-nudge branch below. Originally dairy-only
+  // (PROMPT_VERSION 47), generalized to meat/eggs in a follow-up session —
+  // productCategory itself is already the correct noun for "sourcing X
+  // directly from a farm you trust" (mapProductCategory() in
+  // lib/scanHelpers.js returns the literal strings 'dairy'/'meat'/'eggs'),
+  // so only the product-label and closing clause need to vary by category.
+  const ORGANIC_PASS_NUDGE = Object.assign(Object.create(null), {
+    dairy: { label: 'dairy product', closing: 'closer to knowing exactly how the animals were raised.' },
+    meat:  { label: 'meat product',  closing: 'closer to knowing exactly how the animal was raised and finished.' },
+    eggs:  { label: 'egg product',   closing: 'closer to knowing exactly how the hens were raised and what they were fed.' },
+  });
+
   const flagsSection = categoryLines
     ? `Flagged categories:\n${categoryLines}`
     : verdict === 'red'
@@ -167,7 +183,9 @@ export function buildUserMessage(verdict, flags, productName, ingredients, userL
           ? 'No specific ingredient flags were triggered, but this product carries no organic certification. Write the summary as Sina — honest and measured: nothing alarming was found, but the absence of organic certification means we cannot verify what this product was exposed to during growing or processing. Not a product she would avoid in a pinch, but not one she reaches for routinely. Return "details": {} — empty, no flagged categories to detail.'
           : clearedBy === 'pure_water'
             ? 'This is a pure water product — natural mineral water, spring water, artesian water, or similar. USDA organic certification is literally inapplicable to geological water sources, so the absence of a cert label is not a concern here and should not be mentioned. Give a clean, warm, straightforward green explanation that celebrates the simplicity of the ingredient list. Do not mention certification, organic seals, or suggest anything is missing. Return "details": {} — empty, no flagged categories.'
-            : 'No concerning ingredients found — product passed all checks.';
+            : verdict === 'green' && (flags || []).length === 0 && clearedBy === 'organic' && ORGANIC_PASS_NUDGE[productCategory]
+              ? `This ${ORGANIC_PASS_NUDGE[productCategory].label} is certified organic with no other flags — genuinely worth celebrating, and the summary should say so warmly. Then add one brief, non-preachy note: certified organic at the grocery store is a great choice today, and sourcing ${productCategory} directly from a farm you trust is the next step up when they're ready — ${ORGANIC_PASS_NUDGE[productCategory].closing} Frame this as an aspiration, not a requirement; never imply the organic purchase wasn't good enough. Keep the whole summary to 1-2 sentences total, consistent with the existing summary length rule. Return "details": {} — empty, no flagged categories to detail.`
+              : 'No concerning ingredients found — product passed all checks.';
 
   const levelContext = userLevel === 1
     ? '\nUser context: This is a Level 1 (building awareness) user. For any "awareness item" flags, use encouraging language that builds confidence rather than alarm — frame them as "something to be aware of as you build better habits" rather than urgent warnings.'
@@ -240,7 +258,7 @@ export default async function handler(req, res) {
   }
 
   // ── Input validation ──────────────────────────────────────────────────────
-  const { verdict, flags, productName, ingredients, userLevel: rawLevel, clearedBy = null, unverifiedReason = null } = req.body ?? {};
+  const { verdict, flags, productName, ingredients, userLevel: rawLevel, clearedBy = null, unverifiedReason = null, productCategory = null } = req.body ?? {};
   const userLevel = rawLevel === 1 || rawLevel === 2 ? rawLevel : 2;
 
   if (!verdict) {
@@ -268,7 +286,7 @@ export default async function handler(req, res) {
       system:     SYSTEM_PROMPT,
       messages: [{
         role:    'user',
-        content: buildUserMessage(verdict, flags, productName, ingredients, userLevel, clearedBy, unverifiedReason),
+        content: buildUserMessage(verdict, flags, productName, ingredients, userLevel, clearedBy, unverifiedReason, productCategory),
       }],
     });
 

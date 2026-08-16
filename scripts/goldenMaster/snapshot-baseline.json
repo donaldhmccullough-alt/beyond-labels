@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-03T01:26:30.419Z",
+  "generatedAt": "2026-08-16T15:38:56.724Z",
   "totalCases": 135,
   "results": [
     {
@@ -455,7 +455,7 @@
             "category": "conventional_meat",
             "severity": "caution",
             "matchedIngredient": "",
-            "summary": "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed and grass-finished, pasture-raised, or meat from a farm you trust.",
+            "summary": "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for meat that's both certified organic and grass-fed ('100% grass-fed' or 'grass-fed and grass-finished'), plus pasture-raised as a sign of better living conditions — together they're a more meaningful standard than any single claim alone.",
             "meatScenario": "land_animal"
           }
         ],
@@ -515,7 +515,7 @@
             "category": "conventional_dairy",
             "severity": "caution",
             "matchedIngredient": "",
-            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic or grass-fed and grass-finished dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction."
+            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic AND grass-fed (look for '100% grass-fed' or 'grass-fed and grass-finished') is worth moving toward when you're ready — together they're a more meaningful step than either alone."
           }
         ],
         "clearedBy": null,
@@ -1142,7 +1142,7 @@
             "category": "conventional_meat",
             "severity": "caution",
             "matchedIngredient": "",
-            "summary": "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed and grass-finished, pasture-raised, or meat from a farm you trust.",
+            "summary": "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for meat that's both certified organic and grass-fed ('100% grass-fed' or 'grass-fed and grass-finished'), plus pasture-raised as a sign of better living conditions — together they're a more meaningful standard than any single claim alone.",
             "meatScenario": "land_animal"
           }
         ],
@@ -1524,7 +1524,7 @@
             "category": "conventional_dairy",
             "severity": "caution",
             "matchedIngredient": "",
-            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic or grass-fed and grass-finished dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction."
+            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic AND grass-fed (look for '100% grass-fed' or 'grass-fed and grass-finished') is worth moving toward when you're ready — together they're a more meaningful step than either alone."
           }
         ],
         "clearedBy": null,
@@ -2000,7 +2000,7 @@
             "category": "conventional_dairy",
             "severity": "caution",
             "matchedIngredient": "",
-            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic or grass-fed and grass-finished dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction."
+            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic AND grass-fed (look for '100% grass-fed' or 'grass-fed and grass-finished') is worth moving toward when you're ready — together they're a more meaningful step than either alone."
           },
           {
             "category": "seed_oils",
@@ -2167,7 +2167,7 @@
             "category": "conventional_dairy",
             "severity": "caution",
             "matchedIngredient": "",
-            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic or grass-fed and grass-finished dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction."
+            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic AND grass-fed (look for '100% grass-fed' or 'grass-fed and grass-finished') is worth moving toward when you're ready — together they're a more meaningful step than either alone."
           },
           {
             "category": "seed_oils",
@@ -2247,7 +2247,7 @@
             "category": "conventional_dairy",
             "severity": "caution",
             "matchedIngredient": "",
-            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic or grass-fed and grass-finished dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction."
+            "summary": "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic AND grass-fed (look for '100% grass-fed' or 'grass-fed and grass-finished') is worth moving toward when you're ready — together they're a more meaningful step than either alone."
           },
           {
             "category": "conventional_crops",
@@ -2395,7 +2395,7 @@
             "category": "conventional_meat",
             "severity": "caution",
             "matchedIngredient": "",
-            "summary": "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed and grass-finished, pasture-raised, or meat from a farm you trust.",
+            "summary": "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for meat that's both certified organic and grass-fed ('100% grass-fed' or 'grass-fed and grass-finished'), plus pasture-raised as a sign of better living conditions — together they're a more meaningful standard than any single claim alone.",
             "meatScenario": "land_animal"
           },
           {

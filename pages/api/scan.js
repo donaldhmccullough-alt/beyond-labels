@@ -165,9 +165,12 @@ async function captureUnverifiedIngredients(ingredients, productName, barcode) {
  * @param {string}   productName
  * @param {string|null} ingredientsText
  * @param {1|2}      userLevel
+ * @param {string|null} productCategory — swap category from mapProductCategory(),
+ *   e.g. 'dairy'. Threaded through to buildUserMessage() for category-specific
+ *   pass messaging (see the organic-cleared dairy branch in explain.js).
  * @returns {Promise<{summary: string, details: object} | null>}
  */
-async function fetchExplanation(verdict, flags, productName, ingredientsText, userLevel, clearedBy = null, unverifiedReason = null) {
+async function fetchExplanation(verdict, flags, productName, ingredientsText, userLevel, clearedBy = null, unverifiedReason = null, productCategory = null) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     console.error('[scan] explanation fetch: missing API key');
@@ -187,7 +190,7 @@ async function fetchExplanation(verdict, flags, productName, ingredientsText, us
       system:     SYSTEM_PROMPT,
       messages: [{
         role:    'user',
-        content: buildUserMessage(verdict, flags, productName, ingredientsText, userLevel, clearedBy, unverifiedReason),
+        content: buildUserMessage(verdict, flags, productName, ingredientsText, userLevel, clearedBy, unverifiedReason, productCategory),
       }],
     });
 
@@ -289,7 +292,7 @@ function computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags,
         // caution for the same "Joel explains..." phrasing convention).
         const summary = l1IsSeafood
           ? 'Farmed or unlabeled seafood — Joel explains the difference between wild-caught and farmed: sourcing matters as much as ingredients. Look for a wild-caught certification, or seafood from a source you trust.'
-          : 'Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for grass-fed and grass-finished, pasture-raised, or meat from a farm you trust.';
+          : "Conventional meat — Joel explains the difference between conventional and pasture-raised: sourcing matters as much as ingredients. Look for meat that's both certified organic and grass-fed ('100% grass-fed' or 'grass-fed and grass-finished'), plus pasture-raised as a sign of better living conditions — together they're a more meaningful standard than any single claim alone.";
         flags = [{
           category:          'conventional_meat',
           severity:          'caution',
@@ -311,7 +314,7 @@ function computeVerdictLegacy({ ingredientsText, labelsDetected, categoriesTags,
         category:          'conventional_dairy',
         severity:          'caution',
         matchedIngredient: '',
-        summary:           "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic or grass-fed and grass-finished dairy is worth moving toward when you're ready — not a guarantee on its own, but a meaningful step in the right direction.",
+        summary:           "Conventional dairy — Joel explains what the farming system behind conventional dairy looks like: GMO feed and antibiotics. Certified organic AND grass-fed (look for '100% grass-fed' or 'grass-fed and grass-finished') is worth moving toward when you're ready — together they're a more meaningful step than either alone.",
       }, ...flags];
       // A caution flag can upgrade green → yellow, but cannot override red.
       if (verdict === 'green') verdict = 'yellow';
@@ -1175,7 +1178,7 @@ export default async function handler(req, res) {
   // Skip for unverified and inconclusive results — no screened ingredients to
   // explain. Fail silently otherwise — null degrades gracefully on the frontend.
   const explanation = (verdict !== 'unverified' && verdict !== 'inconclusive')
-    ? await fetchExplanation(verdict, flags, productName, ingredientsText, userLevel, clearedBy, unverifiedReason)
+    ? await fetchExplanation(verdict, flags, productName, ingredientsText, userLevel, clearedBy, unverifiedReason, productCategory)
     : null;
 
   // ── Write to scan cache ───────────────────────────────────────────────────
