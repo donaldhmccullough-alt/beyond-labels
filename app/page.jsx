@@ -26,7 +26,9 @@ import ProfileScreen from '@/components/profile/ProfileScreen';
 import BottomNav from '@/components/shared/BottomNav';
 import AuthModal from '@/components/auth/AuthModal';
 import DisclaimerModal from '@/components/shared/DisclaimerModal';
+import PrivacyPromiseModal from '@/components/shared/PrivacyPromiseModal';
 import AccountPendingDeletionModal from '@/components/shared/AccountPendingDeletionModal';
+import ChangePasswordModal from '@/components/profile/ChangePasswordModal';
 
 export default function Home() {
   const [appScreen, setAppScreen] = useState('loading');
@@ -40,6 +42,12 @@ export default function Home() {
   const [user, setUser] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
+  // Lifted from ProfileScreen so both modals can be rendered here, as
+  // siblings of .app-container, instead of nested inside it — same
+  // WebKit/Safari position:fixed reasoning as BottomNav/AuthModal/
+  // DisclaimerModal. See CLAUDE.md "Known Bugs (Fixed)".
+  const [showPrivacyPromise, setShowPrivacyPromise] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   // null | { scheduledFor: string, accessToken: string } — see the
   // SIGNED_IN handler below and CLAUDE.md "Account Deletion".
   const [pendingDeletion, setPendingDeletion] = useState(null);
@@ -230,32 +238,39 @@ export default function Home() {
   }
 
   if (appScreen === 'onboarding') {
+    // DisclaimerModal / AccountPendingDeletionModal are rendered as SIBLINGS
+    // of .app-container here too, not descendants — same reasoning as the
+    // main-app return below and the BottomNav fix. See CLAUDE.md "Known Bugs
+    // (Fixed)" for the full writeup.
     return (
-      <div className="app-container">
-        {onboardingStep === 'welcome' && (
-          <WelcomeScreen
-            onBegin={() => setOnboardingStep(MVP_MODE ? 'level-select' : 'assessment')}
-            onSkip={handleSkipOnboarding}
-          />
-        )}
-        {onboardingStep === 'level-select' && (
-          <LevelSelectScreen onComplete={handleLevelSelect} />
-        )}
-        {onboardingStep === 'assessment' && (
-          <AssessmentScreen onComplete={handleAssessmentComplete} onBack={() => setOnboardingStep('welcome')} />
-        )}
-        {onboardingStep === 'calculating' && (
-          <CalculatingScreen onComplete={handleCalculatingDone} />
-        )}
-        {onboardingStep === 'reveal' && (
-          <RevealScreen score={assessmentScore} onNext={handleRevealNext} />
-        )}
-        {onboardingStep === 'flags' && (
-          <FlagsScreen onComplete={handleFlagsComplete} />
-        )}
-        {onboardingStep === 'launch' && (
-          <LaunchScreen score={assessmentScore} onLaunch={handleLaunch} />
-        )}
+      <>
+        <div className="app-container">
+          {onboardingStep === 'welcome' && (
+            <WelcomeScreen
+              onBegin={() => setOnboardingStep(MVP_MODE ? 'level-select' : 'assessment')}
+              onSkip={handleSkipOnboarding}
+            />
+          )}
+          {onboardingStep === 'level-select' && (
+            <LevelSelectScreen onComplete={handleLevelSelect} />
+          )}
+          {onboardingStep === 'assessment' && (
+            <AssessmentScreen onComplete={handleAssessmentComplete} onBack={() => setOnboardingStep('welcome')} />
+          )}
+          {onboardingStep === 'calculating' && (
+            <CalculatingScreen onComplete={handleCalculatingDone} />
+          )}
+          {onboardingStep === 'reveal' && (
+            <RevealScreen score={assessmentScore} onNext={handleRevealNext} />
+          )}
+          {onboardingStep === 'flags' && (
+            <FlagsScreen onComplete={handleFlagsComplete} />
+          )}
+          {onboardingStep === 'launch' && (
+            <LaunchScreen score={assessmentScore} onLaunch={handleLaunch} />
+          )}
+        </div>
+
         {showDisclaimer && <DisclaimerModal onAccept={handleDisclaimerAccept} />}
         {pendingDeletion && (
           <AccountPendingDeletionModal
@@ -264,41 +279,56 @@ export default function Home() {
             onRestored={() => setPendingDeletion(null)}
           />
         )}
-      </div>
+      </>
     );
   }
 
   // Main app
+  //
+  // BottomNav is rendered as a SIBLING of .app-container, not a descendant
+  // — do not move it back inside. .app-container has `overflow: hidden` +
+  // `position: relative`; nesting a `position: fixed` element inside that
+  // exact combination is a well-documented WebKit/Safari bug where the
+  // "fixed" element's containing block silently becomes that ancestor
+  // instead of the viewport. The nav bar then scrolls along with the page
+  // instead of staying pinned to the bottom, appearing to float mid-content
+  // with real content visible both above and below it. See CLAUDE.md
+  // "Known bugs — bottom tab bar floating mid-page" for the full writeup.
   return (
-    <div className="app-container">
-      <div style={{ paddingBottom: 68 }}>
-        {mainTab === 'scan' && (
-          <ScannerScreen user={user} userLevel={userLevel} onScanResult={handleScanResult} />
-        )}
-        {mainTab === 'verdict' && (
-          <VerdictScreen
-            scanResult={lastScanResult}
-            userLevel={userLevel}
-            onSeeSwaps={handleSeeSwaps}
-            onBack={() => setMainTab('scan')}
-            onStartOnboarding={handleStartOnboarding}
-          />
-        )}
-        {mainTab === 'swaps' && (
-          <SwapsScreen scanResult={lastScanResult} userLevel={userLevel} onBack={() => setMainTab('verdict')} />
-        )}
-        {mainTab === 'profile' && (
-          <ProfileScreen
-            user={user}
-            userLevel={userLevel}
-            onLevelChange={handleLevelChange}
-            onRetakeAssessment={handleRetakeAssessment}
-            onStartOnboarding={handleStartOnboarding}
-            onSignIn={() => setShowAuthModal(true)}
-            onSignOut={handleSignOut}
-            onViewVerdict={handleScanResult}
-          />
-        )}
+    <>
+      <div className="app-container">
+        <div style={{ paddingBottom: 68 }}>
+          {mainTab === 'scan' && (
+            <ScannerScreen user={user} userLevel={userLevel} onScanResult={handleScanResult} />
+          )}
+          {mainTab === 'verdict' && (
+            <VerdictScreen
+              scanResult={lastScanResult}
+              userLevel={userLevel}
+              onSeeSwaps={handleSeeSwaps}
+              onBack={() => setMainTab('scan')}
+              onStartOnboarding={handleStartOnboarding}
+            />
+          )}
+          {mainTab === 'swaps' && (
+            <SwapsScreen scanResult={lastScanResult} userLevel={userLevel} onBack={() => setMainTab('verdict')} />
+          )}
+          {mainTab === 'profile' && (
+            <ProfileScreen
+              user={user}
+              userLevel={userLevel}
+              onLevelChange={handleLevelChange}
+              onRetakeAssessment={handleRetakeAssessment}
+              onStartOnboarding={handleStartOnboarding}
+              onSignIn={() => setShowAuthModal(true)}
+              onSignOut={handleSignOut}
+              onViewVerdict={handleScanResult}
+              onShowDisclaimer={() => setShowDisclaimer(true)}
+              onShowPrivacyPromise={() => setShowPrivacyPromise(true)}
+              onShowChangePassword={() => setShowChangePassword(true)}
+            />
+          )}
+        </div>
       </div>
 
       <BottomNav activeTab={mainTab} onTabChange={setMainTab} />
@@ -311,6 +341,10 @@ export default function Home() {
       )}
 
       {showDisclaimer && <DisclaimerModal onAccept={handleDisclaimerAccept} />}
+      {showPrivacyPromise && <PrivacyPromiseModal onClose={() => setShowPrivacyPromise(false)} />}
+      {showChangePassword && (
+        <ChangePasswordModal user={user} onClose={() => setShowChangePassword(false)} />
+      )}
       {pendingDeletion && (
         <AccountPendingDeletionModal
           scheduledFor={pendingDeletion.scheduledFor}
@@ -318,6 +352,6 @@ export default function Home() {
           onRestored={() => setPendingDeletion(null)}
         />
       )}
-    </div>
+    </>
   );
 }

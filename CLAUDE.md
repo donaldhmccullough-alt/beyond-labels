@@ -6655,6 +6655,136 @@ ProfileScreen has a **"Legal & Privacy"** card section (cream-dark background, b
 
 ---
 
+## Known Bugs (Fixed)
+
+### Bottom tab bar floating mid-page instead of pinned to the bottom (August 2026)
+
+**Symptom**: the `BottomNav` tab bar (Scan/Verdict/Swaps/Profile) sometimes rendered mid-scroll,
+overlapping content — e.g. on top of a "Concerns" card on `VerdictScreen` — with real content
+visible both above and below it, rather than staying pinned to the bottom edge of the viewport.
+
+**Root cause**: `BottomNav` (`components/shared/BottomNav.jsx`) uses `position: fixed`, and was
+rendered as a direct child of `app/page.jsx`'s `<div className="app-container">`.
+`.app-container` (`app/globals.css`) sets both `position: relative` and `overflow: hidden`. Nesting
+a `position: fixed` descendant inside an ancestor with that exact combination is a well-documented
+WebKit/Safari bug: the browser silently treats that ancestor as the fixed element's containing block
+instead of the actual viewport, so the "fixed" bar ends up scrolling along with the page instead of
+staying pinned — matching the reported symptom exactly (content above *and* below the bar rules out
+a simple `100vh` bug, since a genuinely viewport-anchored fixed element can never appear mid-page).
+Investigated and ruled out first: this codebase has **no Framer Motion** (`AnimatePresence`/
+`motion.*`) or any other animated route-transition wrapper anywhere — the `.screen-enter`/
+`.screen-enter-active`/`.fade-in`/`.slide-in` classes defined in `globals.css` are dead CSS, never
+applied by any component. A full ancestor-chain trace of `BottomNav` in a live running instance
+(`app-container` → `body` → `html`) confirmed zero `transform`/`will-change`/`filter`/
+`backdrop-filter`/`perspective`/`contain` anywhere in the chain — `overflow: hidden` combined with
+`position: relative` on `.app-container` was the only candidate, and is the specific, well-known
+trigger for this bug class in Safari/iOS (this app is mobile-first and installable as an iOS PWA per
+`manifest.json`/`apple-touch-icon`, making Safari a primary real-world target — not reproducible in
+this project's Chromium-based browser preview tooling, which doesn't have the bug, so the fix was
+verified via DOM structure/positioning checks rather than a visual repro).
+
+**Fix**: `app/page.jsx`'s main-app return now wraps its JSX in a `<>...</>` fragment and renders
+`BottomNav` (along with `AuthModal`/`DisclaimerModal`/`AccountPendingDeletionModal`, which share the
+identical `position: fixed` + `inset: 0` pattern) as **siblings** of `.app-container`, not
+descendants — `.app-container`'s `overflow: hidden` is left untouched (still needed for its own
+clipping purpose) since nothing depends on `BottomNav` being nested inside it (confirmed via a live
+check that no CSS selector in the app targets `.app-container`'s children by descendant/combinator
+selector — only the bare `.app-container` class itself is ever referenced). `BottomNav` already
+self-centers independently via `left: 50%; transform: translateX(-50%); width: 100%; maxWidth: 430`,
+so moving it up a nesting level is a pure DOM restructuring with zero visual change in browsers where
+the bug doesn't reproduce — confirmed via `getBoundingClientRect()` before/after at both a 375px
+mobile viewport and a desktop-width viewport: identical position, identical horizontal centering,
+identical pinning through a full scroll range on a real multi-flag `VerdictScreen` (Concerns list
+expanded, page genuinely taller than the viewport).
+
+**Follow-up (August 2026) — the other five modals fixed proactively, no user report.** The
+"Not fixed" list above was closed out for `AuthModal`, `ChangePasswordModal`,
+`AccountPendingDeletionModal`, `DisclaimerModal`, and `PrivacyPromiseModal` — see the next entry.
+`DeleteAccountModal`, `ReportVerdictModal`, and `PaywallModal` remain untouched and still share the
+same theoretical exposure; no report has surfaced for any of them either. If one ever does, apply the
+identical fix (render as a sibling of the nearest `overflow: hidden` ancestor).
+
+### Follow-up: proactively fixed the same bug in five more fixed-position modals (August 2026)
+
+No user report — done as a preventive fix once the BottomNav root cause made clear that every
+`position: fixed` element nested inside `.app-container` shares the identical exposure. Five modals
+were still descendants of `.app-container` at the time: `AuthModal` and `DisclaimerModal`/
+`AccountPendingDeletionModal` in `app/page.jsx`'s `appScreen === 'onboarding'` branch (the main-app
+branch had already been fixed as part of the BottomNav change above), plus `DisclaimerModal`/
+`PrivacyPromiseModal`/`ChangePasswordModal` as rendered from `components/profile/ProfileScreen.jsx`
+— nested even deeper, since `ProfileScreen` itself is a descendant of `.app-container` via
+`app/page.jsx`'s main-app `<div style={{paddingBottom: 68}}>` wrapper.
+
+**Per-modal check before moving anything** (per the same diligence as the BottomNav fix): confirmed
+none of the five has click-outside-to-close/backdrop-dismiss logic (no `onClick` on any of the fixed
+overlay `<div>`s — each is dismissed only via its own explicit button), none reads a CSS custom
+property or selector scoped to `.app-container` specifically (a live check confirmed the only
+`.app-container`-referencing CSS rule anywhere in the app is the bare `.app-container` class itself —
+no descendant/combinator selectors depend on DOM nesting), none relies on `.app-container`'s
+`overflow: hidden` for its own clipping (each already has its own independent `overflow: hidden` on
+its own inner sheet `<div>`, for its own rounded corners — unrelated to `.app-container`'s), and no
+scroll-lock (`document.body.style.overflow` or similar) exists anywhere in this codebase to account
+for.
+
+**Fix, two shapes depending on which parent actually owns `.app-container`:**
+- `AuthModal`/`DisclaimerModal`/`AccountPendingDeletionModal` in the onboarding branch: same
+  fragment-wrapper move as the BottomNav fix, since `app/page.jsx` (`Home`) already owns
+  `.app-container` directly in that branch too.
+- `DisclaimerModal`/`PrivacyPromiseModal`/`ChangePasswordModal` in `ProfileScreen.jsx`: `ProfileScreen`
+  does **not** own `.app-container` — `Home` does. A fragment wrapper inside `ProfileScreen` alone
+  can't make these true siblings of `.app-container`, since fragments are DOM-transparent but don't
+  change *where* the component is mounted. Fixed by lifting the three `show*` booleans out of
+  `ProfileScreen` and into `Home`, mirroring the pattern the codebase already used for `AuthModal`
+  (`ProfileScreen` already only ever called `onSignIn` — a callback prop — rather than owning
+  `AuthModal`'s state itself). `ProfileScreen` now takes three new callback props
+  (`onShowDisclaimer`, `onShowPrivacyPromise`, `onShowChangePassword`) and calls them directly from
+  its Legal & Privacy / Account row `onClick`s; `Home` owns the three booleans and renders all three
+  modals as siblings of `.app-container` in its main-app fragment, next to `AuthModal`. `Home`'s
+  existing `showDisclaimer` state/`handleDisclaimerAccept` handler is reused as-is for the
+  Profile-triggered disclaimer re-view (same modal, same accept action — re-confirming an
+  already-`'1'` `bl_disclaimer_accepted` localStorage flag is harmless), rather than adding a second,
+  redundant piece of disclaimer-open state. `DeleteAccountModal` was left untouched in `ProfileScreen`
+  — it was never part of this fix's scope.
+
+**Stacking order re-verified explicitly after all five were moved** (per the concern that promoting
+several elements to siblings could change layering that used to be implicit): live-checked via
+`document.elementFromPoint()` at the screen coordinates where `BottomNav` sits — with `AuthModal` open
+(`z-index: 2000`), that point resolves to the modal's own sheet, not the nav bar underneath; closing
+the modal makes the same point resolve back to a `BottomNav` button. `ChangePasswordModal`/
+`DisclaimerModal`/`AccountPendingDeletionModal`/`PrivacyPromiseModal` all share `z-index: 1000`,
+`BottomNav` is `z-index: 100` — confirmed none of this changed by the DOM move, since z-index stacking
+for `position: fixed` elements is independent of DOM nesting order as long as no ancestor traps them
+in a lower stacking context (`.app-container` doesn't set its own `z-index`, so it was never such a
+trap to begin with).
+
+**Verified live** (mobile 375px and desktop widths, same DOM-inspection method as the BottomNav fix —
+this project's Chromium-based browser preview can't reproduce the underlying WebKit bug, so
+verification here is `getBoundingClientRect()`/computed-style/ancestor-chain checks, not a visual
+screenshot): `DisclaimerModal` (both trigger sites — first-launch and the Profile row) and
+`PrivacyPromiseModal` got the closest scrutiny as the consent/legal-disclosure surfaces, per explicit
+instruction — for both, confirmed live: parent is `BODY` (not `.app-container`), the overlay fills the
+full viewport, the modal's own inner scrollable body has real scrollable overflow (content isn't
+clipped — `PrivacyPromiseModal`'s body measured `scrollHeight: 886` vs `clientHeight: 536` at mobile
+width) independent of the outer WebKit bug entirely, the action button (`I Understand`/`Close`) is
+fully on-screen and clickable, and horizontal centering exactly matches `.app-container`'s own bounds
+at both viewport widths. `AuthModal` was also live-verified (parent `BODY`, correct stacking above
+`BottomNav`, dismiss button works). **Lower-confidence, code-review-only**: `ChangePasswordModal`
+(gated behind `if (!user) return null`, and requires a real signed-in Supabase session
+`ProfileScreen`'s own "Account" section only renders `user`-truthy — not achievable in this local dev
+environment without real Supabase credentials) and `AccountPendingDeletionModal` (only ever rendered
+from a real `SIGNED_IN` auth event with a genuine pending-deletion row — same limitation already
+documented for this modal from an earlier session's own verification). Neither uses any dynamic
+behavior beyond the shared bottom-sheet pattern already verified working on the other three (no
+animation library, no third-party modal dependency, identical structural JSX shape) — flagged here
+per instruction as the two lowest-confidence items in this batch, worth prioritizing for real-device
+manual testing over the other three.
+
+Full test suite re-run after all six modals (`BottomNav` + this session's five): 2049/2050 passing,
+same one pre-existing unrelated failure (the `rulesEngine.test.js` cross-list contradiction test from
+the collision-word audit series) — no regressions.
+
+---
+
 ## What NOT to Do
 - Do not install `@supabase/auth-helpers-nextjs` — it's a Pages Router package, breaks App Router builds
 - Do not use `serverExternalPackages` in next.config.js — use `experimental.serverComponentsExternalPackages` (Next.js 14 key)
