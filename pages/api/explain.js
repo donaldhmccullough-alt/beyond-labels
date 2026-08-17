@@ -191,13 +191,28 @@ export function buildUserMessage(verdict, flags, productName, ingredients, userL
     ? '\nUser context: This is a Level 1 (building awareness) user. For any "awareness item" flags, use encouraging language that builds confidence rather than alarm — frame them as "something to be aware of as you build better habits" rather than urgent warnings.'
     : '';
 
+  // Voice guidance for the "summary" field, conditional on whether "details"
+  // will actually be non-empty (i.e. categoryLines is truthy — see
+  // flagsSection above). Every "details" entry opens with an explicit
+  // "Sina here —"/"Joel here —" persona tag, but "summary" previously had no
+  // voice instruction at all and defaulted to an anonymous, unattributed
+  // voice ("what we recommend") — disjointed against the two named personas
+  // immediately below it. Only applies when there's a personified details
+  // section to feel disjointed against; the various empty-details branches
+  // above (clean pass, cert-gate rejection, cert_unconfirmed, pure_water,
+  // the organic-cleared pass-nudge) are left unchanged — naming Sina/Joel on
+  // a short pass message with nothing following it would just be noise.
+  const summaryVoiceNote = categoryLines
+    ? ' Write it in Sina and Joel\'s shared voice, referring to them by name where it reads naturally (e.g. "what Sina and Joel recommend," "Sina and Joel would flag this because...") rather than an anonymous "we" or unattributed voice — but never open the summary with "Sina here —" or "Joel here —"; that individual-voice opening is reserved for "details" entries only, since a single verdict often spans both of their areas of expertise and picking one voice to represent the whole summary would misrepresent it as one person\'s take.'
+    : '';
+
   return `Product: ${productName || 'Unknown Product'}
 Overall verdict: ${verdict}
 ${flagsSection}${ingredientSnippet}${levelContext}
 
 Respond with a JSON object with exactly this structure — no markdown, no text outside the JSON:
 {
-  "summary": "<EXACTLY 1-2 sentences — a brief, plain-language headline of the overall verdict, written to the parent or person scanning the product. Do NOT list or explain individual flagged categories here, even when several are flagged — every category gets its own full explanation in "details" below. If you find yourself naming more than one specific ingredient or category in the summary, stop and move that content into "details" instead.>",
+  "summary": "<EXACTLY 1-2 sentences — a brief, plain-language headline of the overall verdict, written to the parent or person scanning the product.${summaryVoiceNote} Do NOT list or explain individual flagged categories here, even when several are flagged — every category gets its own full explanation in "details" below. If you find yourself naming more than one specific ingredient or category in the summary, stop and move that content into "details" instead.>",
   "details": {
     "<category_name>": "<Open with 'Sina here —' or 'Joel here —' per the voice assignment in the system prompt, then 2-3 sentences: what was found in this product, why it matters, and one empowering note>"
   }

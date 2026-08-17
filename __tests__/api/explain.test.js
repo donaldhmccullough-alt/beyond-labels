@@ -933,6 +933,123 @@ describe('A14. buildUserMessage() — organic-cleared pass note (dairy/meat/eggs
 });
 
 // ════════════════════════════════════════════════════════════════════════════
+// A15. buildUserMessage() — "summary" field voice guidance (Sina/Joel by name)
+//
+// PROMPT_VERSION 48. Every "details" entry opens with an explicit persona
+// tag ("Sina here —"/"Joel here —"), but the "summary" field's JSON-template
+// instruction previously had NO voice guidance at all, defaulting to an
+// anonymous, unattributed voice ("what we recommend") — disjointed against
+// the two named personas immediately below it. Conditional on categoryLines
+// (i.e. whether "details" will actually be non-empty): when there ARE
+// flagged categories, the summary instruction now tells the model to write
+// in Sina and Joel's shared voice, naming them where natural, while
+// explicitly forbidding the "Sina here —"/"Joel here —" individual-voice
+// opening (reserved for "details" only — a summary can span both of their
+// areas of expertise, and picking one voice to represent it would
+// misrepresent it as one person's take). When there are NO flagged
+// categories (clean pass, cert-gate rejection, cert_unconfirmed,
+// pure_water, the organic-cleared pass-nudge — every case where "details"
+// comes back empty), the summary instruction is left completely unchanged —
+// there's no personified details section to feel disjointed against.
+//
+// Presence-check only, same limitation as every other buildUserMessage()
+// block — this asserts the instruction text handed to Claude, not Claude's
+// actual generated wording.
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('A15. buildUserMessage() — summary field voice guidance', () => {
+  test('flagged categories present → summary instruction tells the model to name Sina and Joel and use their shared voice', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'conventional_dairy', severity: 'reject', matchedIngredient: 'milk', summary: 'x' }],
+      'Test Yogurt',
+      'milk, sugar',
+      2,
+      null,
+      null
+    );
+    expect(message).toContain("Write it in Sina and Joel's shared voice");
+    expect(message).toContain('referring to them by name where it reads naturally');
+    expect(message).toContain('what Sina and Joel recommend');
+  });
+
+  test('flagged categories present → summary instruction explicitly forbids opening with "Sina here —" or "Joel here —", reserving that pattern for "details" only', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'conventional_dairy', severity: 'reject', matchedIngredient: 'milk', summary: 'x' }],
+      'Test Yogurt',
+      'milk, sugar',
+      2,
+      null,
+      null
+    );
+    expect(message).toContain('never open the summary with "Sina here —" or "Joel here —"');
+    expect(message).toContain('that individual-voice opening is reserved for "details" entries only');
+  });
+
+  test('flagged categories present → the existing summary constraints (length, no listing categories) are still present, unreplaced', () => {
+    const message = buildUserMessage(
+      'red',
+      [{ category: 'conventional_dairy', severity: 'reject', matchedIngredient: 'milk', summary: 'x' }],
+      'Test Yogurt',
+      'milk, sugar',
+      2,
+      null,
+      null
+    );
+    expect(message).toContain('EXACTLY 1-2 sentences');
+    expect(message).toContain('Do NOT list or explain individual flagged categories here');
+  });
+
+  test('multiple flagged categories → the voice guidance still applies (not a single-category-only condition)', () => {
+    const message = buildUserMessage(
+      'red',
+      [
+        { category: 'conventional_dairy', severity: 'reject', matchedIngredient: 'milk', summary: 'x' },
+        { category: 'natural_flavors', severity: 'reject', matchedIngredient: 'natural flavors', summary: 'x' },
+      ],
+      'Test Yogurt',
+      'milk, natural flavors, sugar',
+      2,
+      null,
+      null
+    );
+    expect(message).toContain("Write it in Sina and Joel's shared voice");
+  });
+
+  test('regression: no flagged categories (clean pass, no clearedBy) → summary instruction is completely unchanged, no naming guidance added', () => {
+    const message = buildUserMessage('green', [], 'Clean Product', 'water, salt', 2, null, null);
+    expect(message).not.toContain("Sina and Joel's shared voice");
+    expect(message).not.toContain('what Sina and Joel recommend');
+    expect(message).not.toContain('never open the summary with');
+  });
+
+  test('regression: no flagged categories (cert-gate rejection, verdict red with zero flags) → summary instruction is unchanged', () => {
+    const message = buildUserMessage('red', [], 'Uncertified Product', 'sugar, salt', 2, null, null);
+    expect(message).not.toContain("Sina and Joel's shared voice");
+    expect(message).toContain('did not meet Level 2 certification standards');
+  });
+
+  test('regression: no flagged categories (cert_unconfirmed) → summary instruction is unchanged', () => {
+    const message = buildUserMessage('yellow', [], 'Organic-Looking Product', 'organic sugar, organic salt', 2, null, 'cert_unconfirmed');
+    expect(message).not.toContain("Sina and Joel's shared voice");
+    expect(message).toContain('could not confirm USDA organic certification');
+  });
+
+  test('regression: no flagged categories (pure_water) → summary instruction is unchanged', () => {
+    const message = buildUserMessage('green', [], 'Spring Water', 'spring water', 2, 'pure_water', null);
+    expect(message).not.toContain("Sina and Joel's shared voice");
+    expect(message).toContain('pure water product');
+  });
+
+  test('regression: no flagged categories (organic-cleared dairy pass-nudge) → summary instruction is unchanged', () => {
+    const message = buildUserMessage('green', [], 'Organic Whole Milk', 'organic milk', 2, 'organic', null, 'dairy');
+    expect(message).not.toContain("Sina and Joel's shared voice");
+    expect(message).toContain('certified organic with no other flags');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 // B. Handler — input validation
 // ════════════════════════════════════════════════════════════════════════════
 
